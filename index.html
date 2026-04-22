@@ -3,17 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
-    <meta name="mobile-web-app-capable" content="yes">
-    <link rel="icon" sizes="192x192" href="https://cdn-icons-png.flaticon.com/512/2271/2271068.png">
-
-    <title>Warehouse V8.7 Double-Check</title>
+    <title>Warehouse V8.8 Qty-Check Pro</title>
     <script src="https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
     
     <style>
-        :root { --primary: #1890ff; --success: #52c41a; --danger: #ff4d4f; --bg: #f5f7fa; }
-        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-        body { font-family: sans-serif; margin: 0; background: var(--bg); min-height: 100vh; overflow-y: auto; }
+        :root { --primary: #1890ff; --success: #52c41a; --danger: #ff4d4f; --warning: #faad14; --bg: #f5f7fa; }
+        * { box-sizing: border-box; }
+        body { font-family: sans-serif; margin: 0; background: var(--bg); min-height: 100vh; }
         .main-wrapper { display: flex; min-height: 100vh; gap: 10px; padding: 10px; flex-direction: column-reverse; }
         @media (min-width: 900px) { .main-wrapper { flex-direction: row; height: 100vh; overflow: hidden; } }
 
@@ -24,214 +21,185 @@
         label { font-size: 11px; color: #8c8c8c; font-weight: bold; margin-bottom: 4px; display: block; }
         input { height: 48px; padding: 10px; border: 2px solid #f0f0f0; border-radius: 8px; font-size: 16px; width: 100%; transition: 0.2s; background: #fafafa; }
         input:focus { border-color: var(--primary); outline: none; background: white; }
-        input.error-glow { border-color: var(--danger); background-color: #fff1f0; animation: shake 0.3s; }
         
-        @keyframes shake { 0%, 100% {transform: translateX(0);} 25% {transform: translateX(-5px);} 75% {transform: translateX(5px);} }
-        
-        .file-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-top: 5px; }
+        /* 报错动画 */
+        .error-glow { border-color: var(--danger) !important; background-color: #fff1f0 !important; animation: shake 0.3s; }
+        @keyframes shake { 0%,100% {transform:translateX(0);} 25% {transform:translateX(-5px);} 75% {transform:translateX(5px);} }
+
+        /* 状态显示 */
+        .file-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
         .file-btn { border: 1px dashed #d9d9d9; padding: 5px; border-radius: 6px; text-align: center; font-size: 10px; }
-        .status { font-size: 9px; font-weight: bold; color: #bfbfbf; display: block; margin-top: 2px; }
-        .ready { color: var(--success); }
+        .ready { color: var(--success); font-weight: bold; }
 
         .btn { height: 50px; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 16px; }
         .btn-save { background: var(--success); color: white; width: 100%; margin-top: 10px; }
         .btn-export { background: var(--primary); color: white; margin: 10px; height: 40px; flex-shrink: 0; }
-        .btn-del { background: #ff7875; color: white; height: 30px; width: 45px; font-size: 10px; border-radius: 4px; }
 
+        /* 列表染色 */
+        .row-over { background-color: #fff1f0 !important; color: var(--danger); font-weight: bold; }
         .table-wrap { flex: 1; overflow-y: auto; padding: 0 10px; }
         table { width: 100%; border-collapse: collapse; font-size: 12px; }
-        th, td { padding: 8px; border-bottom: 1px solid #f0f0f0; text-align: left; }
+        th, td { padding: 10px; border-bottom: 1px solid #f0f0f0; text-align: left; }
     </style>
 </head>
 <body>
 
 <div class="main-wrapper">
     <div class="panel-left">
-        <h3 style="padding: 10px 15px 0; margin: 0; font-size: 15px;">PUTWAY LIST (入库单)</h3>
+        <h3 style="padding: 10px 15px 0; margin: 0; font-size: 15px;">入库清单 (红色表示超收)</h3>
         <div class="table-wrap">
             <table id="mainTable">
                 <thead>
-                    <tr><th>SKU</th><th>Qty</th><th>Location</th><th>Action</th></tr>
+                    <tr><th>SKU</th><th>实收</th><th>库位</th><th>状态</th><th>操作</th></tr>
                 </thead>
                 <tbody></tbody>
             </table>
         </div>
-        <button class="btn btn-export" onclick="exportXls()">EXPORT EXCEL</button>
+        <button class="btn btn-export" onclick="exportXls()">导出 EXCEL (含超收标记)</button>
     </div>
 
     <div class="panel-right">
         <div class="card">
-            <div style="display:flex; justify-content:space-between; align-items:center;">
-                <h4 style="margin:0; color:var(--primary);">DATABASE CONFIG</h4>
-                <span id="saveIndicator" style="font-size:10px; color:#ccc;">Auto-save ON</span>
-            </div>
+            <label>数据配置 (需上传含预期数量的 DAILY.CSV)</label>
             <div class="file-grid">
                 <div class="file-btn">
-                    <label>1.总库 SKU.CSV</label>
-                    <input type="file" id="skuFile" accept=".csv" onchange="loadSKU()" style="font-size:8px; width:80px;">
-                    <span id="skuStat" class="status">EMPTY</span>
+                    <label>总库SKU</label>
+                    <input type="file" id="skuFile" accept=".csv" onchange="loadSKU()">
+                    <span id="skuStat">未加载</span>
                 </div>
                 <div class="file-btn">
-                    <label>2.当日清单 DAILY.CSV</label>
-                    <input type="file" id="checkFile" accept=".csv" onchange="loadCheck()" style="font-size:8px; width:80px;">
-                    <span id="checkStat" class="status">EMPTY</span>
+                    <label>当日清单(含Qty)</label>
+                    <input type="file" id="checkFile" accept=".csv" onchange="loadCheck()">
+                    <span id="checkStat">未加载</span>
                 </div>
                 <div class="file-btn">
-                    <label>3.库位 LOC.CSV</label>
-                    <input type="file" id="locFile" accept=".csv" onchange="loadLoc()" style="font-size:8px; width:80px;">
-                    <span id="locStat" class="status">EMPTY</span>
+                    <label>库位表</label>
+                    <input type="file" id="locFile" accept=".csv" onchange="loadLoc()">
+                    <span id="locStat">未加载</span>
                 </div>
             </div>
         </div>
 
         <div class="card">
-            <label>OPERATOR</label>
-            <input type="text" id="opName" placeholder="Name" onchange="saveLocal()" style="height:40px; margin-bottom:10px;">
+            <label>操作员</label>
+            <input type="text" id="opName" placeholder="姓名" onchange="saveLocal()">
             
-            <label>SCAN SKU (校对当日清单)</label>
-            <input type="text" id="skuIn" autocorrect="off" autocapitalize="characters" inputmode="email" placeholder="Scan SKU">
+            <label style="margin-top:10px;">扫描 SKU</label>
+            <input type="text" id="skuIn" placeholder="扫码" inputmode="email">
             
             <div style="display: grid; grid-template-columns: 1fr 2fr; gap: 10px; margin-top:10px;">
-                <div><label>QTY</label><input type="number" id="qtyIn" inputmode="numeric" value="1"></div>
+                <div><label>本次数量</label><input type="number" id="qtyIn" inputmode="numeric" value="1"></div>
                 <div>
-                    <label>LOCATION</label>
-                    <input type="text" id="locIn" list="locList" autocorrect="off" autocapitalize="characters" placeholder="Select Loc">
+                    <label>库位</label>
+                    <input type="text" id="locIn" list="locList" placeholder="库位">
                     <datalist id="locList"></datalist>
                 </div>
             </div>
-            <button class="btn btn-save" onclick="addEntry()">SAVE RECORD</button>
+            <button class="btn btn-save" onclick="addEntry()">保存记录</button>
         </div>
     </div>
 </div>
 
 <script>
-    let dbMaster = {};     // 总库资料
-    let setDailyCheck = new Set(); // 当日清单
-    let setLoc = new Set();
-    let data = [];
+    let dbMaster = {}, dbDaily = {}, setLoc = new Set(), data = [];
     const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 
     window.onload = () => {
-        const cache = localStorage.getItem('wh_v87_data');
-        const op = localStorage.getItem('wh_v87_op');
+        const cache = localStorage.getItem('wh_v88_data');
         if (cache) { data = JSON.parse(cache); render(); }
-        if (op) document.getElementById('opName').value = op;
+        document.getElementById('opName').value = localStorage.getItem('wh_v88_op') || "";
     };
 
-    function beep() {
-        const o = audioCtx.createOscillator(); const g = audioCtx.createGain();
-        o.type = 'square'; o.frequency.setValueAtTime(880, audioCtx.currentTime);
-        g.gain.setValueAtTime(0.05, audioCtx.currentTime);
-        o.connect(g); g.connect(audioCtx.destination);
-        o.start(); o.stop(audioCtx.currentTime + 0.1);
-        setTimeout(() => {
-            const o2 = audioCtx.createOscillator(); o2.type = 'square';
-            o2.frequency.setValueAtTime(880, audioCtx.currentTime);
-            o2.connect(g); o2.start(); o2.stop(audioCtx.currentTime + 0.1);
-        }, 150);
+    function playSound(type) {
+        const g = audioCtx.createGain(); g.gain.setValueAtTime(0.06, audioCtx.currentTime);
+        g.connect(audioCtx.destination);
+        if(type === 'error') { // 短促两响：错误
+            [0, 150].forEach(t => {
+                const o = audioCtx.createOscillator(); o.frequency.value = 880;
+                o.connect(g); o.start(audioCtx.currentTime + t/1000); o.stop(audioCtx.currentTime + (t+100)/1000);
+            });
+        } else if(type === 'warn') { // 长鸣一秒：超收警告
+            const o = audioCtx.createOscillator(); o.frequency.value = 440;
+            o.connect(g); o.start(); o.stop(audioCtx.currentTime + 1);
+        }
     }
 
     function loadSKU() {
-        Papa.parse(document.getElementById('skuFile').files[0], {
-            header: false, complete: (res) => {
-                dbMaster = {};
-                res.data.forEach((r, i) => { if(i>0 && r[0]) dbMaster[r[0].trim().toUpperCase()] = {b:r[1]||"", c:r[2]||""}; });
-                const st = document.getElementById('skuStat'); st.innerText = "READY: "+Object.keys(dbMaster).length; st.className="status ready";
-            }
-        });
+        Papa.parse(document.getElementById('skuFile').files[0], { complete: (res) => {
+            res.data.forEach((r, i) => { if(i>0 && r[0]) dbMaster[r[0].trim().toUpperCase()] = {b:r[1]||"", c:r[2]||""}; });
+            document.getElementById('skuStat').innerText = "OK"; document.getElementById('skuStat').className="ready";
+        }});
     }
 
     function loadCheck() {
-        Papa.parse(document.getElementById('checkFile').files[0], {
-            header: false, complete: (res) => {
-                setDailyCheck.clear();
-                res.data.forEach(r => { if(r[0]) setDailyCheck.add(r[0].trim().toUpperCase()); });
-                const st = document.getElementById('checkStat'); st.innerText = "LIST: "+setDailyCheck.size; st.className="status ready";
-            }
-        });
+        Papa.parse(document.getElementById('checkFile').files[0], { complete: (res) => {
+            dbDaily = {};
+            res.data.forEach(r => { if(r[0]) dbDaily[r[0].trim().toUpperCase()] = parseFloat(r[1]) || 0; });
+            document.getElementById('checkStat').innerText = "清单已载"; document.getElementById('checkStat').className="ready";
+        }});
     }
 
     function loadLoc() {
-        Papa.parse(document.getElementById('locFile').files[0], {
-            header: false, complete: (res) => {
-                setLoc.clear(); const dl = document.getElementById('locList'); dl.innerHTML = "";
-                res.data.forEach(r => r.forEach(c => {
-                    if(c && c.trim().length > 1) {
-                        let v = c.trim().toUpperCase(); setLoc.add(v);
-                        let o = document.createElement('option'); o.value = v; dl.appendChild(o);
-                    }
-                }));
-                const st = document.getElementById('locStat'); st.innerText = "LOC: "+setLoc.size; st.className="status ready";
-            }
-        });
+        Papa.parse(document.getElementById('locFile').files[0], { complete: (res) => {
+            setLoc.clear(); res.data.forEach(r => r.forEach(c => { if(c) setLoc.add(c.trim().toUpperCase()); }));
+            document.getElementById('locStat').innerText = "库位OK"; document.getElementById('locStat').className="ready";
+        }});
     }
 
     function addEntry() {
         const sIn = document.getElementById('skuIn'), lIn = document.getElementById('locIn');
-        const sv = sIn.value.trim().toUpperCase(), lv = lIn.value.trim().toUpperCase();
-        const op = document.getElementById('opName').value.trim();
+        const sv = sIn.value.trim().toUpperCase(), lv = lIn.value.trim().toUpperCase(), qv = parseFloat(document.getElementById('qtyIn').value);
+        const op = document.getElementById('opName').value;
 
-        if (!sv || !lv || !op) return;
+        if(!sv || !lv || !op) return;
 
-        // --- 核心校验逻辑 ---
-        let error = false;
+        // 校验：是否在当日清单
+        if(Object.keys(dbDaily).length > 0 && !dbDaily[sv]) {
+            sIn.classList.add('error-glow'); playSound('error'); return;
+        }
+        // 校验：库位
+        if(!setLoc.has(lv)) { lIn.classList.add('error-glow'); playSound('error'); return; }
         
-        // 1. 校验是否在“当日清单”中
-        if (setDailyCheck.size > 0 && !setDailyCheck.has(sv)) {
-            sIn.classList.add('error-glow');
-            error = true;
-        } else {
-            sIn.classList.remove('error-glow');
-        }
+        sIn.classList.remove('error-glow'); lIn.classList.remove('error-glow');
 
-        // 2. 校验库位
-        if (!setLoc.has(lv)) {
-            lIn.classList.add('error-glow');
-            error = true;
-        } else {
-            lIn.classList.remove('error-glow');
-        }
+        // 计算已录入总数 (包含本次)
+        const alreadyGot = data.filter(d => d._originSKU === sv).reduce((sum, d) => sum + parseFloat(d.Quantity), 0);
+        const totalNow = alreadyGot + qv;
+        const planQty = dbDaily[sv] || 0;
+        let isOver = planQty > 0 && totalNow > planQty;
 
-        if (error) { beep(); return; }
+        if(isOver) playSound('warn');
 
-        // 从总库获取信息，如果没有，则保留输入的原码
-        const masterInfo = dbMaster[sv];
-        const finalSKU = masterInfo ? masterInfo.b : sv;
-        const finalName = masterInfo ? masterInfo.c : "NOT_IN_MASTER";
-
+        const m = dbMaster[sv];
         data.unshift({
-            id: Date.now(), "SKU": finalSKU, "Name": finalName,
-            "BatchSerialNumber": "", "SupplierSKU": "", "ExpiryDate_YYYYMMDD": "",
-            "Quantity": document.getElementById('qtyIn').value,
-            "Location": "Patiki Warehouse: " + lv,
-            "DateReceived_YYYYMMDD": new Date().toISOString().slice(0,10).replace(/-/g, ""),
-            "Received": "TRUE", "Operator": op
+            id: Date.now(), _originSKU: sv,
+            "SKU": m ? m.b : sv, "Name": m ? m.c : "未存资料",
+            "Quantity": qv, "Location": lv,
+            "Operator": op, "PlanQty": planQty,
+            "Status": isOver ? "OVER_RECEIVED" : "NORMAL"
         });
 
         render(); saveLocal();
-        sIn.value = ""; lIn.value = ""; document.getElementById('qtyIn').value = "1";
-        sIn.focus();
+        sIn.value = ""; lIn.value = ""; document.getElementById('qtyIn').value = "1"; sIn.focus();
     }
 
     function render() {
         const b = document.querySelector("#mainTable tbody"); b.innerHTML = "";
         data.forEach(d => {
-            b.innerHTML += `<tr><td><b>${d.SKU}</b></td><td>${d.Quantity}</td><td>${d.Location.split(': ')[1]}</td>
-            <td><button class="btn-del" onclick="del(${d.id})">DEL</button></td></tr>`;
+            const isRed = d.Status === "OVER_RECEIVED" ? 'class="row-over"' : '';
+            b.innerHTML += `<tr ${isRed}><td>${d.SKU}</td><td>${d.Quantity}</td><td>${d.Location}</td><td>${d.Status}</td>
+            <td><button onclick="del(${d.id})">删</button></td></tr>`;
         });
     }
 
     function del(id) { data = data.filter(x => x.id !== id); render(); saveLocal(); }
-    function saveLocal() { 
-        localStorage.setItem('wh_v87_data', JSON.stringify(data)); 
-        localStorage.setItem('wh_v87_op', document.getElementById('opName').value);
-    }
+    function saveLocal() { localStorage.setItem('wh_v88_data', JSON.stringify(data)); localStorage.setItem('wh_v88_op', document.getElementById('opName').value); }
+    
     function exportXls() {
-        if (!data.length) return;
-        const out = data.map(({id, ...rest}) => rest);
-        const ws = XLSX.utils.json_to_sheet(out, {header:["SKU","Name","BatchSerialNumber","SupplierSKU","ExpiryDate_YYYYMMDD","Quantity","Location","DateReceived_YYYYMMDD","Received","Operator"]});
-        const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "Putway");
-        XLSX.writeFile(wb, `Receipt_${new Date().toISOString().slice(0,10)}.xlsx`);
+        const out = data.map(({id, _originSKU, ...rest}) => rest);
+        const ws = XLSX.utils.json_to_sheet(out);
+        const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "Recv");
+        XLSX.writeFile(wb, `Receipt_${new Date().toLocaleDateString()}.xlsx`);
     }
 
     document.getElementById('skuIn').onkeyup = e => { if(e.key==='Enter') document.getElementById('qtyIn').focus(); };
