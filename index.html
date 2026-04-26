@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
-    <title>Warehouse V8.9.1 Fix</title>
+    <title>Warehouse V8.10 Template Pro</title>
     <script src="https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
     <style>
@@ -21,7 +21,7 @@
         .error-glow { border-color: var(--danger) !important; background-color: #fff1f0 !important; animation: shake 0.3s; }
         @keyframes shake { 0%,100% {transform:translateX(0);} 25% {transform:translateX(-5px);} 75% {transform:translateX(5px);} }
         .file-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
-        .file-btn { border: 1px dashed #d9d9d9; padding: 5px; border-radius: 6px; text-align: center; font-size: 9px; }
+        .file-btn { border: 1px dashed #d9d9d9; padding: 5px; border-radius: 6px; text-align: center; font-size: 9px; min-height: 55px; }
         .status { font-size: 9px; font-weight: bold; color: #bfbfbf; display: block; margin-top: 2px; }
         .ready { color: var(--success); }
         .btn { height: 50px; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 15px; display: flex; align-items: center; justify-content: center; }
@@ -39,34 +39,34 @@
 
 <div class="main-wrapper">
     <div class="panel-left">
-        <h3 style="padding: 12px 15px 0; margin: 0; font-size: 15px;">LIST 清单 (RED=OVER/ERROR)</h3>
+        <h3 style="padding: 12px 15px 0; margin: 0; font-size: 15px; color:#262626;">PUTWAY LIST (录入清单)</h3>
         <div class="table-wrap">
             <table id="mainTable">
                 <thead>
-                    <tr><th>SKU/ITEM</th><th>QTY/数量</th><th>LOC/库位</th><th>STATUS/状态</th><th>ACT</th></tr>
+                    <tr><th>SKU</th><th>NAME</th><th>QTY</th><th>LOCATION</th><th>ACT</th></tr>
                 </thead>
                 <tbody></tbody>
             </table>
         </div>
-        <button class="btn btn-export" onclick="exportXls()">EXPORT EXCEL (导出表格)</button>
+        <button class="btn btn-export" onclick="exportXls()">EXPORT TEMPLATE (导出标准模板)</button>
     </div>
 
     <div class="panel-right">
         <div class="card">
-            <label>CONFIG 配置 (CSV FILES)</label>
+            <label>CONFIG 配置</label>
             <div class="file-grid">
                 <div class="file-btn">
-                    <label>1. MASTER/总库</label>
+                    <label>1. MASTER 总库</label>
                     <input type="file" id="skuFile" accept=".csv" onchange="loadSKU()" style="width:70px; font-size:8px;">
                     <span id="skuStat" class="status">EMPTY/无</span>
                 </div>
                 <div class="file-btn">
-                    <label>2. DAILY/清单</label>
+                    <label>2. DAILY 清单</label>
                     <input type="file" id="checkFile" accept=".csv" onchange="loadCheck()" style="width:70px; font-size:8px;">
-                    <span id="checkStat" class="status">OPTIONAL/可选</span>
+                    <span id="checkStat" class="status">OPTIONAL</span>
                 </div>
                 <div class="file-btn">
-                    <label>3. LOC/库位表</label>
+                    <label>3. LOC 库位</label>
                     <input type="file" id="locFile" accept=".csv" onchange="loadLoc()" style="width:70px; font-size:8px;">
                     <span id="locStat" class="status">EMPTY/无</span>
                 </div>
@@ -76,17 +76,19 @@
         <div class="card">
             <label>OPERATOR 操作员</label>
             <input type="text" id="opName" placeholder="Name" onchange="saveLocal()">
-            <label style="margin-top:12px;">SCAN SKU 扫描货物</label>
+            
+            <label style="margin-top:12px;">SCAN SKU 扫描</label>
             <input type="text" id="skuIn" placeholder="Scan SKU" autocorrect="off" autocapitalize="characters" inputmode="email">
+            
             <div style="display: grid; grid-template-columns: 1fr 2fr; gap: 10px; margin-top:12px;">
                 <div><label>QTY 数量</label><input type="number" id="qtyIn" inputmode="numeric" value="1"></div>
                 <div>
                     <label>LOCATION 库位</label>
-                    <input type="text" id="locIn" list="locList" placeholder="Location">
+                    <input type="text" id="locIn" list="locList" placeholder="Scan Loc" autocorrect="off" autocapitalize="characters">
                     <datalist id="locList"></datalist>
                 </div>
             </div>
-            <button class="btn btn-save" onclick="addEntry()">SAVE RECORD (保存记录)</button>
+            <button class="btn btn-save" onclick="addEntry()">SAVE RECORD (保存并格式化)</button>
         </div>
     </div>
 </div>
@@ -96,9 +98,9 @@
     const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 
     window.onload = () => {
-        const cache = localStorage.getItem('wh_v89_data');
+        const cache = localStorage.getItem('wh_v810_data');
         if (cache) { data = JSON.parse(cache); render(); }
-        document.getElementById('opName').value = localStorage.getItem('wh_v89_op') || "";
+        document.getElementById('opName').value = localStorage.getItem('wh_v810_op') || "";
     };
 
     function playSound(type) {
@@ -119,7 +121,7 @@
         Papa.parse(document.getElementById('skuFile').files[0], { complete: (res) => {
             dbMaster = {};
             res.data.forEach((r, i) => { if(i>0 && r[0]) dbMaster[r[0].trim().toUpperCase()] = {b:r[1]||"", c:r[2]||""}; });
-            const s = document.getElementById('skuStat'); s.innerText = "READY/已就绪"; s.className="status ready";
+            document.getElementById('skuStat').innerText = "READY"; document.getElementById('skuStat').className="status ready";
         }});
     }
 
@@ -127,7 +129,7 @@
         Papa.parse(document.getElementById('checkFile').files[0], { complete: (res) => {
             dbDaily = {};
             res.data.forEach(r => { if(r[0]) dbDaily[r[0].trim().toUpperCase()] = parseFloat(r[1]) || 0; });
-            const s = document.getElementById('checkStat'); s.innerText = "READY/已就绪"; s.className="status ready";
+            document.getElementById('checkStat').innerText = "READY"; document.getElementById('checkStat').className="status ready";
         }});
     }
 
@@ -135,53 +137,48 @@
         Papa.parse(document.getElementById('locFile').files[0], { complete: (res) => {
             setLoc.clear(); const dl = document.getElementById('locList'); dl.innerHTML = "";
             res.data.forEach(r => r.forEach(c => { if(c && c.trim().length > 1) { let v = c.trim().toUpperCase(); setLoc.add(v); let o = document.createElement('option'); o.value = v; dl.appendChild(o); } }));
-            const s = document.getElementById('locStat'); s.innerText = "READY/已就绪"; s.className="status ready";
+            document.getElementById('locStat').innerText = "READY"; document.getElementById('locStat').className="status ready";
         }});
     }
 
     function addEntry() {
         const sIn = document.getElementById('skuIn'), lIn = document.getElementById('locIn');
         const sv = sIn.value.trim().toUpperCase(), lv = lIn.value.trim().toUpperCase(), qv = parseFloat(document.getElementById('qtyIn').value);
-        const op = document.getElementById('opName').value;
+        const op = document.getElementById('opName').value.trim();
 
         if(!sv || !lv || !op) return;
 
-        // --- 修复的核心校验逻辑 ---
-        let isDailyActive = Object.keys(dbDaily).length > 0;
-        let isMasterActive = Object.keys(dbMaster).length > 0;
-
-        // 1. SKU 校验
+        // 校验
         let skuValid = true;
-        if (isDailyActive) {
-            // 如果上传了清单，必须在清单内
-            if (!dbDaily[sv]) skuValid = false;
-        } else if (isMasterActive) {
-            // 如果没传清单但传了总库，必须在总库内
-            if (!dbMaster[sv]) skuValid = false;
-        }
+        if (Object.keys(dbDaily).length > 0) { if (!dbDaily[sv]) skuValid = false; }
+        else if (Object.keys(dbMaster).length > 0) { if (!dbMaster[sv]) skuValid = false; }
 
         if (!skuValid) { sIn.classList.add('error-glow'); playSound('error'); return; }
-        
-        // 2. 库位校验
         if (setLoc.size > 0 && !setLoc.has(lv)) { lIn.classList.add('error-glow'); playSound('error'); return; }
 
         sIn.classList.remove('error-glow'); lIn.classList.remove('error-glow');
 
-        // 3. 数量校验 (仅在有当日清单时生效)
+        // 超收判断
         const alreadyGot = data.filter(d => d._originSKU === sv).reduce((sum, d) => sum + parseFloat(d.Quantity), 0);
-        const totalNow = alreadyGot + qv;
         const planQty = dbDaily[sv] || 0;
-        const isOver = isDailyActive && planQty > 0 && totalNow > planQty;
+        const isOver = Object.keys(dbDaily).length > 0 && planQty > 0 && (alreadyGot + qv) > planQty;
         if(isOver) playSound('warn');
 
         const m = dbMaster[sv];
-        data.unshift({
-            id: Date.now(), _originSKU: sv,
-            "SKU_CODE": m ? m.b : sv, "ITEM_NAME": m ? m.c : "N/A",
-            "QTY": qv, "LOCATION": lv, "OPERATOR": op, 
-            "PLAN_QTY": planQty || "-", "STATUS": isOver ? "OVER/超收" : "OK"
-        });
+        
+        // 数据构造
+        const entry = {
+            id: Date.now(),
+            _originSKU: sv,
+            "SKU": m ? m.b : sv,                     // A列
+            "Name": m ? m.c : "N/A",                 // B列
+            "Quantity": qv,                          // F列
+            "Location": "Patiki Warehouse: " + lv,   // G列 (增加前缀)
+            "DateReceived": new Date().toISOString().slice(0,10).replace(/-/g, ""), // H列 (YYYYMMDD)
+            "Status": isOver ? "OVER" : "OK"
+        };
 
+        data.unshift(entry);
         render(); saveLocal();
         sIn.value = ""; lIn.value = ""; document.getElementById('qtyIn').value = "1"; sIn.focus();
     }
@@ -189,20 +186,37 @@
     function render() {
         const b = document.querySelector("#mainTable tbody"); b.innerHTML = "";
         data.forEach(d => {
-            const rowClass = d.STATUS.includes("OVER") ? 'class="row-over"' : '';
-            b.innerHTML += `<tr ${rowClass}><td><b>${d.SKU_CODE}</b></td><td>${d.QTY} / <small>${d.PLAN_QTY}</small></td><td>${d.LOCATION}</td><td>${d.STATUS}</td><td><button class="btn-del" onclick="del(${d.id})">DEL</button></td></tr>`;
+            const rowClass = d.Status === "OVER" ? 'class="row-over"' : '';
+            b.innerHTML += `<tr ${rowClass}><td><b>${d.SKU}</b></td><td>${d.Name}</td><td>${d.Quantity}</td><td>${d.Location}</td><td><button class="btn-del" onclick="del(${d.id})">DEL</button></td></tr>`;
         });
     }
 
     function del(id) { if(confirm("DEL?")) { data = data.filter(x => x.id !== id); render(); saveLocal(); } }
-    function saveLocal() { localStorage.setItem('wh_v89_data', JSON.stringify(data)); localStorage.setItem('wh_v89_op', document.getElementById('opName').value); }
-    function clearCache() { if(confirm("CLEAR?")) { localStorage.clear(); location.reload(); } }
+    function saveLocal() { localStorage.setItem('wh_v810_data', JSON.stringify(data)); localStorage.setItem('wh_v810_op', document.getElementById('opName').value); }
+    
     function exportXls() {
         if(!data.length) return;
-        const out = data.map(({id, _originSKU, ...rest}) => rest);
-        const ws = XLSX.utils.json_to_sheet(out);
-        const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "Receipt");
-        XLSX.writeFile(wb, `Report_${new Date().toISOString().slice(0,10)}.xlsx`);
+        
+        // 按照 A-I 模板精确构建数据
+        const exportData = data.map(d => ({
+            "SKU": d.SKU,                                  // A
+            "Name": d.Name,                                // B
+            "BatchSerialNumber": "",                       // C (空)
+            "SupplierSKU": "",                             // D (空)
+            "ExpiryDate_YYYYMMDD": "",                     // E (空)
+            "Quantity": d.Quantity,                        // F
+            "Location": d.Location,                        // G
+            "DateReceived_YYYYMMDD": d.DateReceived,       // H
+            "Received": "TRUE"                             // I
+        }));
+
+        const ws = XLSX.utils.json_to_sheet(exportData, {
+            header: ["SKU", "Name", "BatchSerialNumber", "SupplierSKU", "ExpiryDate_YYYYMMDD", "Quantity", "Location", "DateReceived_YYYYMMDD", "Received"]
+        });
+        
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "Putway");
+        XLSX.writeFile(wb, `Putway_Export_${new Date().toISOString().slice(0,10)}.xlsx`);
     }
 
     document.getElementById('skuIn').onkeyup = e => { if(e.key==='Enter') document.getElementById('qtyIn').focus(); };
