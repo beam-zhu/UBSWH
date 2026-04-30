@@ -3,8 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
-    <title>Warehouse V8.11 Pro</title>
-    <script src="https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js"></script>
+    <title>Warehouse V8.12 CSV Pro</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
     <style>
         :root { --primary: #1890ff; --success: #52c41a; --danger: #ff4d4f; --warning: #faad14; --bg: #f5f7fa; }
@@ -26,7 +25,7 @@
         .ready { color: var(--success); }
         .btn { height: 50px; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 15px; display: flex; align-items: center; justify-content: center; }
         .btn-save { background: var(--success); color: white; width: 100%; margin-top: 10px; }
-        .btn-export { background: var(--primary); color: white; margin: 10px; height: 42px; flex-shrink: 0; }
+        .btn-export { background: #595959; color: white; margin: 10px; height: 42px; flex-shrink: 0; }
         .btn-del { background: #ff7875; color: white; height: 28px; width: 45px; font-size: 10px; border-radius: 4px; }
         .row-over { background-color: #fff1f0 !important; color: var(--danger); font-weight: bold; }
         .table-wrap { flex: 1; overflow-y: auto; padding: 0 10px; }
@@ -48,7 +47,7 @@
                 <tbody></tbody>
             </table>
         </div>
-        <button class="btn btn-export" onclick="exportXls()">EXPORT TEMPLATE (文件名含操作员)</button>
+        <button class="btn btn-export" onclick="exportCsv()">EXPORT AS CSV (导出标准CSV)</button>
     </div>
 
     <div class="panel-right">
@@ -74,157 +73,11 @@
         </div>
 
         <div class="card">
-            <label>OPERATOR 操作员 (用于文件名识别)</label>
-            <input type="text" id="opName" placeholder="请在这里输入你的名字" onchange="saveLocal()">
+            <label>OPERATOR 操作员 (文件名识别)</label>
+            <input type="text" id="opName" placeholder="Operator Name" onchange="saveLocal()">
             
             <label style="margin-top:12px;">SCAN SKU 扫描</label>
             <input type="text" id="skuIn" placeholder="Scan SKU" autocorrect="off" autocapitalize="characters" inputmode="email">
             
             <div style="display: grid; grid-template-columns: 1fr 2fr; gap: 10px; margin-top:12px;">
-                <div><label>QTY 数量</label><input type="number" id="qtyIn" inputmode="numeric" value="1"></div>
-                <div>
-                    <label>LOCATION 库位</label>
-                    <input type="text" id="locIn" list="locList" placeholder="Scan Loc" autocorrect="off" autocapitalize="characters">
-                    <datalist id="locList"></datalist>
-                </div>
-            </div>
-            <button class="btn btn-save" onclick="addEntry()">SAVE RECORD (保存记录)</button>
-        </div>
-    </div>
-</div>
-
-<script>
-    let dbMaster = {}, dbDaily = {}, setLoc = new Set(), data = [];
-    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-
-    window.onload = () => {
-        const cache = localStorage.getItem('wh_v811_data');
-        const op = localStorage.getItem('wh_v811_op');
-        if (cache) { data = JSON.parse(cache); render(); }
-        if (op) document.getElementById('opName').value = op;
-    };
-
-    function playSound(type) {
-        const g = audioCtx.createGain(); g.gain.setValueAtTime(0.06, audioCtx.currentTime);
-        g.connect(audioCtx.destination);
-        if(type === 'error') {
-            [0, 150].forEach(t => {
-                const o = audioCtx.createOscillator(); o.type='square'; o.frequency.value = 880;
-                o.connect(g); o.start(audioCtx.currentTime + t/1000); o.stop(audioCtx.currentTime + (t+100)/1000);
-            });
-        } else if(type === 'warn') {
-            const o = audioCtx.createOscillator(); o.type='square'; o.frequency.value = 440;
-            o.connect(g); o.start(); o.stop(audioCtx.currentTime + 0.8);
-        }
-    }
-
-    function loadSKU() {
-        Papa.parse(document.getElementById('skuFile').files[0], { complete: (res) => {
-            dbMaster = {};
-            res.data.forEach((r, i) => { if(i>0 && r[0]) dbMaster[r[0].trim().toUpperCase()] = {b:r[1]||"", c:r[2]||""}; });
-            document.getElementById('skuStat').innerText = "READY"; document.getElementById('skuStat').className="status ready";
-        }});
-    }
-
-    function loadCheck() {
-        Papa.parse(document.getElementById('checkFile').files[0], { complete: (res) => {
-            dbDaily = {};
-            res.data.forEach(r => { if(r[0]) dbDaily[r[0].trim().toUpperCase()] = parseFloat(r[1]) || 0; });
-            document.getElementById('checkStat').innerText = "READY"; document.getElementById('checkStat').className="status ready";
-        }});
-    }
-
-    function loadLoc() {
-        Papa.parse(document.getElementById('locFile').files[0], { complete: (res) => {
-            setLoc.clear(); const dl = document.getElementById('locList'); dl.innerHTML = "";
-            res.data.forEach(r => r.forEach(c => { if(c && c.trim().length > 1) { let v = c.trim().toUpperCase(); setLoc.add(v); let o = document.createElement('option'); o.value = v; dl.appendChild(o); } }));
-            document.getElementById('locStat').innerText = "READY"; document.getElementById('locStat').className="status ready";
-        }});
-    }
-
-    function addEntry() {
-        const sIn = document.getElementById('skuIn'), lIn = document.getElementById('locIn'), opInput = document.getElementById('opName');
-        const sv = sIn.value.trim().toUpperCase(), lv = lIn.value.trim().toUpperCase(), qv = parseFloat(document.getElementById('qtyIn').value);
-        const op = opInput.value.trim();
-
-        if(!sv || !lv || !op) { alert("请先输入操作员姓名和SKU/库位!"); return; }
-
-        let skuValid = true;
-        if (Object.keys(dbDaily).length > 0) { if (!dbDaily[sv]) skuValid = false; }
-        else if (Object.keys(dbMaster).length > 0) { if (!dbMaster[sv]) skuValid = false; }
-
-        if (!skuValid) { sIn.classList.add('error-glow'); playSound('error'); return; }
-        if (setLoc.size > 0 && !setLoc.has(lv)) { lIn.classList.add('error-glow'); playSound('error'); return; }
-
-        sIn.classList.remove('error-glow'); lIn.classList.remove('error-glow');
-
-        const alreadyGot = data.filter(d => d._originSKU === sv).reduce((sum, d) => sum + parseFloat(d.Quantity), 0);
-        const planQty = dbDaily[sv] || 0;
-        const isOver = Object.keys(dbDaily).length > 0 && planQty > 0 && (alreadyGot + qv) > planQty;
-        if(isOver) playSound('warn');
-
-        const m = dbMaster[sv];
-        data.unshift({
-            id: Date.now(),
-            _originSKU: sv,
-            "SKU": m ? m.b : sv,
-            "Name": m ? m.c : "N/A",
-            "Quantity": qv,
-            "Location": "Patiki Warehouse: " + lv,
-            "DateReceived": new Date().toISOString().slice(0,10).replace(/-/g, ""),
-            "Status": isOver ? "OVER" : "OK"
-        });
-
-        render(); saveLocal();
-        sIn.value = ""; lIn.value = ""; document.getElementById('qtyIn').value = "1"; sIn.focus();
-    }
-
-    function render() {
-        const b = document.querySelector("#mainTable tbody"); b.innerHTML = "";
-        data.forEach(d => {
-            const rowClass = d.Status === "OVER" ? 'class="row-over"' : '';
-            b.innerHTML += `<tr ${rowClass}><td><b>${d.SKU}</b></td><td>${d.Name}</td><td>${d.Quantity}</td><td>${d.Location}</td><td><button class="btn-del" onclick="del(${d.id})">DEL</button></td></tr>`;
-        });
-    }
-
-    function del(id) { if(confirm("确定删除?")) { data = data.filter(x => x.id !== id); render(); saveLocal(); } }
-    
-    function saveLocal() { 
-        localStorage.setItem('wh_v811_data', JSON.stringify(data)); 
-        localStorage.setItem('wh_v811_op', document.getElementById('opName').value);
-    }
-    
-    function exportXls() {
-        if(!data.length) return;
-        const op = document.getElementById('opName').value.trim() || "Unknown";
-        const dateStr = new Date().toISOString().slice(0,10);
-        
-        const exportData = data.map(d => ({
-            "SKU": d.SKU,
-            "Name": d.Name,
-            "BatchSerialNumber": "",
-            "SupplierSKU": "",
-            "ExpiryDate_YYYYMMDD": "",
-            "Quantity": d.Quantity,
-            "Location": d.Location,
-            "DateReceived_YYYYMMDD": d.DateReceived,
-            "Received": "TRUE"
-        }));
-
-        const ws = XLSX.utils.json_to_sheet(exportData, {
-            header: ["SKU", "Name", "BatchSerialNumber", "SupplierSKU", "ExpiryDate_YYYYMMDD", "Quantity", "Location", "DateReceived_YYYYMMDD", "Received"]
-        });
-        
-        const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, "Putway");
-        
-        // 文件名包含操作员名字：Putway_姓名_日期.xlsx
-        XLSX.writeFile(wb, `Putway_${op}_${dateStr}.xlsx`);
-    }
-
-    document.getElementById('skuIn').onkeyup = e => { if(e.key==='Enter') document.getElementById('qtyIn').focus(); };
-    document.getElementById('qtyIn').onkeyup = e => { if(e.key==='Enter') document.getElementById('locIn').focus(); };
-    document.getElementById('locIn').onkeyup = e => { if(e.key==='Enter') addEntry(); };
-</script>
-</body>
-</html>
+                <div><label>QTY 数量</label><input
