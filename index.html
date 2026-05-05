@@ -3,53 +3,39 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
-    <title>Warehouse V8.18 Mobile-Fix</title>
+    <title>Warehouse V8.20 Visual-Alert</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
     <style>
         :root { --primary: #1890ff; --success: #52c41a; --danger: #ff4d4f; --bg: #f5f7fa; }
         * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-        
-        /* 关键修改：手机端允许滚动，不再强制锁定 100vh */
         body { font-family: sans-serif; margin: 0; background: var(--bg); min-height: 100vh; }
-        
         .main-wrapper { display: flex; flex-direction: column; padding: 10px; gap: 10px; }
-        
-        /* 电脑/平板横屏逻辑保持不变 */
         @media (min-width: 900px) { 
             .main-wrapper { flex-direction: row; height: 100vh; overflow: hidden; }
             .panel-left { flex: 5; height: 100%; display: flex; flex-direction: column; }
             .panel-right { flex: 5; height: 100%; display: flex; flex-direction: column; overflow-y: auto; }
             body { overflow: hidden; }
         }
-
         .card { background: white; border-radius: 12px; padding: 15px; border: 1px solid #e8e8e8; box-shadow: 0 2px 8px rgba(0,0,0,0.05); margin-bottom: 10px; }
         .panel-left { background: white; border-radius: 12px; border: 1px solid #e8e8e8; overflow: hidden; display: flex; flex-direction: column; }
-        
         label { font-size: 11px; color: #8c8c8c; font-weight: bold; margin-bottom: 4px; display: block; }
         input { height: 38px; padding: 8px; border: 1px solid #d9d9d9; border-radius: 6px; font-size: 15px; width: 100%; background: #fafafa; margin-bottom: 8px; }
         input:focus { border-color: var(--primary); outline: none; background: white; border-width: 2px; }
-        
         .loc-input { height: 50px; font-size: 20px; font-weight: bold; border: 2px solid #1890ff; background: #fffbe6; color: #d46b08; }
         .sku-row { display: grid; grid-template-columns: 3fr 1fr; gap: 8px; margin-bottom: 2px; align-items: center; }
-        
         .file-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 5px; }
         .file-btn { border: 1px dashed #ccc; padding: 4px; border-radius: 6px; text-align: center; background: #fff; font-size: 9px; }
         .status { font-size: 9px; font-weight: bold; color: #bfbfbf; }
         .ready { color: var(--success); }
-
         .btn { height: 52px; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 18px; width: 100%; }
         .btn-save { background: var(--success); color: white; margin-top: 5px; }
-        
-        /* 导出按钮在手机端应有足够的边距 */
         .btn-export { background: #444; color: white; margin: 15px 0; height: 45px; font-size: 14px; flex-shrink: 0; }
-        
-        /* 表格区域：手机端不固定高度，允许撑开 */
         .table-wrap { flex: 1; padding: 0 10px; }
         @media (min-width: 900px) { .table-wrap { overflow-y: auto; } }
-
         table { width: 100%; border-collapse: collapse; font-size: 12px; }
         th, td { padding: 8px; border-bottom: 1px solid #f0f0f0; text-align: left; }
         th { background: #fafafa; position: sticky; top: 0; z-index: 10; }
+        .row-over { background-color: #fff1f0 !important; color: #ff4d4f !important; font-weight: bold; }
     </style>
 </head>
 <body>
@@ -94,25 +80,24 @@
         <div class="table-wrap">
             <table id="mainTable">
                 <thead>
-                    <tr><th>SKU</th><th>QTY</th><th>LOCATION</th><th>ACT</th></tr>
+                    <tr><th>SKU</th><th>QTY</th><th>LOCATION</th><th>STATUS</th><th>ACT</th></tr>
                 </thead>
                 <tbody></tbody>
             </table>
         </div>
         <div style="padding: 0 15px;">
-            <button class="btn btn-export" onclick="exportCsv()">EXPORT CSV (导出文件)</button>
+            <button class="btn btn-export" onclick="exportCsv()">EXPORT CSV (导出异常标记版)</button>
         </div>
     </div>
 </div>
 
 <script>
-    // JS 逻辑完全保留 V8.17 的日期修复逻辑
     let dbMaster = {}, dbDaily = {}, setLoc = new Set(), data = [];
     const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 
     window.onload = () => {
-        const cache = localStorage.getItem('wh_v818_data');
-        const op = localStorage.getItem('wh_v818_op');
+        const cache = localStorage.getItem('wh_v820_data');
+        const op = localStorage.getItem('wh_v820_op');
         if (cache) { data = JSON.parse(cache); render(); }
         if (op) document.getElementById('opName').value = op;
         setupEnterKey();
@@ -157,6 +142,13 @@
         if(!lv || !op) { alert("Loc & Name Required!"); return; }
         if (setLoc.size > 0 && !setLoc.has(lv)) { playSound('error'); return; }
 
+        let currentBatchCounts = {};
+        for(let i=1; i<=6; i++) {
+            const sv = document.getElementById('s'+i).value.trim().toUpperCase();
+            const qv = parseFloat(document.getElementById('q'+i).value) || 0;
+            if(sv) currentBatchCounts[sv] = (currentBatchCounts[sv] || 0) + qv;
+        }
+
         let batch = [], any = false;
         for(let i=1; i<=6; i++) {
             const sv = document.getElementById('s'+i).value.trim().toUpperCase();
@@ -165,10 +157,22 @@
             any = true;
             const m = dbMaster[sv];
             const plan = dbDaily[sv] || 0;
-            const already = data.filter(d => d._originSKU === sv).reduce((sum, d) => sum + parseFloat(d.Quantity), 0);
-            const isOver = Object.keys(dbDaily).length > 0 && plan > 0 && (already + qv) > plan;
+            const alreadySaved = data.filter(d => d._originSKU === sv).reduce((sum, d) => sum + parseFloat(d.Quantity), 0);
+            const totalWithCurrent = alreadySaved + currentBatchCounts[sv];
+            const isOver = Object.keys(dbDaily).length > 0 && plan > 0 && totalWithCurrent > plan;
+            
             if(isOver) playSound('warn');
-            batch.push({ id: Date.now()+i, _originSKU: sv, "SKU": m?m.b:sv, "Name": m?m.c:"N/A", "Quantity": qv, "Location": "Patiki Warehouse: "+lv, "DateReceived": dateStr, "Status": isOver?"OVER":"OK" });
+            
+            batch.push({ 
+                id: Date.now()+i, 
+                _originSKU: sv, 
+                "SKU": m?m.b:sv, 
+                "Name": m?m.c:"N/A", 
+                "Quantity": qv, 
+                "Location": "Patiki Warehouse: "+lv, 
+                "DateReceived": dateStr, 
+                "Status": isOver ? "!!OVER!!" : "OK" 
+            });
         }
         if(!any) return;
         data = [...batch, ...data]; render(); saveLocal();
@@ -179,20 +183,37 @@
     function render() {
         const b = document.querySelector("#mainTable tbody"); b.innerHTML = "";
         data.forEach(d => {
-            b.innerHTML += `<tr ${d.Status==='OVER'?'style="background:#fff1f0;color:#ff4d4f"':''}><td><b>${d.SKU}</b></td><td>${d.Quantity}</td><td>${d.Location.replace('Patiki Warehouse: ', '')}</td><td><button style="background:#ff7875;color:white;border:none;border-radius:4px;" onclick="del(${d.id})">DEL</button></td></tr>`;
+            const isRed = d.Status.includes("OVER");
+            b.innerHTML += `<tr ${isRed ? 'class="row-over"' : ''}>
+                <td><b>${d.SKU}</b></td><td>${d.Quantity}</td>
+                <td>${d.Location.replace('Patiki Warehouse: ', '')}</td><td>${d.Status}</td>
+                <td><button style="background:#ff7875;color:white;border:none;border-radius:4px;" onclick="del(${d.id})">DEL</button></td>
+            </tr>`;
         });
     }
 
     function del(id) { if(confirm("Del?")) { data = data.filter(x => x.id !== id); render(); saveLocal(); } }
-    function saveLocal() { localStorage.setItem('wh_v818_data', JSON.stringify(data)); localStorage.setItem('wh_v818_op', document.getElementById('opName').value); }
+    function saveLocal() { localStorage.setItem('wh_v820_data', JSON.stringify(data)); localStorage.setItem('wh_v820_op', document.getElementById('opName').value); }
+    
     function exportCsv() {
         if(!data.length) return;
         const op = document.getElementById('opName').value.trim() || "User";
-        const csv = Papa.unparse([["SKU","Name","BatchSerialNumber","SupplierSKU","ExpiryDate_YYYYMMDD","Quantity","Location","DateReceived_YYYYMMDD","Received"], ...data.map(d=>[d.SKU, d.Name, "","","", d.Quantity, d.Location, d.DateReceived, "TRUE"])]);
+        
+        const csv = Papa.unparse([
+            ["SKU","Name","BatchSerialNumber","SupplierSKU","ExpiryDate_YYYYMMDD","Quantity","Location","DateReceived_YYYYMMDD","Received"], 
+            ...data.map(d => {
+                const isOver = d.Status.includes("OVER");
+                // 如果超收，在 SKU 字段强行加入视觉装饰
+                const visualSKU = isOver ? `>>> OVER_QTY: [${d.SKU}] <<<` : d.SKU;
+                return [visualSKU, d.Name, "","","", d.Quantity, d.Location, d.DateReceived, "TRUE"];
+            })
+        ]);
+        
         const blob = new Blob(["\ufeff"+csv], { type: 'text/csv;charset=utf-8;' });
         const link = document.createElement("a"); link.href = URL.createObjectURL(blob);
         link.download = `Putway_${op}_${new Date().toISOString().slice(0,10)}.csv`; link.click();
     }
+
     function setupEnterKey() {
         const inputs = Array.from(document.querySelectorAll('.panel-right input'));
         inputs.forEach((input, index) => {
