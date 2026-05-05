@@ -3,20 +3,27 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
-    <title>Warehouse V8.20.4 Qty-Empty</title>
+    <title>Warehouse V8.20.5 Left-Input</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
     <style>
         :root { --primary: #1890ff; --success: #52c41a; --danger: #ff4d4f; --bg: #f5f7fa; }
         * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
         body { font-family: sans-serif; margin: 0; background: var(--bg); min-height: 100vh; }
+
+        /* 基础布局：手机端模式（输入在上，清单在下） */
         .main-wrapper { display: flex; flex-direction: column; padding: 10px; gap: 10px; }
-        .panel-right { order: 1; } .panel-left { order: 2; }
+        .panel-right { order: 1; } 
+        .panel-left { order: 2; }
+
+        /* 电脑/平板横屏锁定：左手录入模式 */
         @media (min-width: 900px) { 
             .main-wrapper { flex-direction: row; height: 100vh; overflow: hidden; }
-            .panel-left { flex: 5; height: 100%; display: flex; flex-direction: column; order: 1; }
-            .panel-right { flex: 5; height: 100%; display: flex; flex-direction: column; overflow-y: auto; order: 2; }
+            /* 对调后的顺序：panel-right (输入) 在前，panel-left (清单) 在后 */
+            .panel-right { flex: 5; height: 100%; display: flex; flex-direction: column; overflow-y: auto; order: 1; }
+            .panel-left { flex: 5; height: 100%; display: flex; flex-direction: column; order: 2; }
             body { overflow: hidden; }
         }
+
         .card { background: white; border-radius: 12px; padding: 15px; border: 1px solid #e8e8e8; box-shadow: 0 2px 8px rgba(0,0,0,0.05); margin-bottom: 10px; }
         label { font-size: 11px; color: #8c8c8c; font-weight: bold; margin-bottom: 4px; display: block; }
         input { height: 38px; padding: 8px; border: 1px solid #d9d9d9; border-radius: 6px; font-size: 15px; width: 100%; background: #fafafa; margin-bottom: 8px; }
@@ -41,17 +48,6 @@
 <body>
 
 <div class="main-wrapper">
-    <div class="panel-left">
-        <h3 style="padding: 12px 15px 5px; margin: 0; font-size: 15px;">PUTWAY LIST (录入清单)</h3>
-        <div class="table-wrap">
-            <table id="mainTable">
-                <thead><tr><th>SKU</th><th>QTY</th><th>LOCATION</th><th>STATUS</th><th>ACT</th></tr></thead>
-                <tbody></tbody>
-            </table>
-        </div>
-        <div style="padding: 0 15px;"><button class="btn btn-export" onclick="exportCsv()">EXPORT CSV</button></div>
-    </div>
-
     <div class="panel-right">
         <div class="card" style="padding: 8px;">
             <div class="file-grid">
@@ -65,7 +61,7 @@
             <label>OPERATOR 操作员</label>
             <input type="text" id="opName" placeholder="Name" onchange="saveLocal()" style="margin-bottom:12px; height: 40px;">
             
-            <label>SKU & QTY (请输入数量)</label>
+            <label>SKU & QTY (数量已留空，直接输入)</label>
             <div id="batchContainer">
                 <div class="sku-row"><span>SKU CODE</span><span>QTY</span></div>
                 <div class="sku-row"><input type="text" id="s1" placeholder="1st SKU"><input type="tel" id="q1" placeholder="Qty"></div>
@@ -83,6 +79,17 @@
             </div>
             <button class="btn btn-save" onclick="addBatch()">SAVE ALL (保存并重置)</button>
         </div>
+    </div>
+
+    <div class="panel-left">
+        <h3 style="padding: 12px 15px 5px; margin: 0; font-size: 15px;">PUTWAY LIST (录入清单)</h3>
+        <div class="table-wrap">
+            <table id="mainTable">
+                <thead><tr><th>SKU</th><th>QTY</th><th>LOCATION</th><th>STATUS</th><th>ACT</th></tr></thead>
+                <tbody></tbody>
+            </table>
+        </div>
+        <div style="padding: 0 15px;"><button class="btn btn-export" onclick="exportCsv()">EXPORT CSV</button></div>
     </div>
 </div>
 
@@ -140,7 +147,6 @@
         for(let i=1; i<=6; i++) {
             const sv = document.getElementById('s'+i).value.trim().toUpperCase();
             const qv = parseFloat(document.getElementById('q'+i).value);
-            // 校验：如果 SKU 填了但 Qty 没填或为0，报错
             if(sv && (!qv || qv <= 0)) { alert(`SKU ${i} 数量无效！`); playSound('error'); return; }
             if(!sv) continue;
             any = true;
@@ -153,7 +159,6 @@
         }
         if(!any) return;
         data = [...batch, ...data]; render(); saveLocal();
-        // 重置时将数量设为空字符串
         for(let i=1; i<=6; i++) { document.getElementById('s'+i).value = ""; document.getElementById('q'+i).value = ""; }
         document.getElementById('locIn').value = ""; document.getElementById('s1').focus();
     }
