@@ -3,19 +3,26 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
-    <title>Warehouse V8.20.1 Focus-Fix</title>
+    <title>Warehouse V8.20.2 Final</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
     <style>
         :root { --primary: #1890ff; --success: #52c41a; --danger: #ff4d4f; --bg: #f5f7fa; }
         * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
         body { font-family: sans-serif; margin: 0; background: var(--bg); min-height: 100vh; }
+
+        /* 基础布局：手机端模式 */
         .main-wrapper { display: flex; flex-direction: column; padding: 10px; gap: 10px; }
+        .panel-right { order: 1; } /* 手机端输入框在上 */
+        .panel-left { order: 2; }  /* 手机端清单在下 */
+
+        /* 电脑/平板横屏锁定：右手模式 */
         @media (min-width: 900px) { 
             .main-wrapper { flex-direction: row; height: 100vh; overflow: hidden; }
-            .panel-left { flex: 5; height: 100%; display: flex; flex-direction: column; }
-            .panel-right { flex: 5; height: 100%; display: flex; flex-direction: column; overflow-y: auto; }
+            .panel-left { flex: 5; height: 100%; display: flex; flex-direction: column; order: 1; } /* 清单在左 */
+            .panel-right { flex: 5; height: 100%; display: flex; flex-direction: column; overflow-y: auto; order: 2; } /* 输入在右 */
             body { overflow: hidden; }
         }
+
         .card { background: white; border-radius: 12px; padding: 15px; border: 1px solid #e8e8e8; box-shadow: 0 2px 8px rgba(0,0,0,0.05); margin-bottom: 10px; }
         .panel-left { background: white; border-radius: 12px; border: 1px solid #e8e8e8; overflow: hidden; display: flex; flex-direction: column; }
         label { font-size: 11px; color: #8c8c8c; font-weight: bold; margin-bottom: 4px; display: block; }
@@ -41,6 +48,21 @@
 <body>
 
 <div class="main-wrapper">
+    <div class="panel-left">
+        <h3 style="padding: 12px 15px 5px; margin: 0; font-size: 15px;">PUTWAY LIST (录入清单)</h3>
+        <div class="table-wrap">
+            <table id="mainTable">
+                <thead>
+                    <tr><th>SKU</th><th>QTY</th><th>LOCATION</th><th>STATUS</th><th>ACT</th></tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
+        <div style="padding: 0 15px;">
+            <button class="btn btn-export" onclick="exportCsv()">EXPORT CSV (导出文件)</button>
+        </div>
+    </div>
+
     <div class="panel-right">
         <div class="card" style="padding: 8px;">
             <div class="file-grid">
@@ -57,12 +79,12 @@
             <label>SKU & QTY (1-6 ITEMS)</label>
             <div id="batchContainer">
                 <div class="sku-row"><span>SKU CODE</span><span>QTY</span></div>
-                <div class="sku-row"><input type="text" id="s1" class="sku-f" placeholder="1st SKU"><input type="number" id="q1" class="qty-f" value="1"></div>
-                <div class="sku-row"><input type="text" id="s2" class="sku-f" placeholder="2nd SKU"><input type="number" id="q2" class="qty-f" value="1"></div>
-                <div class="sku-row"><input type="text" id="s3" class="sku-f" placeholder="3rd SKU"><input type="number" id="q3" class="qty-f" value="1"></div>
-                <div class="sku-row"><input type="text" id="s4" class="sku-f" placeholder="4th SKU"><input type="number" id="q4" class="qty-f" value="1"></div>
-                <div class="sku-row"><input type="text" id="s5" class="sku-f" placeholder="5th SKU"><input type="number" id="q5" class="qty-f" value="1"></div>
-                <div class="sku-row"><input type="text" id="s6" class="sku-f" placeholder="6th SKU"><input type="number" id="q6" class="qty-f" value="1"></div>
+                <div class="sku-row"><input type="text" id="s1" placeholder="1st SKU"><input type="tel" id="q1" class="qty-field" value="1"></div>
+                <div class="sku-row"><input type="text" id="s2" placeholder="2nd SKU"><input type="tel" id="q2" class="qty-field" value="1"></div>
+                <div class="sku-row"><input type="text" id="s3" placeholder="3rd SKU"><input type="tel" id="q3" class="qty-field" value="1"></div>
+                <div class="sku-row"><input type="text" id="s4" placeholder="4th SKU"><input type="tel" id="q4" class="qty-field" value="1"></div>
+                <div class="sku-row"><input type="text" id="s5" placeholder="5th SKU"><input type="tel" id="q5" class="qty-field" value="1"></div>
+                <div class="sku-row"><input type="text" id="s6" placeholder="6th SKU"><input type="tel" id="q6" class="qty-field" value="1"></div>
             </div>
 
             <div style="margin-top: 10px;">
@@ -71,22 +93,7 @@
                 <datalist id="locList"></datalist>
             </div>
 
-            <button class="btn btn-save" onclick="addBatch()">SAVE ALL (保存当前全部)</button>
-        </div>
-    </div>
-
-    <div class="panel-left">
-        <h3 style="padding: 12px 15px 5px; margin: 0; font-size: 15px;">PUTWAY LIST (录入清单)</h3>
-        <div class="table-wrap">
-            <table id="mainTable">
-                <thead>
-                    <tr><th>SKU</th><th>QTY</th><th>LOCATION</th><th>STATUS</th><th>ACT</th></tr>
-                </thead>
-                <tbody></tbody>
-            </table>
-        </div>
-        <div style="padding: 0 15px;">
-            <button class="btn btn-export" onclick="exportCsv()">EXPORT CSV (导出文件)</button>
+            <button class="btn btn-save" onclick="addBatch()">SAVE ALL (保存并重置)</button>
         </div>
     </div>
 </div>
@@ -208,16 +215,19 @@
                     const next = inputs[index + 1] || inputs[0];
                     next.focus();
                     
-                    // 核心修改：如果是进入数量框，光标移动到末尾
-                    if (next.type === 'number') {
-                        // 针对 number 类型的延迟光标处理
+                    // 兼容手机和电脑的光标后置逻辑
+                    if (next.classList.contains('qty-field') || next.type === 'tel' || next.type === 'number') {
                         setTimeout(() => {
-                            const val = next.value;
-                            next.value = '';
-                            next.value = val;
-                        }, 10);
+                            const len = next.value.length;
+                            if (next.setSelectionRange) {
+                                next.setSelectionRange(len, len);
+                            } else if (next.createTextRange) {
+                                let range = next.createTextRange();
+                                range.collapse(false);
+                                range.select();
+                            }
+                        }, 50);
                     }
-                    
                     if(input.id === 'locIn') addBatch();
                 }
             });
