@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
-    <title>Warehouse V8.20 Visual-Alert</title>
+    <title>Warehouse V8.20.1 Focus-Fix</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
     <style>
         :root { --primary: #1890ff; --success: #52c41a; --danger: #ff4d4f; --bg: #f5f7fa; }
@@ -57,12 +57,12 @@
             <label>SKU & QTY (1-6 ITEMS)</label>
             <div id="batchContainer">
                 <div class="sku-row"><span>SKU CODE</span><span>QTY</span></div>
-                <div class="sku-row"><input type="text" id="s1" placeholder="1st SKU"><input type="number" id="q1" value="1"></div>
-                <div class="sku-row"><input type="text" id="s2" placeholder="2nd SKU"><input type="number" id="q2" value="1"></div>
-                <div class="sku-row"><input type="text" id="s3" placeholder="3rd SKU"><input type="number" id="q3" value="1"></div>
-                <div class="sku-row"><input type="text" id="s4" placeholder="4th SKU"><input type="number" id="q4" value="1"></div>
-                <div class="sku-row"><input type="text" id="s5" placeholder="5th SKU"><input type="number" id="q5" value="1"></div>
-                <div class="sku-row"><input type="text" id="s6" placeholder="6th SKU"><input type="number" id="q6" value="1"></div>
+                <div class="sku-row"><input type="text" id="s1" class="sku-f" placeholder="1st SKU"><input type="number" id="q1" class="qty-f" value="1"></div>
+                <div class="sku-row"><input type="text" id="s2" class="sku-f" placeholder="2nd SKU"><input type="number" id="q2" class="qty-f" value="1"></div>
+                <div class="sku-row"><input type="text" id="s3" class="sku-f" placeholder="3rd SKU"><input type="number" id="q3" class="qty-f" value="1"></div>
+                <div class="sku-row"><input type="text" id="s4" class="sku-f" placeholder="4th SKU"><input type="number" id="q4" class="qty-f" value="1"></div>
+                <div class="sku-row"><input type="text" id="s5" class="sku-f" placeholder="5th SKU"><input type="number" id="q5" class="qty-f" value="1"></div>
+                <div class="sku-row"><input type="text" id="s6" class="sku-f" placeholder="6th SKU"><input type="number" id="q6" class="qty-f" value="1"></div>
             </div>
 
             <div style="margin-top: 10px;">
@@ -86,7 +86,7 @@
             </table>
         </div>
         <div style="padding: 0 15px;">
-            <button class="btn btn-export" onclick="exportCsv()">EXPORT CSV (导出异常标记版)</button>
+            <button class="btn btn-export" onclick="exportCsv()">EXPORT CSV (导出文件)</button>
         </div>
     </div>
 </div>
@@ -160,19 +160,8 @@
             const alreadySaved = data.filter(d => d._originSKU === sv).reduce((sum, d) => sum + parseFloat(d.Quantity), 0);
             const totalWithCurrent = alreadySaved + currentBatchCounts[sv];
             const isOver = Object.keys(dbDaily).length > 0 && plan > 0 && totalWithCurrent > plan;
-            
             if(isOver) playSound('warn');
-            
-            batch.push({ 
-                id: Date.now()+i, 
-                _originSKU: sv, 
-                "SKU": m?m.b:sv, 
-                "Name": m?m.c:"N/A", 
-                "Quantity": qv, 
-                "Location": "Patiki Warehouse: "+lv, 
-                "DateReceived": dateStr, 
-                "Status": isOver ? "!!OVER!!" : "OK" 
-            });
+            batch.push({ id: Date.now()+i, _originSKU: sv, "SKU": m?m.b:sv, "Name": m?m.c:"N/A", "Quantity": qv, "Location": "Patiki Warehouse: "+lv, "DateReceived": dateStr, "Status": isOver ? "!!OVER!!" : "OK" });
         }
         if(!any) return;
         data = [...batch, ...data]; render(); saveLocal();
@@ -187,7 +176,7 @@
             b.innerHTML += `<tr ${isRed ? 'class="row-over"' : ''}>
                 <td><b>${d.SKU}</b></td><td>${d.Quantity}</td>
                 <td>${d.Location.replace('Patiki Warehouse: ', '')}</td><td>${d.Status}</td>
-                <td><button style="background:#ff7875;color:white;border:none;border-radius:4px;" onclick="del(${d.id})">DEL</button></td>
+                <td><button style="background:#ff7875;color:white;border:none;border-radius:4px;padding:4px 8px;" onclick="del(${d.id})">DEL</button></td>
             </tr>`;
         });
     }
@@ -198,17 +187,13 @@
     function exportCsv() {
         if(!data.length) return;
         const op = document.getElementById('opName').value.trim() || "User";
-        
         const csv = Papa.unparse([
             ["SKU","Name","BatchSerialNumber","SupplierSKU","ExpiryDate_YYYYMMDD","Quantity","Location","DateReceived_YYYYMMDD","Received"], 
             ...data.map(d => {
-                const isOver = d.Status.includes("OVER");
-                // 如果超收，在 SKU 字段强行加入视觉装饰
-                const visualSKU = isOver ? `>>> OVER_QTY: [${d.SKU}] <<<` : d.SKU;
+                const visualSKU = d.Status.includes("OVER") ? `>>> OVER_QTY: [${d.SKU}] <<<` : d.SKU;
                 return [visualSKU, d.Name, "","","", d.Quantity, d.Location, d.DateReceived, "TRUE"];
             })
         ]);
-        
         const blob = new Blob(["\ufeff"+csv], { type: 'text/csv;charset=utf-8;' });
         const link = document.createElement("a"); link.href = URL.createObjectURL(blob);
         link.download = `Putway_${op}_${new Date().toISOString().slice(0,10)}.csv`; link.click();
@@ -217,7 +202,25 @@
     function setupEnterKey() {
         const inputs = Array.from(document.querySelectorAll('.panel-right input'));
         inputs.forEach((input, index) => {
-            input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); if(input.id==='locIn') addBatch(); else (inputs[index+1]||inputs[0]).focus(); } });
+            input.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    const next = inputs[index + 1] || inputs[0];
+                    next.focus();
+                    
+                    // 核心修改：如果是进入数量框，光标移动到末尾
+                    if (next.type === 'number') {
+                        // 针对 number 类型的延迟光标处理
+                        setTimeout(() => {
+                            const val = next.value;
+                            next.value = '';
+                            next.value = val;
+                        }, 10);
+                    }
+                    
+                    if(input.id === 'locIn') addBatch();
+                }
+            });
         });
     }
 </script>
