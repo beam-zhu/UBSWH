@@ -3,26 +3,20 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
-    <title>Warehouse V8.20.3 Focus-Final</title>
+    <title>Warehouse V8.20.4 Qty-Empty</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
     <style>
         :root { --primary: #1890ff; --success: #52c41a; --danger: #ff4d4f; --bg: #f5f7fa; }
         * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
         body { font-family: sans-serif; margin: 0; background: var(--bg); min-height: 100vh; }
-
-        /* 布局锁定：手机端模式 */
         .main-wrapper { display: flex; flex-direction: column; padding: 10px; gap: 10px; }
-        .panel-right { order: 1; } 
-        .panel-left { order: 2; }
-
-        /* 电脑/平板横屏：右手模式锁定 */
+        .panel-right { order: 1; } .panel-left { order: 2; }
         @media (min-width: 900px) { 
             .main-wrapper { flex-direction: row; height: 100vh; overflow: hidden; }
             .panel-left { flex: 5; height: 100%; display: flex; flex-direction: column; order: 1; }
             .panel-right { flex: 5; height: 100%; display: flex; flex-direction: column; overflow-y: auto; order: 2; }
             body { overflow: hidden; }
         }
-
         .card { background: white; border-radius: 12px; padding: 15px; border: 1px solid #e8e8e8; box-shadow: 0 2px 8px rgba(0,0,0,0.05); margin-bottom: 10px; }
         label { font-size: 11px; color: #8c8c8c; font-weight: bold; margin-bottom: 4px; display: block; }
         input { height: 38px; padding: 8px; border: 1px solid #d9d9d9; border-radius: 6px; font-size: 15px; width: 100%; background: #fafafa; margin-bottom: 8px; }
@@ -71,15 +65,15 @@
             <label>OPERATOR 操作员</label>
             <input type="text" id="opName" placeholder="Name" onchange="saveLocal()" style="margin-bottom:12px; height: 40px;">
             
-            <label>SKU & QTY (1-6 ITEMS)</label>
+            <label>SKU & QTY (请输入数量)</label>
             <div id="batchContainer">
                 <div class="sku-row"><span>SKU CODE</span><span>QTY</span></div>
-                <div class="sku-row"><input type="text" id="s1" class="sku-f" placeholder="1st SKU"><input type="tel" id="q1" class="qty-f" value="1"></div>
-                <div class="sku-row"><input type="text" id="s2" class="sku-f" placeholder="2nd SKU"><input type="tel" id="q2" class="qty-f" value="1"></div>
-                <div class="sku-row"><input type="text" id="s3" class="sku-f" placeholder="3rd SKU"><input type="tel" id="q3" class="qty-f" value="1"></div>
-                <div class="sku-row"><input type="text" id="s4" class="sku-f" placeholder="4th SKU"><input type="tel" id="q4" class="qty-f" value="1"></div>
-                <div class="sku-row"><input type="text" id="s5" class="sku-f" placeholder="5th SKU"><input type="tel" id="q5" class="qty-f" value="1"></div>
-                <div class="sku-row"><input type="text" id="s6" class="sku-f" placeholder="6th SKU"><input type="tel" id="q6" class="qty-f" value="1"></div>
+                <div class="sku-row"><input type="text" id="s1" placeholder="1st SKU"><input type="tel" id="q1" placeholder="Qty"></div>
+                <div class="sku-row"><input type="text" id="s2" placeholder="2nd SKU"><input type="tel" id="q2" placeholder="Qty"></div>
+                <div class="sku-row"><input type="text" id="s3" placeholder="3rd SKU"><input type="tel" id="q3" placeholder="Qty"></div>
+                <div class="sku-row"><input type="text" id="s4" placeholder="4th SKU"><input type="tel" id="q4" placeholder="Qty"></div>
+                <div class="sku-row"><input type="text" id="s5" placeholder="5th SKU"><input type="tel" id="q5" placeholder="Qty"></div>
+                <div class="sku-row"><input type="text" id="s6" placeholder="6th SKU"><input type="tel" id="q6" placeholder="Qty"></div>
             </div>
 
             <div style="margin-top: 10px;">
@@ -109,24 +103,22 @@
         const g = audioCtx.createGain(); g.gain.setValueAtTime(0.06, audioCtx.currentTime);
         g.connect(audioCtx.destination);
         const freq = type === 'error' ? 880 : 440;
-        const dur = type === 'error' ? 0.1 : 0.8;
         const o = audioCtx.createOscillator(); o.type='square'; o.frequency.value = freq;
-        o.connect(g); o.start(); o.stop(audioCtx.currentTime + dur);
-        if(type === 'error') { setTimeout(() => { const o2 = audioCtx.createOscillator(); o2.type='square'; o2.frequency.value = freq; o2.connect(g); o2.start(); o2.stop(audioCtx.currentTime + dur); }, 150); }
+        o.connect(g); o.start(); o.stop(audioCtx.currentTime + (type==='error'?0.1:0.8));
     }
 
     function loadSKU() { Papa.parse(document.getElementById('skuFile').files[0], { complete: (res) => {
         dbMaster = {}; res.data.forEach((r, i) => { if(i>0 && r[0]) dbMaster[r[0].trim().toUpperCase()] = {b:r[1]||"", c:r[2]||""}; });
-        const s = document.getElementById('skuStat'); s.innerText = "READY"; s.className="status ready";
+        document.getElementById('skuStat').innerText = "READY"; document.getElementById('skuStat').className="status ready";
     }});}
     function loadCheck() { Papa.parse(document.getElementById('checkFile').files[0], { complete: (res) => {
         dbDaily = {}; res.data.forEach(r => { if(r[0]) dbDaily[r[0].trim().toUpperCase()] = parseFloat(r[1]) || 0; });
-        const s = document.getElementById('checkStat'); s.innerText = "READY"; s.className="status ready";
+        document.getElementById('checkStat').innerText = "READY"; document.getElementById('checkStat').className="status ready";
     }});}
     function loadLoc() { Papa.parse(document.getElementById('locFile').files[0], { complete: (res) => {
         setLoc.clear(); const dl = document.getElementById('locList'); dl.innerHTML = "";
         res.data.forEach(r => r.forEach(c => { if(c && c.trim().length > 1) { let v = c.trim().toUpperCase(); setLoc.add(v); let o = document.createElement('option'); o.value = v; dl.appendChild(o); } }));
-        const s = document.getElementById('locStat'); s.innerText = "READY"; s.className="status ready";
+        document.getElementById('locStat').innerText = "READY"; document.getElementById('locStat').className="status ready";
     }});}
 
     function addBatch() {
@@ -148,6 +140,8 @@
         for(let i=1; i<=6; i++) {
             const sv = document.getElementById('s'+i).value.trim().toUpperCase();
             const qv = parseFloat(document.getElementById('q'+i).value);
+            // 校验：如果 SKU 填了但 Qty 没填或为0，报错
+            if(sv && (!qv || qv <= 0)) { alert(`SKU ${i} 数量无效！`); playSound('error'); return; }
             if(!sv) continue;
             any = true;
             const m = dbMaster[sv];
@@ -159,7 +153,8 @@
         }
         if(!any) return;
         data = [...batch, ...data]; render(); saveLocal();
-        for(let i=1; i<=6; i++) { document.getElementById('s'+i).value = ""; document.getElementById('q'+i).value = "1"; }
+        // 重置时将数量设为空字符串
+        for(let i=1; i<=6; i++) { document.getElementById('s'+i).value = ""; document.getElementById('q'+i).value = ""; }
         document.getElementById('locIn').value = ""; document.getElementById('s1').focus();
     }
 
@@ -186,26 +181,7 @@
     function setupEnterKey() {
         const inputs = Array.from(document.querySelectorAll('.panel-right input'));
         inputs.forEach((input, index) => {
-            input.addEventListener('keydown', (e) => {
-                if (e.key === 'Enter') {
-                    e.preventDefault();
-                    const next = inputs[index + 1] || inputs[0];
-                    
-                    // --- 手机端光标后置核心补丁 ---
-                    if (next.classList.contains('qty-f')) {
-                        const val = next.value;
-                        next.value = ''; // 先清空
-                        next.focus();
-                        setTimeout(() => {
-                            next.value = val; // 延迟填入，光标必在最后
-                        }, 50);
-                    } else {
-                        next.focus();
-                    }
-                    
-                    if(input.id === 'locIn') addBatch();
-                }
-            });
+            input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); (inputs[index + 1] || inputs[0]).focus(); if(input.id === 'locIn') addBatch(); } });
         });
     }
 </script>
