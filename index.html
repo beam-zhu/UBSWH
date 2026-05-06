@@ -3,27 +3,20 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
-    <title>Warehouse V8.20.5 Left-Input</title>
+    <title>Warehouse V8.20.7 Special-Fix</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
     <style>
-        :root { --primary: #1890ff; --success: #52c41a; --danger: #ff4d4f; --bg: #f5f7fa; }
+        :root { --primary: #1890ff; --success: #52c41a; --danger: #ff4d4f; --info: #1890ff; --bg: #f5f7fa; }
         * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
         body { font-family: sans-serif; margin: 0; background: var(--bg); min-height: 100vh; }
-
-        /* 基础布局：手机端模式（输入在上，清单在下） */
         .main-wrapper { display: flex; flex-direction: column; padding: 10px; gap: 10px; }
-        .panel-right { order: 1; } 
-        .panel-left { order: 2; }
-
-        /* 电脑/平板横屏锁定：左手录入模式 */
+        .panel-right { order: 1; } .panel-left { order: 2; }
         @media (min-width: 900px) { 
             .main-wrapper { flex-direction: row; height: 100vh; overflow: hidden; }
-            /* 对调后的顺序：panel-right (输入) 在前，panel-left (清单) 在后 */
             .panel-right { flex: 5; height: 100%; display: flex; flex-direction: column; overflow-y: auto; order: 1; }
             .panel-left { flex: 5; height: 100%; display: flex; flex-direction: column; order: 2; }
             body { overflow: hidden; }
         }
-
         .card { background: white; border-radius: 12px; padding: 15px; border: 1px solid #e8e8e8; box-shadow: 0 2px 8px rgba(0,0,0,0.05); margin-bottom: 10px; }
         label { font-size: 11px; color: #8c8c8c; font-weight: bold; margin-bottom: 4px; display: block; }
         input { height: 38px; padding: 8px; border: 1px solid #d9d9d9; border-radius: 6px; font-size: 15px; width: 100%; background: #fafafa; margin-bottom: 8px; }
@@ -42,7 +35,9 @@
         table { width: 100%; border-collapse: collapse; font-size: 12px; }
         th, td { padding: 8px; border-bottom: 1px solid #f0f0f0; text-align: left; }
         th { background: #fafafa; position: sticky; top: 0; z-index: 10; }
-        .row-over { background-color: #fff1f0 !important; color: #ff4d4f !important; font-weight: bold; }
+        /* 颜色反馈逻辑 */
+        .row-over { background-color: #fff1f0 !important; color: #ff4d4f !important; font-weight: bold; } /* 红色：超量 */
+        .row-low { background-color: #e6f7ff !important; color: #1890ff !important; font-weight: bold; }  /* 蓝色：数量少(1) */
     </style>
 </head>
 <body>
@@ -51,17 +46,17 @@
     <div class="panel-right">
         <div class="card" style="padding: 8px;">
             <div class="file-grid">
-                <div class="file-btn"><label>MASTER</label><input type="file" id="skuFile" accept=".csv" onchange="loadSKU()"><span id="skuStat" class="status">EMPTY</span></div>
-                <div class="file-btn"><label>DAILY</label><input type="file" id="checkFile" accept=".csv" onchange="loadCheck()"><span id="checkStat" class="status">OPTIONAL</span></div>
-                <div class="file-btn"><label>LOC</label><input type="file" id="locFile" accept=".csv" onchange="loadLoc()"><span id="locStat" class="status">EMPTY</span></div>
+                <div class="file-btn"><label>MASTER</label><input type="file" id="skuFile" accept=".csv" onchange="processFile('sku', this.files[0])"><span id="skuStat" class="status">EMPTY</span></div>
+                <div class="file-btn"><label>DAILY</label><input type="file" id="checkFile" accept=".csv" onchange="processFile('check', this.files[0])"><span id="checkStat" class="status">OPTIONAL</span></div>
+                <div class="file-btn"><label>LOC</label><input type="file" id="locFile" accept=".csv" onchange="processFile('loc', this.files[0])"><span id="locStat" class="status">EMPTY</span></div>
             </div>
+            <button onclick="clearCache()" style="margin-top:5px; font-size:9px; border:none; background:none; color:red;">[清除本地缓存文件]</button>
         </div>
 
         <div class="card">
             <label>OPERATOR 操作员</label>
             <input type="text" id="opName" placeholder="Name" onchange="saveLocal()" style="margin-bottom:12px; height: 40px;">
-            
-            <label>SKU & QTY (数量已留空，直接输入)</label>
+            <label>SKU & QTY (数量为1将标记为蓝色)</label>
             <div id="batchContainer">
                 <div class="sku-row"><span>SKU CODE</span><span>QTY</span></div>
                 <div class="sku-row"><input type="text" id="s1" placeholder="1st SKU"><input type="tel" id="q1" placeholder="Qty"></div>
@@ -71,9 +66,8 @@
                 <div class="sku-row"><input type="text" id="s5" placeholder="5th SKU"><input type="tel" id="q5" placeholder="Qty"></div>
                 <div class="sku-row"><input type="text" id="s6" placeholder="6th SKU"><input type="tel" id="q6" placeholder="Qty"></div>
             </div>
-
             <div style="margin-top: 10px;">
-                <label>COMMON LOCATION 库位 (Scan Last)</label>
+                <label>LOCATION 库位 (支持 $ 特殊符号)</label>
                 <input type="text" id="locIn" list="locList" class="loc-input" placeholder="Scan FINAL Location" autocorrect="off" autocapitalize="characters">
                 <datalist id="locList"></datalist>
             </div>
@@ -82,14 +76,14 @@
     </div>
 
     <div class="panel-left">
-        <h3 style="padding: 12px 15px 5px; margin: 0; font-size: 15px;">PUTWAY LIST (录入清单)</h3>
+        <h3 style="padding: 12px 15px 5px; margin: 0; font-size: 15px;">PUTWAY LIST 清单预览</h3>
         <div class="table-wrap">
             <table id="mainTable">
                 <thead><tr><th>SKU</th><th>QTY</th><th>LOCATION</th><th>STATUS</th><th>ACT</th></tr></thead>
                 <tbody></tbody>
             </table>
         </div>
-        <div style="padding: 0 15px;"><button class="btn btn-export" onclick="exportCsv()">EXPORT CSV</button></div>
+        <div style="padding: 0 15px;"><button class="btn btn-export" onclick="exportCsv()">EXPORT CSV (包含导出标记)</button></div>
     </div>
 </div>
 
@@ -98,42 +92,87 @@
     const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 
     window.onload = () => {
-        const cache = localStorage.getItem('wh_v820_data');
+        const cacheData = localStorage.getItem('wh_v820_data');
         const op = localStorage.getItem('wh_v820_op');
-        if (cache) { data = JSON.parse(cache); render(); }
+        if (cacheData) { data = JSON.parse(cacheData); render(); }
         if (op) document.getElementById('opName').value = op;
+
+        const cMaster = localStorage.getItem('csv_master');
+        const cCheck = localStorage.getItem('csv_check');
+        const cLoc = localStorage.getItem('csv_loc');
+
+        if(cMaster) { parseSKU(cMaster); updateStat('skuStat', true); }
+        if(cCheck) { parseCheck(cCheck); updateStat('checkStat', true); }
+        if(cLoc) { parseLoc(cLoc); updateStat('locStat', true); }
+
         setupEnterKey();
         document.getElementById('s1').focus();
     };
 
+    function processFile(type, file) {
+        if(!file) return;
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const csvText = e.target.result;
+            if(type === 'sku') { parseSKU(csvText); localStorage.setItem('csv_master', csvText); updateStat('skuStat', true); }
+            if(type === 'check') { parseCheck(csvText); localStorage.setItem('csv_check', csvText); updateStat('checkStat', true); }
+            if(type === 'loc') { parseLoc(csvText); localStorage.setItem('csv_loc', csvText); updateStat('locStat', true); }
+        };
+        reader.readAsText(file);
+    }
+
+    function parseSKU(txt) {
+        Papa.parse(txt, { complete: (res) => {
+            dbMaster = {}; res.data.forEach((r, i) => { if(i>0 && r[0]) dbMaster[r[0].trim().toUpperCase()] = {b:r[1]||"", c:r[2]||""}; });
+        }});
+    }
+    function parseCheck(txt) {
+        Papa.parse(txt, { complete: (res) => {
+            dbDaily = {}; res.data.forEach(r => { if(r[0]) dbDaily[r[0].trim().toUpperCase()] = parseFloat(r[1]) || 0; });
+        }});
+    }
+    // 修复：优化 LOC 解析逻辑，支持特殊符号和长地址
+    function parseLoc(txt) {
+        Papa.parse(txt, { complete: (res) => {
+            setLoc.clear(); const dl = document.getElementById('locList'); dl.innerHTML = "";
+            res.data.forEach(r => r.forEach(c => { 
+                if(c && c.toString().trim().length > 0) { 
+                    let v = c.toString().trim().toUpperCase(); 
+                    setLoc.add(v); 
+                    let o = document.createElement('option'); o.value = v; dl.appendChild(o); 
+                } 
+            }));
+        }});
+    }
+
+    function updateStat(id, ready) {
+        const s = document.getElementById(id);
+        s.innerText = ready ? "READY (CACHED)" : "EMPTY";
+        s.className = ready ? "status ready" : "status";
+    }
+
+    function clearCache() {
+        if(confirm("确定清空缓存？")) {
+            localStorage.removeItem('csv_master'); localStorage.removeItem('csv_check'); localStorage.removeItem('csv_loc');
+            location.reload();
+        }
+    }
+
     function playSound(type) {
         const g = audioCtx.createGain(); g.gain.setValueAtTime(0.06, audioCtx.currentTime);
         g.connect(audioCtx.destination);
-        const freq = type === 'error' ? 880 : 440;
-        const o = audioCtx.createOscillator(); o.type='square'; o.frequency.value = freq;
+        const o = audioCtx.createOscillator(); o.type='square'; o.frequency.value = (type==='error'?880:440);
         o.connect(g); o.start(); o.stop(audioCtx.currentTime + (type==='error'?0.1:0.8));
     }
-
-    function loadSKU() { Papa.parse(document.getElementById('skuFile').files[0], { complete: (res) => {
-        dbMaster = {}; res.data.forEach((r, i) => { if(i>0 && r[0]) dbMaster[r[0].trim().toUpperCase()] = {b:r[1]||"", c:r[2]||""}; });
-        document.getElementById('skuStat').innerText = "READY"; document.getElementById('skuStat').className="status ready";
-    }});}
-    function loadCheck() { Papa.parse(document.getElementById('checkFile').files[0], { complete: (res) => {
-        dbDaily = {}; res.data.forEach(r => { if(r[0]) dbDaily[r[0].trim().toUpperCase()] = parseFloat(r[1]) || 0; });
-        document.getElementById('checkStat').innerText = "READY"; document.getElementById('checkStat').className="status ready";
-    }});}
-    function loadLoc() { Papa.parse(document.getElementById('locFile').files[0], { complete: (res) => {
-        setLoc.clear(); const dl = document.getElementById('locList'); dl.innerHTML = "";
-        res.data.forEach(r => r.forEach(c => { if(c && c.trim().length > 1) { let v = c.trim().toUpperCase(); setLoc.add(v); let o = document.createElement('option'); o.value = v; dl.appendChild(o); } }));
-        document.getElementById('locStat').innerText = "READY"; document.getElementById('locStat').className="status ready";
-    }});}
 
     function addBatch() {
         const lv = document.getElementById('locIn').value.trim().toUpperCase();
         const op = document.getElementById('opName').value.trim();
         const now = new Date();
         const dateStr = `${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}`;
+        
         if(!lv || !op) { alert("Loc & Name Required!"); return; }
+        // 对比 Set 时保持格式统一
         if (setLoc.size > 0 && !setLoc.has(lv)) { playSound('error'); return; }
 
         let counts = {};
@@ -153,9 +192,24 @@
             const m = dbMaster[sv];
             const plan = dbDaily[sv] || 0;
             const saved = data.filter(d => d._originSKU === sv).reduce((sum, d) => sum + parseFloat(d.Quantity), 0);
-            const isOver = Object.keys(dbDaily).length > 0 && plan > 0 && (saved + counts[sv]) > plan;
-            if(isOver) playSound('warn');
-            batch.push({ id: Date.now()+i, _originSKU: sv, "SKU": m?m.b:sv, "Name": m?m.c:"N/A", "Quantity": qv, "Location": "Patiki Warehouse: "+lv, "DateReceived": dateStr, "Status": isOver ? "!!OVER!!" : "OK" });
+            
+            let status = "OK";
+            if(Object.keys(dbDaily).length > 0 && plan > 0 && (saved + counts[sv]) > plan) {
+                status = "!!OVER!!"; playSound('warn');
+            } else if (qv === 1) {
+                status = "LOW_QTY"; // 标记为低数量
+            }
+
+            batch.push({ 
+                id: Date.now()+i, 
+                _originSKU: sv, 
+                "SKU": m?m.b:sv, 
+                "Name": m?m.c:"N/A", 
+                "Quantity": qv, 
+                "Location": "Patiki Warehouse: "+lv, 
+                "DateReceived": dateStr, 
+                "Status": status 
+            });
         }
         if(!any) return;
         data = [...batch, ...data]; render(); saveLocal();
@@ -166,29 +220,11 @@
     function render() {
         const b = document.querySelector("#mainTable tbody"); b.innerHTML = "";
         data.forEach(d => {
-            const isRed = d.Status.includes("OVER");
-            b.innerHTML += `<tr ${isRed ? 'class="row-over"' : ''}><td><b>${d.SKU}</b></td><td>${d.Quantity}</td><td>${d.Location.replace('Patiki Warehouse: ', '')}</td><td>${d.Status}</td><td><button style="background:#ff7875;color:white;border:none;border-radius:4px;padding:4px 8px;" onclick="del(${d.id})">DEL</button></td></tr>`;
-        });
-    }
+            let rowClass = "";
+            if(d.Status === "!!OVER!!") rowClass = "row-over";
+            else if(d.Status === "LOW_QTY" || d.Quantity === 1) rowClass = "row-low";
 
-    function del(id) { if(confirm("Del?")) { data = data.filter(x => x.id !== id); render(); saveLocal(); } }
-    function saveLocal() { localStorage.setItem('wh_v820_data', JSON.stringify(data)); localStorage.setItem('wh_v820_op', document.getElementById('opName').value); }
-    
-    function exportCsv() {
-        if(!data.length) return;
-        const op = document.getElementById('opName').value.trim() || "User";
-        const csv = Papa.unparse([["SKU","Name","BatchSerialNumber","SupplierSKU","ExpiryDate_YYYYMMDD","Quantity","Location","DateReceived_YYYYMMDD","Received"], ...data.map(d => [d.Status.includes("OVER") ? `>>> OVER: [${d.SKU}] <<<` : d.SKU, d.Name, "","","", d.Quantity, d.Location, d.DateReceived, "TRUE"])]);
-        const blob = new Blob(["\ufeff"+csv], { type: 'text/csv;charset=utf-8;' });
-        const link = document.createElement("a"); link.href = URL.createObjectURL(blob);
-        link.download = `Putway_${op}_${new Date().toISOString().slice(0,10)}.csv`; link.click();
-    }
-
-    function setupEnterKey() {
-        const inputs = Array.from(document.querySelectorAll('.panel-right input'));
-        inputs.forEach((input, index) => {
-            input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); (inputs[index + 1] || inputs[0]).focus(); if(input.id === 'locIn') addBatch(); } });
-        });
-    }
-</script>
-</body>
-</html>
+            b.innerHTML += `<tr class="${rowClass}">
+                <td><b>${d.SKU}</b></td>
+                <td>${d.Quantity}</td>
+                <td>${d.Location.replace('Patiki Warehouse: ', '')}
