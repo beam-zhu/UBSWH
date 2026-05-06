@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
-    <title>Warehouse V8.20.19 Professional</title>
+    <title>Warehouse V8.20.20 Final</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
     <style>
         :root { --primary: #1890ff; --success: #52c41a; --danger: #ff4d4f; --extra: #b37feb; --bg: #f5f7fa; }
@@ -213,22 +213,24 @@
     
     function exportCsv() {
         if(!data.length) return;
-        let ts = {}; data.forEach(d => ts[d._originSKU] = (ts[d._originSKU] || 0) + d.Quantity);
+        let ts = {}; 
+        data.forEach(d => ts[d._originSKU] = (ts[d._originSKU] || 0) + d.Quantity);
+        
         const op = document.getElementById('opName').value.trim() || "User";
         const dateNow = new Date().toISOString().slice(0,10).replace(/-/g, "");
-        // 核心：对齐 putway.csv 的 9 列格式
+        
+        // 修改导出逻辑：Received 保持 TRUE，新增一列 Exception_Note
         const csv = Papa.unparse([
-            ["SKU","Name","BatchSerialNumber","SupplierSKU","ExpiryDate_YYYYMMDD","Quantity","Location","DateReceived_YYYYMMDD","Received"], 
+            ["SKU","Name","BatchSerialNumber","SupplierSKU","ExpiryDate_YYYYMMDD","Quantity","Location","DateReceived_YYYYMMDD","Received","Exception_Note"], 
             ...data.map(d => {
                 const p = dbDaily[d._originSKU], t = ts[d._originSKU];
-                let skuF = d.SKU, recvF = "TRUE";
+                let note = "";
                 if (dailyActive) {
-                    if (p === undefined) { skuF = "[EXTRA] " + d.SKU; recvF = "TRUE [NOT IN LIST]"; }
-                    else if (t > p) skuF = ">>> OVER: [" + d.SKU + "] <<<";
-                    else if (t < p) recvF = "TRUE [SHORTAGE]";
+                    if (p === undefined) note = "NOT IN LIST";
+                    else if (t > p) note = "+" + (t - p);
+                    else if (t < p) note = (t - p);
                 }
-                if (d.Quantity === 1 && !recvF.includes("[")) recvF = "TRUE [LOW_QTY]";
-                return [skuF, d.Name, "", "", "", d.Quantity, d.Location, d.Date, recvF];
+                return [d.SKU, d.Name, "", "", "", d.Quantity, d.Location, d.Date, "TRUE", note];
             })
         ]);
         const b = new Blob(["\ufeff"+csv], { type: 'text/csv;charset=utf-8;' });
