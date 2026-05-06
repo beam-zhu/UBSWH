@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
-    <title>Warehouse V8.20.10 Pro-Safe</title>
+    <title>Warehouse V8.20.12 Qty-Match</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
     <style>
         :root { --primary: #1890ff; --success: #52c41a; --danger: #ff4d4f; --bg: #f5f7fa; }
@@ -36,8 +36,7 @@
         th, td { padding: 8px; border-bottom: 1px solid #f0f0f0; text-align: left; }
         th { background: #fafafa; position: sticky; top: 0; z-index: 10; }
         .row-over { background-color: #fff1f0 !important; color: #ff4d4f !important; }
-        .row-low { background-color: #e6f7ff !important; color: #1890ff !important; }
-        /* 编辑框样式 */
+        .row-under { background-color: #e6f7ff !important; color: #1890ff !important; }
         .edit-input { width: 60px; padding: 4px; border: 1px solid var(--primary); border-radius: 4px; text-align: center; font-weight: bold; }
         .loc-edit { width: 100%; border: 1px solid var(--primary); padding: 4px; font-size: 11px; }
     </style>
@@ -50,18 +49,18 @@
             <div class="file-grid">
                 <div class="file-btn"><label>MASTER</label><input type="file" id="skuFile" accept=".csv" onchange="processFile('sku', this.files[0])"><span id="skuStat" class="status-tag">EMPTY</span></div>
                 <div class="file-btn"><label>DAILY</label><input type="file" id="checkFile" accept=".csv" onchange="processFile('check', this.files[0])"><span id="checkStat" class="status-tag">OPTIONAL</span></div>
-                <div class="file-btn"><label>LOC</label><input type="file" id="locFile" accept=".csv" onchange="processFile('loc', this.files[0])"><span id="locStat" class="status-tag">EMPTY</span></div>
+                <div class="file-btn"><label>LOC</label><input type="file" id="locFile" accept=".csv" onchange="loadLocFile(this.files[0])"><span id="locStat" class="status-tag">EMPTY</span></div>
             </div>
             <div style="display: flex; gap: 10px; margin-top: 5px;">
                 <button onclick="clearCache()" style="font-size:9px; border:none; background:none; color:red;">[清除缓存]</button>
-                <button onclick="recoverBackup()" style="font-size:9px; border:none; background:none; color:blue;">[数据异常？尝试恢复最后备份]</button>
+                <button onclick="recoverBackup()" style="font-size:9px; border:none; background:none; color:blue;">[恢复备份]</button>
             </div>
         </div>
 
         <div class="card">
             <label>OPERATOR 操作员</label>
             <input type="text" id="opName" placeholder="Name" onchange="saveLocal()" style="margin-bottom:12px; height: 40px;">
-            <label>SKU & QTY (预览表数字可点开修改)</label>
+            <label>SKU & QTY (未达计划数显示蓝色，超过显示红色)</label>
             <div id="batchContainer">
                 <div class="sku-row"><span>SKU CODE</span><span>QTY</span></div>
                 <div class="sku-row"><input type="text" id="s1" placeholder="1st SKU"><input type="tel" id="q1" placeholder="Qty"></div>
@@ -76,12 +75,12 @@
                 <input type="text" id="locIn" list="locList" class="loc-input" placeholder="Scan FINAL Location" autocorrect="off" autocapitalize="characters">
                 <datalist id="locList"></datalist>
             </div>
-            <button class="btn btn-save" onclick="addBatch()">SAVE ALL (保存并备份)</button>
+            <button class="btn btn-save" onclick="addBatch()">SAVE ALL (保存数据)</button>
         </div>
     </div>
 
     <div class="panel-left">
-        <h3 style="padding: 12px 15px 5px; margin: 0; font-size: 15px;">PUTWAY LIST (点击Qty或Loc修改)</h3>
+        <h3 style="padding: 12px 15px 5px; margin: 0; font-size: 15px;">PUTWAY LIST 预览</h3>
         <div class="table-wrap">
             <table id="mainTable">
                 <thead><tr><th>SKU</th><th>QTY</th><th>LOCATION</th><th>STATUS</th><th>ACT</th></tr></thead>
@@ -102,113 +101,108 @@
         const op = localStorage.getItem('wh_v820_op');
         if (cacheData) { data = JSON.parse(cacheData); render(); }
         if (op) document.getElementById('opName').value = op;
-
-        const cMaster = localStorage.getItem('csv_master');
-        const cCheck = localStorage.getItem('csv_check');
-        const cLoc = localStorage.getItem('csv_loc');
-
-        if(cMaster) { parseSKU(cMaster); updateStat('skuStat', true); }
-        if(cCheck) { parseCheck(cCheck); updateStat('checkStat', true); }
-        if(cLoc) { parseLoc(cLoc); updateStat('locStat', true); }
-
+        const cM = localStorage.getItem('csv_master'), cC = localStorage.getItem('csv_check'), cL = localStorage.getItem('csv_loc');
+        if(cM) { parseSKU(cM); updateStat('skuStat', true); }
+        if(cC) { parseCheck(cC); updateStat('checkStat', true); }
+        if(cL) { parseLoc(cL); updateStat('locStat', true); }
         setupEnterKey();
         document.getElementById('s1').focus();
     };
 
-    function processFile(type, file) {
-        if(!file) return;
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            const csvText = e.target.result;
-            if(type === 'sku') { parseSKU(csvText); localStorage.setItem('csv_master', csvText); updateStat('skuStat', true); }
-            if(type === 'check') { parseCheck(csvText); localStorage.setItem('csv_check', csvText); updateStat('checkStat', true); }
-            if(type === 'loc') { parseLoc(csvText); localStorage.setItem('csv_loc', csvText); updateStat('locStat', true); }
-        };
-        reader.readAsText(file);
+    function processFile(t, f) {
+        if(!f) return; const r = new FileReader();
+        r.onload = (e) => {
+            const txt = e.target.result;
+            if(t === 'sku') { parseSKU(txt); localStorage.setItem('csv_master', txt); updateStat('skuStat', true); }
+            if(t === 'check') { parseCheck(txt); localStorage.setItem('csv_check', txt); updateStat('checkStat', true); }
+        }; r.readAsText(f);
     }
-
+    function loadLocFile(f) {
+        if(!f) return; const r = new FileReader();
+        r.onload = (e) => { const txt = e.target.result; parseLoc(txt); localStorage.setItem('csv_loc', txt); updateStat('locStat', true); };
+        r.readAsText(f);
+    }
     function parseSKU(txt) { Papa.parse(txt, { complete: (res) => { dbMaster = {}; res.data.forEach((r, i) => { if(i>0 && r[0]) dbMaster[r[0].trim().toUpperCase()] = {b:r[1]||"", c:r[2]||""}; }); }}); }
     function parseCheck(txt) { Papa.parse(txt, { complete: (res) => { dbDaily = {}; dailyActive = false; res.data.forEach(r => { if(r[0]) { dbDaily[r[0].trim().toUpperCase()] = parseFloat(r[1]) || 0; dailyActive = true; } }); }}); }
     function parseLoc(txt) { Papa.parse(txt, { complete: (res) => { setLoc.clear(); const dl = document.getElementById('locList'); dl.innerHTML = ""; res.data.forEach(r => r.forEach(c => { if(c && c.toString().trim()) { let v = c.toString().trim().toUpperCase(); setLoc.add(v); let o = document.createElement('option'); o.value = v; dl.appendChild(o); } })); }}); }
     function updateStat(id, r) { const s = document.getElementById(id); s.innerText = r ? "READY" : "EMPTY"; s.className = r ? "status-tag ready" : "status-tag"; }
     function clearCache() { if(confirm("清空？")) { localStorage.clear(); location.reload(); } }
-
-    // --- 恢复备份功能 ---
     function recoverBackup() {
-        const backup = localStorage.getItem('wh_v820_backup');
-        if(!backup) { alert("没有找到任何历史备份记录！"); return; }
-        if(confirm("将恢复最后一次点击 SAVE 时的所有数据，是否继续？")) {
-            data = JSON.parse(backup);
-            render();
-            saveLocal();
-            alert("恢复成功！");
-        }
+        const b = localStorage.getItem('wh_v820_backup');
+        if(!b) return alert("无备份！");
+        data = JSON.parse(b); render(); saveLocal(); alert("OK");
     }
 
     function playSound(type) {
         const g = audioCtx.createGain(); g.gain.setValueAtTime(0.06, audioCtx.currentTime);
         g.connect(audioCtx.destination);
-        const o = audioCtx.createOscillator(); o.type='square'; o.frequency.value = (type==='error'?880:440);
-        o.connect(g); o.start(); o.stop(audioCtx.currentTime + (type==='error'?0.1:0.8));
+        const o = audioCtx.createOscillator(); 
+        if(type === 'success') { o.type='sine'; o.frequency.setValueAtTime(1200, audioCtx.currentTime); o.start(); o.stop(audioCtx.currentTime + 0.15); }
+        else if(type === 'warn') { o.type='square'; o.frequency.setValueAtTime(440, audioCtx.currentTime); o.start(); o.stop(audioCtx.currentTime + 0.2); }
+        else { o.type='sawtooth'; o.frequency.setValueAtTime(200, audioCtx.currentTime); o.start(); o.stop(audioCtx.currentTime + 0.3); }
     }
 
     function addBatch() {
         const lv = document.getElementById('locIn').value.trim().toUpperCase();
         const op = document.getElementById('opName').value.trim();
-        const now = new Date();
-        const dateStr = `${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}`;
-        
-        if(!lv || !op) { alert("Loc & Name Required!"); return; }
+        if(!lv || !op) { playSound('error'); return; }
         if (setLoc.size > 0 && !setLoc.has(lv)) { playSound('error'); return; }
 
         let batch = [], any = false;
+        const dateStr = new Date().toISOString().slice(0,10).replace(/-/g, "");
+        
         for(let i=1; i<=6; i++) {
             const sv = document.getElementById('s'+i).value.trim().toUpperCase();
             const qv = parseFloat(document.getElementById('q'+i).value);
             if(!sv) continue;
-            if(dailyActive && dbDaily[sv] === undefined) { alert(`SKU [${sv}] 不在 DAILY 清单中！`); playSound('error'); return; }
-            if(!qv || qv <= 0) { alert(`SKU ${i} 数量无效！`); playSound('error'); return; }
+            if(dailyActive && dbDaily[sv] === undefined) { playSound('error'); alert(`SKU [${sv}] 不在 Daily 中！`); return; }
+            if(!qv || qv <= 0) { playSound('error'); return; }
             any = true;
             const m = dbMaster[sv];
             batch.push({ id: Date.now()+i, _originSKU: sv, "SKU": m?m.b:sv, "Name": m?m.c:"N/A", "Quantity": qv, "Location": "Patiki Warehouse: "+lv, "DateReceived": dateStr });
         }
         if(!any) return;
         data = [...batch, ...data];
-        render();
-        saveLocal();
-        // --- 核心：保存时自动建立防丢失备份 ---
+        render(); saveLocal();
         localStorage.setItem('wh_v820_backup', JSON.stringify(data));
-
+        playSound('success');
         for(let i=1; i<=6; i++) { document.getElementById('s'+i).value = ""; document.getElementById('q'+i).value = ""; }
         document.getElementById('locIn').value = ""; document.getElementById('s1').focus();
     }
 
-    // --- 核心：实时编辑功能 ---
-    function editQty(id, newQty) {
-        let val = parseFloat(newQty);
-        if(isNaN(val) || val <= 0) return;
-        let item = data.find(x => x.id === id);
-        if(item) { item.Quantity = val; render(); saveLocal(); }
+    function editQty(id, nq) {
+        let v = parseFloat(nq); if(isNaN(v) || v <= 0) return;
+        let it = data.find(x => x.id === id);
+        if(it) { it.Quantity = v; render(); saveLocal(); }
     }
 
-    function editLoc(id, newLoc) {
-        let val = newLoc.trim().toUpperCase();
-        if(!val) return;
-        if(setLoc.size > 0 && !setLoc.has(val)) { alert("库位非法！"); render(); return; }
-        let item = data.find(x => x.id === id);
-        if(item) { item.Location = "Patiki Warehouse: " + val; render(); saveLocal(); }
+    function editLoc(id, nl) {
+        let v = nl.trim().toUpperCase(); if(!v) return;
+        if(setLoc.size > 0 && !setLoc.has(v)) { playSound('error'); return render(); }
+        let it = data.find(x => x.id === id);
+        if(it) { it.Location = "Patiki Warehouse: " + v; render(); saveLocal(); }
     }
 
     function render() {
         const b = document.querySelector("#mainTable tbody"); b.innerHTML = "";
-        let currentTotals = {};
-        data.forEach(d => currentTotals[d._originSKU] = (currentTotals[d._originSKU] || 0) + d.Quantity);
+        let totals = {}; data.forEach(d => totals[d._originSKU] = (totals[d._originSKU] || 0) + d.Quantity);
 
         data.forEach(d => {
-            const planQty = dbDaily[d._originSKU] || 0;
-            const totalSoFar = currentTotals[d._originSKU];
-            let rowClass = (dailyActive && planQty > 0 && totalSoFar > planQty) ? "row-over" : (d.Quantity === 1 ? "row-low" : "");
-            let statusText = (dailyActive && planQty > 0 && totalSoFar > planQty) ? "!!OVER!!" : (d.Quantity === 1 ? "LOW_QTY" : "OK");
+            const plan = dbDaily[d._originSKU] || 0;
+            const curTotal = totals[d._originSKU];
+            
+            let statusText = "OK";
+            let rowClass = "";
+
+            if (dailyActive && plan > 0) {
+                if (curTotal > plan) {
+                    statusText = "!!OVER!!";
+                    rowClass = "row-over";
+                } else if (curTotal < plan) {
+                    statusText = "SHORTAGE"; // 累计还没录够
+                    rowClass = "row-under";
+                }
+            }
 
             let tr = document.createElement('tr');
             tr.className = rowClass;
@@ -223,21 +217,33 @@
         });
     }
 
-    function del(id) { if(confirm("确定删除？")) { data = data.filter(x => x.id !== id); render(); saveLocal(); } }
+    function del(id) { if(confirm("DEL?")) { data = data.filter(x => x.id !== id); render(); saveLocal(); } }
     function saveLocal() { localStorage.setItem('wh_v820_data', JSON.stringify(data)); localStorage.setItem('wh_v820_op', document.getElementById('opName').value); }
-    
+
     function exportCsv() {
         if(!data.length) return;
-        let totals = {}; data.forEach(d => totals[d._originSKU] = (totals[d._originSKU] || 0) + d.Quantity);
+        let ts = {}; data.forEach(d => ts[d._originSKU] = (ts[d._originSKU] || 0) + d.Quantity);
         const op = document.getElementById('opName').value.trim() || "User";
-        const csv = Papa.unparse([["SKU","Name","BatchSerialNumber","SupplierSKU","ExpiryDate_YYYYMMDD","Quantity","Location","DateReceived_YYYYMMDD","Received"], ...data.map(d => [ (dailyActive && (dbDaily[d._originSKU]||0) > 0 && totals[d._originSKU] > dbDaily[d._originSKU]) ? `>>> OVER: [${d.SKU}] <<<` : d.SKU, d.Name, "","","", d.Quantity, d.Location, d.DateReceived, d.Quantity === 1 ? "TRUE [LOW_QTY]" : "TRUE"])]);
+        const csv = Papa.unparse([["SKU","Name","BatchSerialNumber","SupplierSKU","ExpiryDate_YYYYMMDD","Quantity","Location","DateReceived_YYYYMMDD","Received"], ...data.map(d => {
+            const plan = dbDaily[d._originSKU] || 0;
+            const total = ts[d._originSKU];
+            let skuF = d.SKU;
+            let recvF = "TRUE";
+
+            if (dailyActive && plan > 0) {
+                if (total > plan) skuF = `>>> OVER: [${d.SKU}] <<<`;
+                else if (total < plan) recvF = "TRUE [SHORTAGE]"; // 备注数量不足
+            }
+
+            return [skuF, d.Name, "","","", d.Quantity, d.Location, d.DateReceived, recvF];
+        })]);
         const blob = new Blob(["\ufeff"+csv], { type: 'text/csv;charset=utf-8;' });
         const link = document.createElement("a"); link.href = URL.createObjectURL(blob);
         link.download = `Putway_${op}_${new Date().toISOString().slice(0,10)}.csv`; link.click();
     }
     function setupEnterKey() {
-        const inputs = Array.from(document.querySelectorAll('.panel-right input'));
-        inputs.forEach((input, index) => { input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); (inputs[index + 1] || inputs[0]).focus(); if(input.id === 'locIn') addBatch(); } }); });
+        const ins = Array.from(document.querySelectorAll('.panel-right input'));
+        ins.forEach((input, index) => { input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); (ins[index + 1] || ins[0]).focus(); if(input.id === 'locIn') addBatch(); } }); });
     }
 </script>
 </body>
