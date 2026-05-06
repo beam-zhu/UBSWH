@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
-    <title>Warehouse V8.20.17 Fix</title>
+    <title>Warehouse V8.20.19 Professional</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
     <style>
         :root { --primary: #1890ff; --success: #52c41a; --danger: #ff4d4f; --extra: #b37feb; --bg: #f5f7fa; }
@@ -34,15 +34,13 @@
         table { width: 100%; border-collapse: collapse; font-size: 12px; }
         th, td { padding: 8px; border-bottom: 1px solid #f0f0f0; text-align: left; }
         th { background: #fafafa; position: sticky; top: 0; z-index: 10; }
-        /* 强制着色补丁 */
         .row-over { background-color: #fff1f0 !important; color: #cf1322 !important; }
         .row-under { background-color: #e6f7ff !important; color: #096dd9 !important; }
         .row-extra { background-color: #f9f0ff !important; color: #531dab !important; }
         .edit-input { width: 60px; padding: 4px; border: 1px solid var(--primary); border-radius: 4px; text-align: center; font-weight: bold; }
-        .loc-edit { width: 100%; border: 1px solid var(--primary); padding: 4px; font-size: 11px; }
     </style>
 </head>
-<body onclick="forceActiveAudio()">
+<body onclick="unlockAudio()">
 
 <div class="main-wrapper">
     <div class="panel-right">
@@ -69,9 +67,9 @@
                 <div class="sku-row"><input type="text" id="s5" placeholder="SKU 5"><input type="tel" id="q5" placeholder="Qty"></div>
                 <div class="sku-row"><input type="text" id="s6" placeholder="SKU 6"><input type="tel" id="q6" placeholder="Qty"></div>
             </div>
-            <input type="text" id="locIn" list="locList" class="loc-input" placeholder="扫库位 (LOC)">
+            <input type="text" id="locIn" list="locList" class="loc-input" placeholder="最后扫库位 (LOC)">
             <datalist id="locList"></datalist>
-            <button class="btn btn-save" id="saveBtn" onclick="addBatch()">SAVE ALL</button>
+            <button class="btn btn-save" id="saveBtn" onclick="addBatch()">SAVE ALL (保存并备份)</button>
         </div>
     </div>
 
@@ -90,14 +88,9 @@
     let dbMaster = {}, dbDaily = {}, setLoc = new Set(), data = [];
     let dailyActive = false, audioCtx = null, forceSKU = null;
 
-    // 声音激活函数：彻底解决移动端静音策略
-    function forceActiveAudio() {
-        if (!audioCtx) {
-            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        }
-        if (audioCtx.state === 'suspended') {
-            audioCtx.resume();
-        }
+    function unlockAudio() {
+        if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        if (audioCtx.state === 'suspended') audioCtx.resume();
     }
 
     window.onload = () => {
@@ -122,60 +115,74 @@
     function parseCheck(txt) { Papa.parse(txt, { complete: (res) => { dbDaily = {}; dailyActive = false; res.data.forEach(r => { if(r[0]) { dbDaily[r[0].trim().toUpperCase()] = parseFloat(r[1]) || 0; dailyActive = true; } }); }}); }
     function parseLoc(txt) { Papa.parse(txt, { complete: (res) => { setLoc.clear(); const dl = document.getElementById('locList'); dl.innerHTML = ""; res.data.forEach(r => r.forEach(c => { if(c && c.toString().trim()) { let v = c.toString().trim().toUpperCase(); setLoc.add(v); let o = document.createElement('option'); o.value = v; dl.appendChild(o); } })); }}); }
     function updateStat(id, r) { const s = document.getElementById(id); s.innerText = r ? "READY" : "EMPTY"; s.className = r ? "status-tag ready" : "status-tag"; }
-    function clearCache() { if(confirm("清除？")) { localStorage.clear(); location.reload(); } }
-    function recoverBackup() { const b = localStorage.getItem('wh_v820_backup'); if(b) { data = JSON.parse(b); render(); } }
+    function clearCache() { if(confirm("确定清空数据？")) { localStorage.clear(); location.reload(); } }
+    function recoverBackup() {
+        const b = localStorage.getItem('wh_v820_backup');
+        if(b) { data = JSON.parse(b); render(); alert("已从备份恢复数据"); }
+    }
 
-    function playSound(f, d) {
+    function playSound(type) {
         if(!audioCtx) return;
-        forceActiveAudio();
         const g = audioCtx.createGain(); g.gain.setValueAtTime(0.1, audioCtx.currentTime);
         g.connect(audioCtx.destination);
-        const o = audioCtx.createOscillator(); o.type='sine'; o.frequency.setValueAtTime(f, audioCtx.currentTime);
-        o.start(); o.stop(audioCtx.currentTime + d);
+        const o = audioCtx.createOscillator();
+        if(type === 'success') {
+            o.type='sine'; o.frequency.setValueAtTime(1000, audioCtx.currentTime);
+            o.start(); o.stop(audioCtx.currentTime + 0.1);
+        } else if(type === 'warn') {
+            o.type='square'; o.frequency.setValueAtTime(440, audioCtx.currentTime);
+            o.start(); o.stop(audioCtx.currentTime + 0.3);
+        } else {
+            o.type='sawtooth'; o.frequency.setValueAtTime(150, audioCtx.currentTime);
+            o.start(); o.stop(audioCtx.currentTime + 0.4);
+        }
     }
 
     function addBatch() {
-        forceActiveAudio();
+        unlockAudio();
         const lv = document.getElementById('locIn').value.trim().toUpperCase();
         const op = document.getElementById('opName').value.trim();
-        if(!lv || !op) { playSound(200, 0.4); alert("Name/Loc Required"); return; }
-        if (setLoc.size > 0 && !setLoc.has(lv)) { playSound(200, 0.4); return; }
+        if(!lv || !op) { playSound('error'); alert("Loc & Name Required!"); return; }
+        if (setLoc.size > 0 && !setLoc.has(lv)) { playSound('error'); return; }
 
-        let batch = [], any = false, mismatch = false;
+        let batch = [], any = false, mismatch = false, hasOver = false;
         const dateStr = new Date().toISOString().slice(0,10).replace(/-/g, "");
+        let cumulative = {};
+        data.forEach(d => cumulative[d._originSKU] = (cumulative[d._originSKU] || 0) + d.Quantity);
 
         for(let i=1; i<=6; i++) {
             const sv = document.getElementById('s'+i).value.trim().toUpperCase();
             const qv = parseFloat(document.getElementById('q'+i).value);
             if(!sv) continue;
             if(dailyActive && dbDaily[sv] === undefined && forceSKU !== sv) { mismatch = true; forceSKU = sv; break; }
-            if(!qv || qv <= 0) { playSound(200, 0.4); return; }
+            if(!qv || qv <= 0) { playSound('error'); return; }
             any = true;
-            batch.push({ id: Date.now()+i, _originSKU: sv, SKU: dbMaster[sv]?dbMaster[sv].b:sv, Name: dbMaster[sv]?dbMaster[sv].c:"N/A", Quantity: qv, Location: lv, Date: dateStr });
+            const plan = dbDaily[sv] || 0;
+            if(dailyActive && plan > 0 && (cumulative[sv] || 0) + qv > plan) hasOver = true;
+            batch.push({ id: Date.now()+i, _originSKU: sv, SKU: dbMaster[sv]?dbMaster[sv].b:sv, Name: dbMaster[sv]?dbMaster[sv].c:"N/A", Quantity: qv, Location: "Patiki Warehouse: " + lv, Date: dateStr });
         }
 
         if(mismatch) {
-            playSound(300, 0.3); const b = document.getElementById('saveBtn'); b.innerText = "不在清单，再点一次保存"; b.style.background = "orange";
-            setTimeout(() => { b.innerText = "SAVE ALL"; b.style.background = ""; forceSKU = null; }, 3000);
+            playSound('error'); const b = document.getElementById('saveBtn'); b.innerText = "不在清单，再按一次保存"; b.style.background = "orange";
+            setTimeout(() => { b.innerText = "SAVE ALL (保存并备份)"; b.style.background = ""; forceSKU = null; }, 3000);
             return;
         }
         if(!any) return;
-
-        data = [...batch, ...data]; render(); saveLocal(); playSound(1000, 0.1);
+        data = [...batch, ...data]; render(); saveLocal(); 
+        playSound(hasOver ? 'warn' : 'success');
         for(let i=1; i<=6; i++) { document.getElementById('s'+i).value = ""; document.getElementById('q'+i).value = ""; }
         document.getElementById('locIn').value = ""; document.getElementById('s1').focus();
+        forceSKU = null;
     }
 
     function render() {
         const tbody = document.querySelector("#mainTable tbody"); tbody.innerHTML = "";
         let cumulative = {};
         const sortedData = [...data].reverse(); 
-
         sortedData.forEach(d => {
             const plan = dbDaily[d._originSKU];
             cumulative[d._originSKU] = (cumulative[d._originSKU] || 0) + d.Quantity;
             const total = cumulative[d._originSKU];
-            
             let diffText = "OK", rowClass = "";
             if (dailyActive) {
                 if (plan === undefined) { diffText = "EXTRA"; rowClass = "row-extra"; }
@@ -186,13 +193,12 @@
                 } 
                 else if (total < plan) { diffText = (total - plan).toString(); rowClass = "row-under"; }
             }
-
             let tr = document.createElement('tr');
             tr.className = rowClass;
             tr.innerHTML = `
                 <td><b>${d.SKU}</b></td>
                 <td><input type="number" class="edit-input" value="${d.Quantity}" onchange="updateQty(${d.id},this.value)"></td>
-                <td><input type="text" class="loc-edit" value="${d.Location}" onchange="updateLoc(${d.id},this.value)"></td>
+                <td><input type="text" style="width:100%; border:1px solid #1890ff; padding:4px;" value="${d.Location.replace('Patiki Warehouse: ', '')}" onchange="updateLoc(${d.id},this.value)"></td>
                 <td style="font-weight:bold">${diffText}</td>
                 <td><button onclick="del(${d.id})" style="background:#ff7875;color:white;border:none;border-radius:4px;padding:4px 8px;">DEL</button></td>
             `;
@@ -201,20 +207,33 @@
     }
 
     function updateQty(id, v) { let n=parseFloat(v); if(n>0){data.find(x=>x.id===id).Quantity=n; render(); saveLocal();} }
-    function updateLoc(id, v) { let l=v.trim().toUpperCase(); if(l){data.find(x=>x.id===id).Location=l; render(); saveLocal();} }
-    function del(id) { if(confirm("DEL?")){data = data.filter(x => x.id !== id); render(); saveLocal();} }
+    function updateLoc(id, v) { let l=v.trim().toUpperCase(); if(l){data.find(x=>x.id===id).Location="Patiki Warehouse: "+l; render(); saveLocal();} }
+    function del(id) { if(confirm("确定删除？")){data = data.filter(x => x.id !== id); render(); saveLocal();} }
     function saveLocal() { localStorage.setItem('wh_v820_data', JSON.stringify(data)); localStorage.setItem('wh_v820_op', document.getElementById('opName').value); localStorage.setItem('wh_v820_backup', JSON.stringify(data)); }
     
     function exportCsv() {
+        if(!data.length) return;
         let ts = {}; data.forEach(d => ts[d._originSKU] = (ts[d._originSKU] || 0) + d.Quantity);
         const op = document.getElementById('opName').value.trim() || "User";
-        const csv = Papa.unparse([["SKU","Name","Qty","Loc","Date","Status"], ...data.map(d => {
-            const p = dbDaily[d._originSKU], t = ts[d._originSKU];
-            let s = "OK"; if(p===undefined) s="EXTRA"; else if(t>p) s="OVER"; else if(t<p) s="SHORT";
-            return [ (p!==undefined && t>p) ? `>>> OVER: [${d.SKU}] <<<` : d.SKU, d.Name, d.Quantity, d.Location, d.Date, s];
-        })]);
+        const dateNow = new Date().toISOString().slice(0,10).replace(/-/g, "");
+        // 核心：对齐 putway.csv 的 9 列格式
+        const csv = Papa.unparse([
+            ["SKU","Name","BatchSerialNumber","SupplierSKU","ExpiryDate_YYYYMMDD","Quantity","Location","DateReceived_YYYYMMDD","Received"], 
+            ...data.map(d => {
+                const p = dbDaily[d._originSKU], t = ts[d._originSKU];
+                let skuF = d.SKU, recvF = "TRUE";
+                if (dailyActive) {
+                    if (p === undefined) { skuF = "[EXTRA] " + d.SKU; recvF = "TRUE [NOT IN LIST]"; }
+                    else if (t > p) skuF = ">>> OVER: [" + d.SKU + "] <<<";
+                    else if (t < p) recvF = "TRUE [SHORTAGE]";
+                }
+                if (d.Quantity === 1 && !recvF.includes("[")) recvF = "TRUE [LOW_QTY]";
+                return [skuF, d.Name, "", "", "", d.Quantity, d.Location, d.Date, recvF];
+            })
+        ]);
         const b = new Blob(["\ufeff"+csv], { type: 'text/csv;charset=utf-8;' });
-        const a = document.createElement("a"); a.href = URL.createObjectURL(b); a.download = `Putway_${new Date().toISOString().slice(0,10)}.csv`; a.click();
+        const a = document.createElement("a"); a.href = URL.createObjectURL(b); 
+        a.download = `Putway_${op}_${dateNow}.csv`; a.click();
     }
     function setupEnterKey() {
         const ins = Array.from(document.querySelectorAll('.panel-right input'));
