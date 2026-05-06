@@ -3,10 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
-    <title>Warehouse V8.20.7 Special-Fix</title>
+    <title>Warehouse V8.20.8 Strict-Check</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
     <style>
-        :root { --primary: #1890ff; --success: #52c41a; --danger: #ff4d4f; --info: #1890ff; --bg: #f5f7fa; }
+        :root { --primary: #1890ff; --success: #52c41a; --danger: #ff4d4f; --bg: #f5f7fa; }
         * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
         body { font-family: sans-serif; margin: 0; background: var(--bg); min-height: 100vh; }
         .main-wrapper { display: flex; flex-direction: column; padding: 10px; gap: 10px; }
@@ -35,9 +35,8 @@
         table { width: 100%; border-collapse: collapse; font-size: 12px; }
         th, td { padding: 8px; border-bottom: 1px solid #f0f0f0; text-align: left; }
         th { background: #fafafa; position: sticky; top: 0; z-index: 10; }
-        /* 颜色反馈逻辑 */
-        .row-over { background-color: #fff1f0 !important; color: #ff4d4f !important; font-weight: bold; } /* 红色：超量 */
-        .row-low { background-color: #e6f7ff !important; color: #1890ff !important; font-weight: bold; }  /* 蓝色：数量少(1) */
+        .row-over { background-color: #fff1f0 !important; color: #ff4d4f !important; font-weight: bold; }
+        .row-low { background-color: #e6f7ff !important; color: #1890ff !important; font-weight: bold; }
     </style>
 </head>
 <body>
@@ -50,13 +49,13 @@
                 <div class="file-btn"><label>DAILY</label><input type="file" id="checkFile" accept=".csv" onchange="processFile('check', this.files[0])"><span id="checkStat" class="status">OPTIONAL</span></div>
                 <div class="file-btn"><label>LOC</label><input type="file" id="locFile" accept=".csv" onchange="processFile('loc', this.files[0])"><span id="locStat" class="status">EMPTY</span></div>
             </div>
-            <button onclick="clearCache()" style="margin-top:5px; font-size:9px; border:none; background:none; color:red;">[清除本地缓存文件]</button>
+            <button onclick="clearCache()" style="margin-top:5px; font-size:9px; border:none; background:none; color:red;">[清除缓存文件]</button>
         </div>
 
         <div class="card">
             <label>OPERATOR 操作员</label>
             <input type="text" id="opName" placeholder="Name" onchange="saveLocal()" style="margin-bottom:12px; height: 40px;">
-            <label>SKU & QTY (数量为1将标记为蓝色)</label>
+            <label>SKU & QTY (不在清单中的SKU将无法保存)</label>
             <div id="batchContainer">
                 <div class="sku-row"><span>SKU CODE</span><span>QTY</span></div>
                 <div class="sku-row"><input type="text" id="s1" placeholder="1st SKU"><input type="tel" id="q1" placeholder="Qty"></div>
@@ -67,11 +66,11 @@
                 <div class="sku-row"><input type="text" id="s6" placeholder="6th SKU"><input type="tel" id="q6" placeholder="Qty"></div>
             </div>
             <div style="margin-top: 10px;">
-                <label>LOCATION 库位 (支持 $ 特殊符号)</label>
+                <label>LOCATION 库位</label>
                 <input type="text" id="locIn" list="locList" class="loc-input" placeholder="Scan FINAL Location" autocorrect="off" autocapitalize="characters">
                 <datalist id="locList"></datalist>
             </div>
-            <button class="btn btn-save" onclick="addBatch()">SAVE ALL (保存并重置)</button>
+            <button class="btn btn-save" onclick="addBatch()">SAVE ALL (验证并保存)</button>
         </div>
     </div>
 
@@ -83,12 +82,13 @@
                 <tbody></tbody>
             </table>
         </div>
-        <div style="padding: 0 15px;"><button class="btn btn-export" onclick="exportCsv()">EXPORT CSV (包含导出标记)</button></div>
+        <div style="padding: 0 15px;"><button class="btn btn-export" onclick="exportCsv()">EXPORT CSV</button></div>
     </div>
 </div>
 
 <script>
     let dbMaster = {}, dbDaily = {}, setLoc = new Set(), data = [];
+    let dailyActive = false; // 是否已加载核对表
     const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 
     window.onload = () => {
@@ -128,20 +128,17 @@
     }
     function parseCheck(txt) {
         Papa.parse(txt, { complete: (res) => {
-            dbDaily = {}; res.data.forEach(r => { if(r[0]) dbDaily[r[0].trim().toUpperCase()] = parseFloat(r[1]) || 0; });
+            dbDaily = {}; dailyActive = false;
+            res.data.forEach(r => { if(r[0]) { 
+                dbDaily[r[0].trim().toUpperCase()] = parseFloat(r[1]) || 0; 
+                dailyActive = true; // 只要有一条有效数据即开启严格模式
+            }});
         }});
     }
-    // 修复：优化 LOC 解析逻辑，支持特殊符号和长地址
     function parseLoc(txt) {
         Papa.parse(txt, { complete: (res) => {
             setLoc.clear(); const dl = document.getElementById('locList'); dl.innerHTML = "";
-            res.data.forEach(r => r.forEach(c => { 
-                if(c && c.toString().trim().length > 0) { 
-                    let v = c.toString().trim().toUpperCase(); 
-                    setLoc.add(v); 
-                    let o = document.createElement('option'); o.value = v; dl.appendChild(o); 
-                } 
-            }));
+            res.data.forEach(r => r.forEach(c => { if(c && c.toString().trim()) { let v = c.toString().trim().toUpperCase(); setLoc.add(v); let o = document.createElement('option'); o.value = v; dl.appendChild(o); } }));
         }});
     }
 
@@ -151,12 +148,7 @@
         s.className = ready ? "status ready" : "status";
     }
 
-    function clearCache() {
-        if(confirm("确定清空缓存？")) {
-            localStorage.removeItem('csv_master'); localStorage.removeItem('csv_check'); localStorage.removeItem('csv_loc');
-            location.reload();
-        }
-    }
+    function clearCache() { if(confirm("确定清空缓存？")) { localStorage.clear(); location.reload(); } }
 
     function playSound(type) {
         const g = audioCtx.createGain(); g.gain.setValueAtTime(0.06, audioCtx.currentTime);
@@ -172,7 +164,6 @@
         const dateStr = `${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}`;
         
         if(!lv || !op) { alert("Loc & Name Required!"); return; }
-        // 对比 Set 时保持格式统一
         if (setLoc.size > 0 && !setLoc.has(lv)) { playSound('error'); return; }
 
         let counts = {};
@@ -186,30 +177,31 @@
         for(let i=1; i<=6; i++) {
             const sv = document.getElementById('s'+i).value.trim().toUpperCase();
             const qv = parseFloat(document.getElementById('q'+i).value);
-            if(sv && (!qv || qv <= 0)) { alert(`SKU ${i} 数量无效！`); playSound('error'); return; }
             if(!sv) continue;
+            
+            // --- 核心修复逻辑：严格核对 Daily 清单 ---
+            if(dailyActive && dbDaily[sv] === undefined) {
+                alert(`危险错误：SKU [${sv}] 不在 DAILY 核对表中，禁止保存！`);
+                playSound('error');
+                document.getElementById('s'+i).focus();
+                return; // 彻底中断保存
+            }
+
+            if(!qv || qv <= 0) { alert(`SKU ${i} 数量无效！`); playSound('error'); return; }
+            
             any = true;
             const m = dbMaster[sv];
             const plan = dbDaily[sv] || 0;
             const saved = data.filter(d => d._originSKU === sv).reduce((sum, d) => sum + parseFloat(d.Quantity), 0);
             
             let status = "OK";
-            if(Object.keys(dbDaily).length > 0 && plan > 0 && (saved + counts[sv]) > plan) {
+            if(dailyActive && plan > 0 && (saved + counts[sv]) > plan) {
                 status = "!!OVER!!"; playSound('warn');
             } else if (qv === 1) {
-                status = "LOW_QTY"; // 标记为低数量
+                status = "LOW_QTY";
             }
 
-            batch.push({ 
-                id: Date.now()+i, 
-                _originSKU: sv, 
-                "SKU": m?m.b:sv, 
-                "Name": m?m.c:"N/A", 
-                "Quantity": qv, 
-                "Location": "Patiki Warehouse: "+lv, 
-                "DateReceived": dateStr, 
-                "Status": status 
-            });
+            batch.push({ id: Date.now()+i, _originSKU: sv, "SKU": m?m.b:sv, "Name": m?m.c:"N/A", "Quantity": qv, "Location": "Patiki Warehouse: "+lv, "DateReceived": dateStr, "Status": status });
         }
         if(!any) return;
         data = [...batch, ...data]; render(); saveLocal();
@@ -220,11 +212,27 @@
     function render() {
         const b = document.querySelector("#mainTable tbody"); b.innerHTML = "";
         data.forEach(d => {
-            let rowClass = "";
-            if(d.Status === "!!OVER!!") rowClass = "row-over";
-            else if(d.Status === "LOW_QTY" || d.Quantity === 1) rowClass = "row-low";
+            let rowClass = (d.Status === "!!OVER!!") ? "row-over" : (d.Quantity === 1 ? "row-low" : "");
+            b.innerHTML += `<tr class="${rowClass}"><td><b>${d.SKU}</b></td><td>${d.Quantity}</td><td>${d.Location.replace('Patiki Warehouse: ', '')}</td><td>${d.Status}</td><td><button style="background:#ff7875;color:white;border:none;border-radius:4px;padding:4px 8px;" onclick="del(${d.id})">DEL</button></td></tr>`;
+        });
+    }
 
-            b.innerHTML += `<tr class="${rowClass}">
-                <td><b>${d.SKU}</b></td>
-                <td>${d.Quantity}</td>
-                <td>${d.Location.replace('Patiki Warehouse: ', '')}
+    function del(id) { if(confirm("Del?")) { data = data.filter(x => x.id !== id); render(); saveLocal(); } }
+    function saveLocal() { localStorage.setItem('wh_v820_data', JSON.stringify(data)); localStorage.setItem('wh_v820_op', document.getElementById('opName').value); }
+    function exportCsv() {
+        if(!data.length) return;
+        const op = document.getElementById('opName').value.trim() || "User";
+        const csv = Papa.unparse([["SKU","Name","BatchSerialNumber","SupplierSKU","ExpiryDate_YYYYMMDD","Quantity","Location","DateReceived_YYYYMMDD","Received"], ...data.map(d => [d.Status === "!!OVER!!" ? `>>> OVER: [${d.SKU}] <<<` : d.SKU, d.Name, "","","", d.Quantity, d.Location, d.DateReceived, d.Quantity === 1 ? "TRUE [LOW_QTY]" : "TRUE"])]);
+        const blob = new Blob(["\ufeff"+csv], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement("a"); link.href = URL.createObjectURL(blob);
+        link.download = `Putway_${op}_${new Date().toISOString().slice(0,10)}.csv`; link.click();
+    }
+    function setupEnterKey() {
+        const inputs = Array.from(document.querySelectorAll('.panel-right input'));
+        inputs.forEach((input, index) => {
+            input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); (inputs[index + 1] || inputs[0]).focus(); if(input.id === 'locIn') addBatch(); } });
+        });
+    }
+</script>
+</body>
+</html>
