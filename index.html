@@ -2,63 +2,60 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
-    <title>Warehouse V8.20.13 Force-Save</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Warehouse V8.20.15 Excel-Pro</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
     <style>
-        :root { --primary: #1890ff; --success: #52c41a; --danger: #ff4d4f; --extra: #b37feb; --bg: #f5f7fa; }
+        :root { --primary: #1890ff; --success: #52c41a; --danger: #ff4d4f; --extra: #b37feb; --bg: #f0f2f5; }
         * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-        body { font-family: sans-serif; margin: 0; background: var(--bg); min-height: 100vh; }
-        .main-wrapper { display: flex; flex-direction: column; padding: 10px; gap: 10px; }
-        .panel-right { order: 1; } .panel-left { order: 2; }
+        body { font-family: -apple-system, sans-serif; margin: 0; background: var(--bg); height: 100vh; overflow: hidden; }
+        .main-wrapper { display: flex; flex-direction: column; height: 100vh; padding: 5px; gap: 5px; }
+        .panel-right { order: 1; flex-shrink: 0; } 
+        .panel-left { order: 2; flex: 1; min-height: 0; display: flex; flex-direction: column; }
         @media (min-width: 900px) { 
-            .main-wrapper { flex-direction: row; height: 100vh; overflow: hidden; }
-            .panel-right { flex: 5; height: 100%; display: flex; flex-direction: column; overflow-y: auto; order: 1; }
-            .panel-left { flex: 5; height: 100%; display: flex; flex-direction: column; order: 2; }
+            .main-wrapper { flex-direction: row; }
+            .panel-right { width: 380px; order: 1; overflow-y: auto; }
+            .panel-left { flex: 1; order: 2; }
         }
-        .card { background: white; border-radius: 12px; padding: 15px; border: 1px solid #e8e8e8; box-shadow: 0 2px 8px rgba(0,0,0,0.05); margin-bottom: 10px; }
-        label { font-size: 11px; color: #8c8c8c; font-weight: bold; margin-bottom: 4px; display: block; }
-        input { height: 38px; padding: 8px; border: 1px solid #d9d9d9; border-radius: 6px; font-size: 15px; width: 100%; background: #fafafa; margin-bottom: 8px; }
-        .loc-input { height: 50px; font-size: 20px; font-weight: bold; border: 2px solid #1890ff; background: #fffbe6; color: #d46b08; }
-        .sku-row { display: grid; grid-template-columns: 3fr 1fr; gap: 8px; margin-bottom: 2px; align-items: center; }
-        .file-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 5px; }
-        .file-btn { border: 1px dashed #ccc; padding: 4px; border-radius: 6px; text-align: center; background: #fff; font-size: 9px; }
-        .status-tag { font-size: 9px; font-weight: bold; color: #bfbfbf; }
-        .ready { color: var(--success); }
-        .btn { height: 52px; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 18px; width: 100%; }
-        .btn-save { background: var(--success); color: white; margin-top: 5px; }
-        .btn-export { background: #444; color: white; margin: 15px 0; height: 45px; font-size: 14px; flex-shrink: 0; }
-        .table-wrap { flex: 1; padding: 0 10px; overflow-y: auto; }
-        table { width: 100%; border-collapse: collapse; font-size: 12px; }
-        th, td { padding: 8px; border-bottom: 1px solid #f0f0f0; text-align: left; }
-        th { background: #fafafa; position: sticky; top: 0; z-index: 10; }
-        .row-over { background-color: #fff1f0 !important; color: #ff4d4f !important; }
+        .card { background: white; border-radius: 8px; padding: 10px; border: 1px solid #e8e8e8; margin-bottom: 5px; }
+        input { height: 32px; padding: 4px 8px; border: 1px solid #d9d9d9; border-radius: 4px; font-size: 14px; width: 100%; margin-bottom: 5px; }
+        .loc-input { height: 40px; font-size: 18px; font-weight: bold; border: 2px solid var(--primary); background: #fffbe6; }
+        .sku-row { display: grid; grid-template-columns: 3fr 1fr; gap: 5px; margin-bottom: 2px; }
+        .file-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 4px; }
+        .file-btn { border: 1px dashed #ccc; padding: 2px; border-radius: 4px; text-align: center; font-size: 9px; background: #fff; position: relative; }
+        .file-btn input { position: absolute; top:0; left:0; width:100%; height:100%; opacity:0; cursor:pointer; }
+        .btn { height: 40px; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; width: 100%; }
+        .btn-save { background: var(--success); color: white; }
+        .btn-export { background: #1877f2; color: white; height: 35px; font-size: 13px; margin-top: 5px; }
+        .table-wrap { flex: 1; overflow-y: auto; background: white; border-radius: 8px; border: 1px solid #e8e8e8; }
+        table { width: 100%; border-collapse: collapse; font-size: 11px; table-layout: fixed; }
+        th, td { padding: 6px 2px; border-bottom: 1px solid #f0f0f0; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        th { background: #fafafa; position: sticky; top: 0; z-index: 10; font-size: 10px; }
+        .row-over { background-color: #fff1f0 !important; color: #ff4d4f !important; font-weight: bold; }
         .row-under { background-color: #e6f7ff !important; color: #1890ff !important; }
         .row-extra { background-color: #f9f0ff !important; color: #722ed1 !important; }
-        .edit-input { width: 60px; padding: 4px; border: 1px solid var(--primary); border-radius: 4px; text-align: center; font-weight: bold; }
-        .loc-edit { width: 100%; border: 1px solid var(--primary); padding: 4px; font-size: 11px; }
+        .edit-input { width: 100%; padding: 2px; border: 1px solid #d9d9d9; font-size: 11px; text-align: center; border-radius: 4px; }
     </style>
 </head>
-<body onclick="initAudio()">
+<body onclick="activeAudio()">
 
 <div class="main-wrapper">
     <div class="panel-right">
-        <div class="card" style="padding: 8px;">
+        <div class="card" style="padding: 5px;">
             <div class="file-grid">
-                <div class="file-btn"><label>MASTER</label><input type="file" id="skuFile" accept=".csv" onchange="processFile('sku', this.files[0])"><span id="skuStat" class="status-tag">EMPTY</span></div>
-                <div class="file-btn"><label>DAILY</label><input type="file" id="checkFile" accept=".csv" onchange="processFile('check', this.files[0])"><span id="checkStat" class="status-tag">OPTIONAL</span></div>
-                <div class="file-btn"><label>LOC</label><input type="file" id="locFile" accept=".csv" onchange="loadLocFile(this.files[0])"><span id="locStat" class="status-tag">EMPTY</span></div>
+                <div class="file-btn">MASTER<input type="file" accept=".csv" onchange="processFile('sku', this.files[0])"></div>
+                <div class="file-btn">DAILY<input type="file" accept=".csv" onchange="processFile('check', this.files[0])"></div>
+                <div class="file-btn">LOC<input type="file" accept=".csv" onchange="loadLocFile(this.files[0])"></div>
             </div>
-            <div style="display: flex; gap: 10px; margin-top: 5px;">
-                <button onclick="clearCache()" style="font-size:9px; border:none; background:none; color:red;">[清除缓存]</button>
-                <button onclick="recoverBackup()" style="font-size:9px; border:none; background:none; color:blue;">[恢复备份]</button>
+            <div style="display: flex; justify-content: space-between; margin-top: 4px;">
+                <button onclick="clearCache()" style="font-size:9px; color:red; border:none; background:none;">[清空]</button>
+                <button onclick="recoverBackup()" style="font-size:9px; color:blue; border:none; background:none;">[恢复]</button>
             </div>
         </div>
 
         <div class="card">
-            <label>OPERATOR 操作员</label>
-            <input type="text" id="opName" placeholder="Name" onchange="saveLocal()" style="margin-bottom:12px; height: 40px;">
-            <label>SKU & QTY (不在清单的SKU连按两次保存可强制录入)</label>
+            <input type="text" id="opName" placeholder="操作员姓名" onchange="saveLocal()">
             <div id="batchContainer">
                 <div class="sku-row"><input type="text" id="s1" placeholder="SKU 1"><input type="tel" id="q1" placeholder="Qty"></div>
                 <div class="sku-row"><input type="text" id="s2" placeholder="SKU 2"><input type="tel" id="q2" placeholder="Qty"></div>
@@ -67,218 +64,162 @@
                 <div class="sku-row"><input type="text" id="s5" placeholder="SKU 5"><input type="tel" id="q5" placeholder="Qty"></div>
                 <div class="sku-row"><input type="text" id="s6" placeholder="SKU 6"><input type="tel" id="q6" placeholder="Qty"></div>
             </div>
-            <div style="margin-top: 10px;">
-                <label>LOCATION 库位</label>
-                <input type="text" id="locIn" list="locList" class="loc-input" placeholder="Scan FINAL Location" autocorrect="off" autocapitalize="characters">
-                <datalist id="locList"></datalist>
-            </div>
-            <button class="btn btn-save" id="saveBtn" onclick="addBatch()">SAVE ALL (保存数据)</button>
+            <input type="text" id="locIn" list="locList" class="loc-input" placeholder="扫库位">
+            <datalist id="locList"></datalist>
+            <button class="btn btn-save" id="saveBtn" onclick="addBatch()">保存全部 (SAVE)</button>
         </div>
     </div>
 
     <div class="panel-left">
-        <h3 style="padding: 12px 15px 5px; margin: 0; font-size: 15px;">PUTWAY LIST 预览 (白:匹配 蓝:少收 红:多收 紫:额外)</h3>
         <div class="table-wrap">
             <table id="mainTable">
-                <thead><tr><th>SKU</th><th>QTY</th><th>LOCATION</th><th>STATUS</th><th>ACT</th></tr></thead>
+                <thead>
+                    <tr><th style="width:35%">SKU</th><th style="width:15%">QTY</th><th style="width:25%">LOC</th><th style="width:15%">+/-</th><th style="width:10%">删</th></tr>
+                </thead>
                 <tbody></tbody>
             </table>
         </div>
-        <div style="padding: 0 15px;"><button class="btn btn-export" onclick="exportCsv()">EXPORT CSV</button></div>
+        <button class="btn btn-export" onclick="exportExcel()">导出 EXCEL (.XLSX)</button>
     </div>
 </div>
 
 <script>
     let dbMaster = {}, dbDaily = {}, setLoc = new Set(), data = [];
-    let dailyActive = false;
-    let audioCtx = null;
-    let forceSaveTarget = null; // 记录需要强制保存的SKU
+    let dailyActive = false, audioCtx = null, forceSKU = null;
 
-    function initAudio() {
-        if (!audioCtx) {
-            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-            // 播放一个静音片段来激活 iOS 音频
-            const buffer = audioCtx.createBuffer(1, 1, 22050);
-            const source = audioCtx.createBufferSource();
-            source.buffer = buffer;
-            source.connect(audioCtx.destination);
-            source.start(0);
-        }
-    }
+    function activeAudio() { if(!audioCtx) { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } }
 
     window.onload = () => {
-        const cacheData = localStorage.getItem('wh_v820_data');
-        const op = localStorage.getItem('wh_v820_op');
-        if (cacheData) { data = JSON.parse(cacheData); render(); }
+        const cache = localStorage.getItem('wh_v820_data'), op = localStorage.getItem('wh_v820_op');
+        if (cache) { data = JSON.parse(cache); render(); }
         if (op) document.getElementById('opName').value = op;
         const cM = localStorage.getItem('csv_master'), cC = localStorage.getItem('csv_check'), cL = localStorage.getItem('csv_loc');
-        if(cM) { parseSKU(cM); updateStat('skuStat', true); }
-        if(cC) { parseCheck(cC); updateStat('checkStat', true); }
-        if(cL) { parseLoc(cL); updateStat('locStat', true); }
-        setupEnterKey();
+        if(cM) parseSKU(cM); if(cC) parseCheck(cC); if(cL) parseLoc(cL);
+        setupEnterKey(); document.getElementById('s1').focus();
     };
 
     function processFile(t, f) {
         if(!f) return; const r = new FileReader();
         r.onload = (e) => {
             const txt = e.target.result;
-            if(t === 'sku') { parseSKU(txt); localStorage.setItem('csv_master', txt); updateStat('skuStat', true); }
-            if(t === 'check') { parseCheck(txt); localStorage.setItem('csv_check', txt); updateStat('checkStat', true); }
+            if(t==='sku') { parseSKU(txt); localStorage.setItem('csv_master', txt); }
+            if(t==='check') { parseCheck(txt); localStorage.setItem('csv_check', txt); }
         }; r.readAsText(f);
     }
-    function loadLocFile(f) {
-        if(!f) return; const r = new FileReader();
-        r.onload = (e) => { const txt = e.target.result; parseLoc(txt); localStorage.setItem('csv_loc', txt); updateStat('locStat', true); };
-        r.readAsText(f);
-    }
+    function loadLocFile(f) { const r = new FileReader(); r.onload=(e)=>{parseLoc(e.target.result); localStorage.setItem('csv_loc',e.target.result);}; r.readAsText(f); }
     function parseSKU(txt) { Papa.parse(txt, { complete: (res) => { dbMaster = {}; res.data.forEach((r, i) => { if(i>0 && r[0]) dbMaster[r[0].trim().toUpperCase()] = {b:r[1]||"", c:r[2]||""}; }); }}); }
     function parseCheck(txt) { Papa.parse(txt, { complete: (res) => { dbDaily = {}; dailyActive = false; res.data.forEach(r => { if(r[0]) { dbDaily[r[0].trim().toUpperCase()] = parseFloat(r[1]) || 0; dailyActive = true; } }); }}); }
     function parseLoc(txt) { Papa.parse(txt, { complete: (res) => { setLoc.clear(); const dl = document.getElementById('locList'); dl.innerHTML = ""; res.data.forEach(r => r.forEach(c => { if(c && c.toString().trim()) { let v = c.toString().trim().toUpperCase(); setLoc.add(v); let o = document.createElement('option'); o.value = v; dl.appendChild(o); } })); }}); }
-    function updateStat(id, r) { const s = document.getElementById(id); s.innerText = r ? "READY" : "EMPTY"; s.className = r ? "status-tag ready" : "status-tag"; }
-    function clearCache() { if(confirm("清空？")) { localStorage.clear(); location.reload(); } }
-    function recoverBackup() {
-        const b = localStorage.getItem('wh_v820_backup');
-        if(!b) return alert("无备份！");
-        data = JSON.parse(b); render(); saveLocal(); alert("OK");
-    }
-
-    function playSound(type) {
+    
+    function playSound(f, d) {
         if(!audioCtx) return;
         const g = audioCtx.createGain(); g.gain.setValueAtTime(0.1, audioCtx.currentTime);
         g.connect(audioCtx.destination);
-        const o = audioCtx.createOscillator(); 
-        if(type === 'success') { 
-            o.type='sine'; o.frequency.setValueAtTime(1000, audioCtx.currentTime); 
-            o.start(); o.stop(audioCtx.currentTime + 0.1); 
-        } else if(type === 'warn') { 
-            o.type='square'; o.frequency.setValueAtTime(440, audioCtx.currentTime); 
-            o.start(); o.stop(audioCtx.currentTime + 0.3); 
-        } else { 
-            o.type='sawtooth'; o.frequency.setValueAtTime(150, audioCtx.currentTime); 
-            o.start(); o.stop(audioCtx.currentTime + 0.4); 
-        }
+        const o = audioCtx.createOscillator(); o.type='sine'; o.frequency.setValueAtTime(f, audioCtx.currentTime);
+        o.start(); o.stop(audioCtx.currentTime + d);
     }
 
     function addBatch() {
-        initAudio();
+        activeAudio();
         const lv = document.getElementById('locIn').value.trim().toUpperCase();
         const op = document.getElementById('opName').value.trim();
-        if(!lv || !op) { playSound('error'); alert("Loc & Name Required!"); return; }
-        if (setLoc.size > 0 && !setLoc.has(lv)) { playSound('error'); return; }
+        if(!lv || !op) { playSound(200, 0.5); return; }
+        if (setLoc.size > 0 && !setLoc.has(lv)) { playSound(200, 0.5); return; }
 
-        let batch = [], any = false;
-        let hasDailyMismatch = false;
-        const dateStr = new Date().toISOString().slice(0,10).replace(/-/g, "");
-        
+        let batch = [], mismatch = false;
+        const date = new Date().toISOString().slice(0,10).replace(/-/g, "");
+
         for(let i=1; i<=6; i++) {
             const sv = document.getElementById('s'+i).value.trim().toUpperCase();
             const qv = parseFloat(document.getElementById('q'+i).value);
             if(!sv) continue;
-            
-            // 检查是否在 Daily 清单中
-            if(dailyActive && dbDaily[sv] === undefined) {
-                if (forceSaveTarget !== sv) {
-                    hasDailyMismatch = true;
-                    forceSaveTarget = sv; // 标记该 SKU 等待第二次点击
-                }
-            }
-            if(!qv || qv <= 0) { playSound('error'); return; }
-            any = true;
-            const m = dbMaster[sv];
-            batch.push({ id: Date.now()+i, _originSKU: sv, "SKU": m?m.b:sv, "Name": m?m.c:"N/A", "Quantity": qv, "Location": "Patiki Warehouse: "+lv, "DateReceived": dateStr });
+            if(dailyActive && dbDaily[sv] === undefined && forceSKU !== sv) { mismatch = true; forceSKU = sv; break; }
+            if(!qv || qv <= 0) { playSound(200, 0.5); return; }
+            batch.push({ id: Date.now()+i, _originSKU: sv, SKU: dbMaster[sv]?dbMaster[sv].b:sv, Name: dbMaster[sv]?dbMaster[sv].c:"N/A", Quantity: qv, Location: lv, Date: date });
         }
 
-        if(!any) return;
-
-        // 如果存在清单外物品且是第一次点击
-        if(hasDailyMismatch) {
-            playSound('error');
-            const btn = document.getElementById('saveBtn');
-            btn.style.background = "orange";
-            btn.innerText = "SKU不在清单，再按一次保存";
-            setTimeout(() => {
-                btn.style.background = "";
-                btn.innerText = "SAVE ALL (保存数据)";
-                forceSaveTarget = null;
-            }, 3000);
+        if(mismatch) {
+            playSound(300, 0.3); const b = document.getElementById('saveBtn'); b.innerText = "不在清单，再按一次保存"; b.style.background = "orange";
+            setTimeout(() => { b.innerText = "保存全部 (SAVE)"; b.style.background = ""; forceSKU = null; }, 3000);
             return;
         }
+        if(!batch.length) return;
 
-        data = [...batch, ...data];
-        render(); saveLocal();
-        localStorage.setItem('wh_v820_backup', JSON.stringify(data));
-        playSound('success');
-        
+        data = [...batch, ...data]; render(); saveLocal(); playSound(1000, 0.1);
         for(let i=1; i<=6; i++) { document.getElementById('s'+i).value = ""; document.getElementById('q'+i).value = ""; }
         document.getElementById('locIn').value = ""; document.getElementById('s1').focus();
-        forceSaveTarget = null;
     }
 
     function render() {
-        const b = document.querySelector("#mainTable tbody"); b.innerHTML = "";
-        let totals = {}; data.forEach(d => totals[d._originSKU] = (totals[d._originSKU] || 0) + d.Quantity);
+        const tbody = document.querySelector("#mainTable tbody"); tbody.innerHTML = "";
+        let cumulative = {};
+        const sortedData = [...data].reverse(); 
 
-        data.forEach(d => {
+        sortedData.forEach(d => {
             const plan = dbDaily[d._originSKU];
-            const curTotal = totals[d._originSKU];
-            let statusText = "OK", rowClass = "";
-
+            cumulative[d._originSKU] = (cumulative[d._originSKU] || 0) + d.Quantity;
+            const total = cumulative[d._originSKU];
+            
+            let diffText = "OK", rowClass = "";
             if (dailyActive) {
-                if (plan === undefined) {
-                    statusText = "EXTRA"; rowClass = "row-extra";
-                } else if (curTotal > plan) {
-                    statusText = "!!OVER!!"; rowClass = "row-over";
-                } else if (curTotal < plan) {
-                    statusText = "SHORTAGE"; rowClass = "row-under";
-                }
+                if (plan === undefined) { diffText = "EXTRA"; rowClass = "row-extra"; }
+                else if (total > plan) { diffText = "+" + (total - plan); rowClass = "row-over"; } 
+                else if (total < plan) { diffText = (total - plan).toString(); rowClass = "row-under"; }
             }
 
             let tr = document.createElement('tr');
             tr.className = rowClass;
             tr.innerHTML = `
-                <td><b>${d.SKU}</b></td>
-                <td><input type="number" class="edit-input" value="${d.Quantity}" onchange="editQty(${d.id}, this.value)"></td>
-                <td><input type="text" class="loc-edit" value="${d.Location.replace('Patiki Warehouse: ', '')}" onchange="editLoc(${d.id}, this.value)"></td>
-                <td>${statusText}</td>
-                <td><button style="background:#ff7875;color:white;border:none;border-radius:4px;padding:4px 8px;" onclick="del(${d.id})">DEL</button></td>
+                <td style="font-size:9px">${d.SKU}</td>
+                <td><input type="number" class="edit-input" value="${d.Quantity}" onchange="updateQty(${d.id},this.value)"></td>
+                <td><input type="text" class="edit-input" value="${d.Location}" onchange="updateLoc(${d.id},this.value)"></td>
+                <td style="font-weight:bold">${diffText}</td>
+                <td><button onclick="del(${d.id})" style="border:none;background:none;color:red;font-weight:bold">×</button></td>
             `;
-            b.appendChild(tr);
+            tbody.prepend(tr); 
         });
     }
 
-    function editQty(id, nq) {
-        let v = parseFloat(nq); if(isNaN(v) || v <= 0) return;
-        let it = data.find(x => x.id === id);
-        if(it) { it.Quantity = v; render(); saveLocal(); }
-    }
-    function editLoc(id, nl) {
-        let v = nl.trim().toUpperCase(); if(!v) return;
-        if(setLoc.size > 0 && !setLoc.has(v)) { playSound('error'); return render(); }
-        let it = data.find(x => x.id === id);
-        if(it) { it.Location = "Patiki Warehouse: " + v; render(); saveLocal(); }
-    }
-    function del(id) { if(confirm("DEL?")) { data = data.filter(x => x.id !== id); render(); saveLocal(); } }
-    function saveLocal() { localStorage.setItem('wh_v820_data', JSON.stringify(data)); localStorage.setItem('wh_v820_op', document.getElementById('opName').value); }
-
-    function exportCsv() {
+    // 核心改进：导出 Excel 逻辑
+    function exportExcel() {
         if(!data.length) return;
-        let ts = {}; data.forEach(d => ts[d._originSKU] = (ts[d._originSKU] || 0) + d.Quantity);
-        const op = document.getElementById('opName').value.trim() || "User";
-        const csv = Papa.unparse([["SKU","Name","BatchSerialNumber","SupplierSKU","ExpiryDate_YYYYMMDD","Quantity","Location","DateReceived_YYYYMMDD","Received"], ...data.map(d => {
+        const op = document.getElementById('opName').value || "User";
+        let cumulative = {};
+        
+        // 1. 准备数据
+        const excelRows = [["SKU", "Name", "Quantity", "Location", "Date", "Difference/Status"]];
+        
+        // 我们按输入的正序来计算，确保差异值准确
+        const exportData = [...data].reverse();
+        exportData.forEach(d => {
             const plan = dbDaily[d._originSKU];
-            const total = ts[d._originSKU];
-            let skuF = d.SKU, recvF = "TRUE";
+            cumulative[d._originSKU] = (cumulative[d._originSKU] || 0) + d.Quantity;
+            const total = cumulative[d._originSKU];
+            
+            let status = "OK";
             if (dailyActive) {
-                if (plan === undefined) { skuF = `[EXTRA] ${d.SKU}`; recvF = "TRUE [NOT IN LIST]"; }
-                else if (total > plan) skuF = `>>> OVER: [${d.SKU}] <<<`;
-                else if (total < plan) recvF = "TRUE [SHORTAGE]";
+                if (plan === undefined) status = "EXTRA";
+                else if (total > plan) status = "+" + (total - plan);
+                else if (total < plan) status = (total - plan);
             }
-            return [skuF, d.Name, "","","", d.Quantity, d.Location, d.DateReceived, recvF];
-        })]);
-        const blob = new Blob(["\ufeff"+csv], { type: 'text/csv;charset=utf-8;' });
-        const link = document.createElement("a"); link.href = URL.createObjectURL(blob);
-        link.download = `Putway_${op}_${new Date().toISOString().slice(0,10)}.csv`; link.click();
+            excelRows.push([d.SKU, d.Name, d.Quantity, d.Location, d.Date, status]);
+        });
+
+        // 2. 创建 Workbook
+        const wb = XLSX.utils.book_new();
+        const ws = XLSX.utils.aoa_to_sheet(excelRows);
+
+        // 3. 写入并下载
+        XLSX.utils.book_append_sheet(wb, ws, "PutwayList");
+        XLSX.writeFile(wb, `Putway_${op}_${new Date().toISOString().slice(0,10)}.xlsx`);
     }
+
+    function updateQty(id, v) { let n=parseFloat(v); if(n>0){data.find(x=>x.id===id).Quantity=n; render(); saveLocal();} }
+    function updateLoc(id, v) { let l=v.trim().toUpperCase(); if(l){data.find(x=>x.id===id).Location=l; render(); saveLocal();} }
+    function del(id) { data = data.filter(x => x.id !== id); render(); saveLocal(); }
+    function saveLocal() { localStorage.setItem('wh_v820_data', JSON.stringify(data)); localStorage.setItem('wh_v820_op', document.getElementById('opName').value); localStorage.setItem('wh_v820_backup', JSON.stringify(data)); }
+    function clearCache() { if(confirm("确定清空所有本地数据？")) { localStorage.clear(); location.reload(); } }
+    function recoverBackup() { const b = localStorage.getItem('wh_v820_backup'); if(b) { data = JSON.parse(b); render(); } }
     function setupEnterKey() {
         const ins = Array.from(document.querySelectorAll('.panel-right input'));
         ins.forEach((input, index) => { input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); (ins[index + 1] || ins[0]).focus(); if(input.id === 'locIn') addBatch(); } }); });
