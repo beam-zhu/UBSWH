@@ -3,105 +3,82 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
-    <title>Warehouse V8.20.16 Classic</title>
+    <title>Warehouse V8.20.17 Fix</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
     <style>
         :root { --primary: #1890ff; --success: #52c41a; --danger: #ff4d4f; --extra: #b37feb; --bg: #f5f7fa; }
         * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
         body { font-family: -apple-system, sans-serif; margin: 0; background: var(--bg); min-height: 100vh; }
-        
         .main-wrapper { display: flex; flex-direction: column; padding: 10px; gap: 10px; }
-        
-        /* 经典对调布局 */
-        .panel-right { order: 1; } 
-        .panel-left { order: 2; }
-        
+        .panel-right { order: 1; } .panel-left { order: 2; }
         @media (min-width: 900px) { 
             .main-wrapper { flex-direction: row; height: 100vh; overflow: hidden; }
             .panel-right { flex: 5; height: 100%; display: flex; flex-direction: column; overflow-y: auto; order: 1; }
             .panel-left { flex: 5; height: 100%; display: flex; flex-direction: column; order: 2; }
             body { overflow: hidden; }
         }
-
         .card { background: white; border-radius: 12px; padding: 15px; border: 1px solid #e8e8e8; box-shadow: 0 2px 8px rgba(0,0,0,0.05); margin-bottom: 10px; }
         label { font-size: 11px; color: #8c8c8c; font-weight: bold; margin-bottom: 4px; display: block; }
         input { height: 38px; padding: 8px; border: 1px solid #d9d9d9; border-radius: 6px; font-size: 15px; width: 100%; background: #fafafa; margin-bottom: 8px; }
-        input:focus { border-color: var(--primary); outline: none; background: white; border-width: 2px; }
-        
         .loc-input { height: 50px; font-size: 20px; font-weight: bold; border: 2px solid var(--primary); background: #fffbe6; color: #d46b08; }
-        .sku-row { display: grid; grid-template-columns: 3fr 1fr; gap: 8px; margin-bottom: 2px; align-items: center; }
-        
+        .sku-row { display: grid; grid-template-columns: 3fr 1fr; gap: 8px; margin-bottom: 2px; }
         .file-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 5px; }
         .file-btn { border: 1px dashed #ccc; padding: 4px; border-radius: 6px; text-align: center; background: #fff; font-size: 9px; position: relative; }
         .file-btn input { position: absolute; top:0; left:0; width:100%; height:100%; opacity:0; cursor:pointer; }
         .status-tag { font-size: 9px; font-weight: bold; color: #bfbfbf; }
         .ready { color: var(--success); }
-
         .btn { height: 52px; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 18px; width: 100%; }
         .btn-save { background: var(--success); color: white; margin-top: 5px; }
         .btn-export { background: #444; color: white; margin: 15px 0; height: 45px; font-size: 14px; flex-shrink: 0; }
-
         .table-wrap { flex: 1; padding: 0 10px; overflow-y: auto; }
         table { width: 100%; border-collapse: collapse; font-size: 12px; }
         th, td { padding: 8px; border-bottom: 1px solid #f0f0f0; text-align: left; }
         th { background: #fafafa; position: sticky; top: 0; z-index: 10; }
-        
-        /* 状态背景色 */
-        .row-over { background-color: #fff1f0 !important; color: #ff4d4f !important; }
-        .row-under { background-color: #e6f7ff !important; color: #1890ff !important; }
-        .row-extra { background-color: #f9f0ff !important; color: #722ed1 !important; }
-        
+        /* 强制着色补丁 */
+        .row-over { background-color: #fff1f0 !important; color: #cf1322 !important; }
+        .row-under { background-color: #e6f7ff !important; color: #096dd9 !important; }
+        .row-extra { background-color: #f9f0ff !important; color: #531dab !important; }
         .edit-input { width: 60px; padding: 4px; border: 1px solid var(--primary); border-radius: 4px; text-align: center; font-weight: bold; }
         .loc-edit { width: 100%; border: 1px solid var(--primary); padding: 4px; font-size: 11px; }
     </style>
 </head>
-<body onclick="activeAudio()">
+<body onclick="forceActiveAudio()">
 
 <div class="main-wrapper">
     <div class="panel-right">
-        <div class="card" style="padding: 8px;">
+        <div class="card">
             <div class="file-grid">
                 <div class="file-btn"><label>MASTER</label><input type="file" accept=".csv" onchange="processFile('sku', this.files[0])"><span id="skuStat" class="status-tag">EMPTY</span></div>
                 <div class="file-btn"><label>DAILY</label><input type="file" accept=".csv" onchange="processFile('check', this.files[0])"><span id="checkStat" class="status-tag">OPTIONAL</span></div>
                 <div class="file-btn"><label>LOC</label><input type="file" accept=".csv" onchange="loadLocFile(this.files[0])"><span id="locStat" class="status-tag">EMPTY</span></div>
             </div>
-            <div style="display: flex; justify-content: space-between; margin-top: 5px;">
-                <button onclick="clearCache()" style="font-size:9px; border:none; background:none; color:red;">[清除缓存]</button>
-                <button onclick="recoverBackup()" style="font-size:9px; border:none; background:none; color:blue;">[恢复备份]</button>
+            <div style="display: flex; justify-content: space-between; margin-top: 8px;">
+                <button onclick="clearCache()" style="font-size:9px; color:red; border:none; background:none;">[清空缓存]</button>
+                <button onclick="recoverBackup()" style="font-size:9px; color:blue; border:none; background:none;">[恢复备份]</button>
             </div>
         </div>
 
         <div class="card">
             <label>OPERATOR 操作员</label>
             <input type="text" id="opName" placeholder="Name" onchange="saveLocal()">
-            
-            <label>SKU & QTY (数量留空，差额自动计算)</label>
             <div id="batchContainer">
-                <div class="sku-row"><span>SKU CODE</span><span>QTY</span></div>
-                <div class="sku-row"><input type="text" id="s1" placeholder="1st SKU"><input type="tel" id="q1" placeholder="Qty"></div>
-                <div class="sku-row"><input type="text" id="s2" placeholder="2nd SKU"><input type="tel" id="q2" placeholder="Qty"></div>
-                <div class="sku-row"><input type="text" id="s3" placeholder="3rd SKU"><input type="tel" id="q3" placeholder="Qty"></div>
-                <div class="sku-row"><input type="text" id="s4" placeholder="4th SKU"><input type="tel" id="q4" placeholder="Qty"></div>
-                <div class="sku-row"><input type="text" id="s5" placeholder="5th SKU"><input type="tel" id="q5" placeholder="Qty"></div>
-                <div class="sku-row"><input type="text" id="s6" placeholder="6th SKU"><input type="tel" id="q6" placeholder="Qty"></div>
+                <div class="sku-row"><input type="text" id="s1" placeholder="SKU 1"><input type="tel" id="q1" placeholder="Qty"></div>
+                <div class="sku-row"><input type="text" id="s2" placeholder="SKU 2"><input type="tel" id="q2" placeholder="Qty"></div>
+                <div class="sku-row"><input type="text" id="s3" placeholder="SKU 3"><input type="tel" id="q3" placeholder="Qty"></div>
+                <div class="sku-row"><input type="text" id="s4" placeholder="SKU 4"><input type="tel" id="q4" placeholder="Qty"></div>
+                <div class="sku-row"><input type="text" id="s5" placeholder="SKU 5"><input type="tel" id="q5" placeholder="Qty"></div>
+                <div class="sku-row"><input type="text" id="s6" placeholder="SKU 6"><input type="tel" id="q6" placeholder="Qty"></div>
             </div>
-
-            <div style="margin-top: 10px;">
-                <label>COMMON LOCATION 库位 (Scan Last)</label>
-                <input type="text" id="locIn" list="locList" class="loc-input" placeholder="Scan FINAL Location">
-                <datalist id="locList"></datalist>
-            </div>
-            <button class="btn btn-save" id="saveBtn" onclick="addBatch()">SAVE ALL (保存并重置)</button>
+            <input type="text" id="locIn" list="locList" class="loc-input" placeholder="扫库位 (LOC)">
+            <datalist id="locList"></datalist>
+            <button class="btn btn-save" id="saveBtn" onclick="addBatch()">SAVE ALL</button>
         </div>
     </div>
 
     <div class="panel-left">
-        <h3 style="padding: 12px 15px 5px; margin: 0; font-size: 15px;">PUTWAY LIST (白:匹配 蓝:少 支 红:多)</h3>
         <div class="table-wrap">
             <table id="mainTable">
-                <thead>
-                    <tr><th>SKU</th><th>QTY</th><th>LOCATION</th><th>+/-</th><th>ACT</th></tr>
-                </thead>
+                <thead><tr><th>SKU</th><th>QTY</th><th>LOCATION</th><th>+/-</th><th>ACT</th></tr></thead>
                 <tbody></tbody>
             </table>
         </div>
@@ -113,17 +90,23 @@
     let dbMaster = {}, dbDaily = {}, setLoc = new Set(), data = [];
     let dailyActive = false, audioCtx = null, forceSKU = null;
 
-    function activeAudio() { if(!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }
+    // 声音激活函数：彻底解决移动端静音策略
+    function forceActiveAudio() {
+        if (!audioCtx) {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        }
+        if (audioCtx.state === 'suspended') {
+            audioCtx.resume();
+        }
+    }
 
     window.onload = () => {
         const cache = localStorage.getItem('wh_v820_data'), op = localStorage.getItem('wh_v820_op');
         if (cache) { data = JSON.parse(cache); render(); }
         if (op) document.getElementById('opName').value = op;
         const cM = localStorage.getItem('csv_master'), cC = localStorage.getItem('csv_check'), cL = localStorage.getItem('csv_loc');
-        if(cM) { parseSKU(cM); updateStat('skuStat', true); }
-        if(cC) { parseCheck(cC); updateStat('checkStat', true); }
-        if(cL) { parseLoc(cL); updateStat('locStat', true); }
-        setupEnterKey(); document.getElementById('s1').focus();
+        if(cM) parseSKU(cM); if(cC) parseCheck(cC); if(cL) parseLoc(cL);
+        setupEnterKey();
     };
 
     function processFile(t, f) {
@@ -134,16 +117,17 @@
             if(t==='check') { parseCheck(txt); localStorage.setItem('csv_check', txt); updateStat('checkStat', true); }
         }; r.readAsText(f);
     }
-    function loadLocFile(f) { const r = new FileReader(); r.onload=(e)=>{parseLoc(e.target.result); localStorage.setItem('csv_loc',e.target.result); updateStat('locStat', true);}; r.readAsText(f); }
+    function loadLocFile(f) { if(!f) return; const r = new FileReader(); r.onload=(e)=>{parseLoc(e.target.result); localStorage.setItem('csv_loc',e.target.result); updateStat('locStat',true);}; r.readAsText(f); }
     function parseSKU(txt) { Papa.parse(txt, { complete: (res) => { dbMaster = {}; res.data.forEach((r, i) => { if(i>0 && r[0]) dbMaster[r[0].trim().toUpperCase()] = {b:r[1]||"", c:r[2]||""}; }); }}); }
     function parseCheck(txt) { Papa.parse(txt, { complete: (res) => { dbDaily = {}; dailyActive = false; res.data.forEach(r => { if(r[0]) { dbDaily[r[0].trim().toUpperCase()] = parseFloat(r[1]) || 0; dailyActive = true; } }); }}); }
     function parseLoc(txt) { Papa.parse(txt, { complete: (res) => { setLoc.clear(); const dl = document.getElementById('locList'); dl.innerHTML = ""; res.data.forEach(r => r.forEach(c => { if(c && c.toString().trim()) { let v = c.toString().trim().toUpperCase(); setLoc.add(v); let o = document.createElement('option'); o.value = v; dl.appendChild(o); } })); }}); }
     function updateStat(id, r) { const s = document.getElementById(id); s.innerText = r ? "READY" : "EMPTY"; s.className = r ? "status-tag ready" : "status-tag"; }
     function clearCache() { if(confirm("清除？")) { localStorage.clear(); location.reload(); } }
-    function recoverBackup() { const b = localStorage.getItem('wh_v820_backup'); if(b) { data = JSON.parse(b); render(); alert("已恢复备份"); } }
+    function recoverBackup() { const b = localStorage.getItem('wh_v820_backup'); if(b) { data = JSON.parse(b); render(); } }
 
     function playSound(f, d) {
         if(!audioCtx) return;
+        forceActiveAudio();
         const g = audioCtx.createGain(); g.gain.setValueAtTime(0.1, audioCtx.currentTime);
         g.connect(audioCtx.destination);
         const o = audioCtx.createOscillator(); o.type='sine'; o.frequency.setValueAtTime(f, audioCtx.currentTime);
@@ -151,14 +135,14 @@
     }
 
     function addBatch() {
-        activeAudio();
+        forceActiveAudio();
         const lv = document.getElementById('locIn').value.trim().toUpperCase();
         const op = document.getElementById('opName').value.trim();
-        if(!lv || !op) { playSound(200, 0.4); return; }
+        if(!lv || !op) { playSound(200, 0.4); alert("Name/Loc Required"); return; }
         if (setLoc.size > 0 && !setLoc.has(lv)) { playSound(200, 0.4); return; }
 
         let batch = [], any = false, mismatch = false;
-        const date = new Date().toISOString().slice(0,10).replace(/-/g, "");
+        const dateStr = new Date().toISOString().slice(0,10).replace(/-/g, "");
 
         for(let i=1; i<=6; i++) {
             const sv = document.getElementById('s'+i).value.trim().toUpperCase();
@@ -167,11 +151,11 @@
             if(dailyActive && dbDaily[sv] === undefined && forceSKU !== sv) { mismatch = true; forceSKU = sv; break; }
             if(!qv || qv <= 0) { playSound(200, 0.4); return; }
             any = true;
-            batch.push({ id: Date.now()+i, _originSKU: sv, SKU: dbMaster[sv]?dbMaster[sv].b:sv, Name: dbMaster[sv]?dbMaster[sv].c:"N/A", Quantity: qv, Location: lv, Date: date });
+            batch.push({ id: Date.now()+i, _originSKU: sv, SKU: dbMaster[sv]?dbMaster[sv].b:sv, Name: dbMaster[sv]?dbMaster[sv].c:"N/A", Quantity: qv, Location: lv, Date: dateStr });
         }
 
         if(mismatch) {
-            playSound(300, 0.3); const b = document.getElementById('saveBtn'); b.innerText = "不在清单，再按一次保存"; b.style.background = "orange";
+            playSound(300, 0.3); const b = document.getElementById('saveBtn'); b.innerText = "不在清单，再点一次保存"; b.style.background = "orange";
             setTimeout(() => { b.innerText = "SAVE ALL"; b.style.background = ""; forceSKU = null; }, 3000);
             return;
         }
@@ -198,7 +182,7 @@
                 else if (total > plan) {
                     const prevTotal = total - d.Quantity;
                     diffText = "+" + (total - plan);
-                    if (prevTotal < plan) rowClass = "row-over"; // 仅超标行变红
+                    if (prevTotal < plan) rowClass = "row-over"; else rowClass = "row-over";
                 } 
                 else if (total < plan) { diffText = (total - plan).toString(); rowClass = "row-under"; }
             }
@@ -230,9 +214,8 @@
             return [ (p!==undefined && t>p) ? `>>> OVER: [${d.SKU}] <<<` : d.SKU, d.Name, d.Quantity, d.Location, d.Date, s];
         })]);
         const b = new Blob(["\ufeff"+csv], { type: 'text/csv;charset=utf-8;' });
-        const a = document.createElement("a"); a.href = URL.createObjectURL(b); a.download = `Putway_${op}_${new Date().toISOString().slice(0,10)}.csv`; a.click();
+        const a = document.createElement("a"); a.href = URL.createObjectURL(b); a.download = `Putway_${new Date().toISOString().slice(0,10)}.csv`; a.click();
     }
-
     function setupEnterKey() {
         const ins = Array.from(document.querySelectorAll('.panel-right input'));
         ins.forEach((input, index) => { input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); (ins[index + 1] || ins[0]).focus(); if(input.id === 'locIn') addBatch(); } }); });
