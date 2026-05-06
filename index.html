@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
-    <title>Warehouse V8.20.20 Final</title>
+    <title>Warehouse V8.20.21 Final</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
     <style>
         :root { --primary: #1890ff; --success: #52c41a; --danger: #ff4d4f; --extra: #b37feb; --bg: #f5f7fa; }
@@ -46,7 +46,7 @@
     <div class="panel-right">
         <div class="card">
             <div class="file-grid">
-                <div class="file-btn"><label>MASTER</label><input type="file" accept=".csv" onchange="processFile('sku', this.files[0])"><span id="skuStat" class="status-tag">EMPTY</span></div>
+                <div class="file-btn"><label>SKU</label><input type="file" accept=".csv" onchange="processFile('sku', this.files[0])"><span id="skuStat" class="status-tag">EMPTY</span></div>
                 <div class="file-btn"><label>DAILY</label><input type="file" accept=".csv" onchange="processFile('check', this.files[0])"><span id="checkStat" class="status-tag">OPTIONAL</span></div>
                 <div class="file-btn"><label>LOC</label><input type="file" accept=".csv" onchange="loadLocFile(this.files[0])"><span id="locStat" class="status-tag">EMPTY</span></div>
             </div>
@@ -67,7 +67,7 @@
                 <div class="sku-row"><input type="text" id="s5" placeholder="SKU 5"><input type="tel" id="q5" placeholder="Qty"></div>
                 <div class="sku-row"><input type="text" id="s6" placeholder="SKU 6"><input type="tel" id="q6" placeholder="Qty"></div>
             </div>
-            <input type="text" id="locIn" list="locList" class="loc-input" placeholder="最后扫库位 (LOC)">
+            <input type="text" id="locIn" list="locList" class="loc-input" placeholder="扫库位 (LOC)">
             <datalist id="locList"></datalist>
             <button class="btn btn-save" id="saveBtn" onclick="addBatch()">SAVE ALL (保存并备份)</button>
         </div>
@@ -219,7 +219,6 @@
         const op = document.getElementById('opName').value.trim() || "User";
         const dateNow = new Date().toISOString().slice(0,10).replace(/-/g, "");
         
-        // 修改导出逻辑：Received 保持 TRUE，新增一列 Exception_Note
         const csv = Papa.unparse([
             ["SKU","Name","BatchSerialNumber","SupplierSKU","ExpiryDate_YYYYMMDD","Quantity","Location","DateReceived_YYYYMMDD","Received","Exception_Note"], 
             ...data.map(d => {
