@@ -3,39 +3,45 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Warehouse V8.20.15 Excel-Pro</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <title>Warehouse V8.20.14 Slim</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
     <style>
         :root { --primary: #1890ff; --success: #52c41a; --danger: #ff4d4f; --extra: #b37feb; --bg: #f0f2f5; }
         * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
         body { font-family: -apple-system, sans-serif; margin: 0; background: var(--bg); height: 100vh; overflow: hidden; }
         .main-wrapper { display: flex; flex-direction: column; height: 100vh; padding: 5px; gap: 5px; }
+        
+        /* 响应式对调逻辑 */
         .panel-right { order: 1; flex-shrink: 0; } 
         .panel-left { order: 2; flex: 1; min-height: 0; display: flex; flex-direction: column; }
         @media (min-width: 900px) { 
             .main-wrapper { flex-direction: row; }
-            .panel-right { width: 380px; order: 1; overflow-y: auto; }
+            .panel-right { width: 400px; order: 1; overflow-y: auto; }
             .panel-left { flex: 1; order: 2; }
         }
+
         .card { background: white; border-radius: 8px; padding: 10px; border: 1px solid #e8e8e8; margin-bottom: 5px; }
         input { height: 32px; padding: 4px 8px; border: 1px solid #d9d9d9; border-radius: 4px; font-size: 14px; width: 100%; margin-bottom: 5px; }
         .loc-input { height: 40px; font-size: 18px; font-weight: bold; border: 2px solid var(--primary); background: #fffbe6; }
         .sku-row { display: grid; grid-template-columns: 3fr 1fr; gap: 5px; margin-bottom: 2px; }
         .file-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 4px; }
-        .file-btn { border: 1px dashed #ccc; padding: 2px; border-radius: 4px; text-align: center; font-size: 9px; background: #fff; position: relative; }
-        .file-btn input { position: absolute; top:0; left:0; width:100%; height:100%; opacity:0; cursor:pointer; }
+        .file-btn { border: 1px dashed #ccc; padding: 2px; border-radius: 4px; text-align: center; font-size: 9px; background: #fff; }
+        
         .btn { height: 40px; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; width: 100%; }
         .btn-save { background: var(--success); color: white; }
-        .btn-export { background: #1877f2; color: white; height: 35px; font-size: 13px; margin-top: 5px; }
+        .btn-export { background: #444; color: white; height: 35px; font-size: 12px; }
+
+        /* 表格瘦身 */
         .table-wrap { flex: 1; overflow-y: auto; background: white; border-radius: 8px; border: 1px solid #e8e8e8; }
         table { width: 100%; border-collapse: collapse; font-size: 11px; table-layout: fixed; }
-        th, td { padding: 6px 2px; border-bottom: 1px solid #f0f0f0; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        th, td { padding: 4px 2px; border-bottom: 1px solid #f0f0f0; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         th { background: #fafafa; position: sticky; top: 0; z-index: 10; font-size: 10px; }
+        
         .row-over { background-color: #fff1f0 !important; color: #ff4d4f !important; font-weight: bold; }
         .row-under { background-color: #e6f7ff !important; color: #1890ff !important; }
         .row-extra { background-color: #f9f0ff !important; color: #722ed1 !important; }
-        .edit-input { width: 100%; padding: 2px; border: 1px solid #d9d9d9; font-size: 11px; text-align: center; border-radius: 4px; }
+        
+        .edit-input { width: 100%; padding: 2px; border: 1px solid #d9d9d9; font-size: 11px; text-align: center; }
     </style>
 </head>
 <body onclick="activeAudio()">
@@ -44,29 +50,29 @@
     <div class="panel-right">
         <div class="card" style="padding: 5px;">
             <div class="file-grid">
-                <div class="file-btn">MASTER<input type="file" accept=".csv" onchange="processFile('sku', this.files[0])"></div>
-                <div class="file-btn">DAILY<input type="file" accept=".csv" onchange="processFile('check', this.files[0])"></div>
-                <div class="file-btn">LOC<input type="file" accept=".csv" onchange="loadLocFile(this.files[0])"></div>
+                <div class="file-btn">M<input type="file" id="skuFile" accept=".csv" onchange="processFile('sku', this.files[0])"></div>
+                <div class="file-btn">D<input type="file" id="checkFile" accept=".csv" onchange="processFile('check', this.files[0])"></div>
+                <div class="file-btn">L<input type="file" id="locFile" accept=".csv" onchange="loadLocFile(this.files[0])"></div>
             </div>
             <div style="display: flex; justify-content: space-between; margin-top: 4px;">
-                <button onclick="clearCache()" style="font-size:9px; color:red; border:none; background:none;">[清空]</button>
-                <button onclick="recoverBackup()" style="font-size:9px; color:blue; border:none; background:none;">[恢复]</button>
+                <button onclick="clearCache()" style="font-size:9px; color:red; border:none; background:none;">[CLR]</button>
+                <button onclick="recoverBackup()" style="font-size:9px; color:blue; border:none; background:none;">[RECOVERY]</button>
             </div>
         </div>
 
         <div class="card">
-            <input type="text" id="opName" placeholder="操作员姓名" onchange="saveLocal()">
+            <input type="text" id="opName" placeholder="Operator Name" onchange="saveLocal()">
             <div id="batchContainer">
-                <div class="sku-row"><input type="text" id="s1" placeholder="SKU 1"><input type="tel" id="q1" placeholder="Qty"></div>
-                <div class="sku-row"><input type="text" id="s2" placeholder="SKU 2"><input type="tel" id="q2" placeholder="Qty"></div>
-                <div class="sku-row"><input type="text" id="s3" placeholder="SKU 3"><input type="tel" id="q3" placeholder="Qty"></div>
-                <div class="sku-row"><input type="text" id="s4" placeholder="SKU 4"><input type="tel" id="q4" placeholder="Qty"></div>
-                <div class="sku-row"><input type="text" id="s5" placeholder="SKU 5"><input type="tel" id="q5" placeholder="Qty"></div>
-                <div class="sku-row"><input type="text" id="s6" placeholder="SKU 6"><input type="tel" id="q6" placeholder="Qty"></div>
+                <div class="sku-row"><input type="text" id="s1" placeholder="SKU"><input type="tel" id="q1" placeholder="Qty"></div>
+                <div class="sku-row"><input type="text" id="s2" placeholder="SKU"><input type="tel" id="q2" placeholder="Qty"></div>
+                <div class="sku-row"><input type="text" id="s3" placeholder="SKU"><input type="tel" id="q3" placeholder="Qty"></div>
+                <div class="sku-row"><input type="text" id="s4" placeholder="SKU"><input type="tel" id="q4" placeholder="Qty"></div>
+                <div class="sku-row"><input type="text" id="s5" placeholder="SKU"><input type="tel" id="q5" placeholder="Qty"></div>
+                <div class="sku-row"><input type="text" id="s6" placeholder="SKU"><input type="tel" id="q6" placeholder="Qty"></div>
             </div>
-            <input type="text" id="locIn" list="locList" class="loc-input" placeholder="扫库位">
+            <input type="text" id="locIn" list="locList" class="loc-input" placeholder="SCAN LOCATION">
             <datalist id="locList"></datalist>
-            <button class="btn btn-save" id="saveBtn" onclick="addBatch()">保存全部 (SAVE)</button>
+            <button class="btn btn-save" id="saveBtn" onclick="addBatch()">SAVE ALL</button>
         </div>
     </div>
 
@@ -74,12 +80,12 @@
         <div class="table-wrap">
             <table id="mainTable">
                 <thead>
-                    <tr><th style="width:35%">SKU</th><th style="width:15%">QTY</th><th style="width:25%">LOC</th><th style="width:15%">+/-</th><th style="width:10%">删</th></tr>
+                    <tr><th style="width:35%">SKU</th><th style="width:15%">QTY</th><th style="width:25%">LOC</th><th style="width:15%">+/-</th><th style="width:10%">X</th></tr>
                 </thead>
                 <tbody></tbody>
             </table>
         </div>
-        <button class="btn btn-export" onclick="exportExcel()">导出 EXCEL (.XLSX)</button>
+        <button class="btn btn-export" onclick="exportCsv()">EXPORT CSV</button>
     </div>
 </div>
 
@@ -87,7 +93,7 @@
     let dbMaster = {}, dbDaily = {}, setLoc = new Set(), data = [];
     let dailyActive = false, audioCtx = null, forceSKU = null;
 
-    function activeAudio() { if(!audioCtx) { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } }
+    function activeAudio() { if(!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }
 
     window.onload = () => {
         const cache = localStorage.getItem('wh_v820_data'), op = localStorage.getItem('wh_v820_op');
@@ -110,7 +116,9 @@
     function parseSKU(txt) { Papa.parse(txt, { complete: (res) => { dbMaster = {}; res.data.forEach((r, i) => { if(i>0 && r[0]) dbMaster[r[0].trim().toUpperCase()] = {b:r[1]||"", c:r[2]||""}; }); }}); }
     function parseCheck(txt) { Papa.parse(txt, { complete: (res) => { dbDaily = {}; dailyActive = false; res.data.forEach(r => { if(r[0]) { dbDaily[r[0].trim().toUpperCase()] = parseFloat(r[1]) || 0; dailyActive = true; } }); }}); }
     function parseLoc(txt) { Papa.parse(txt, { complete: (res) => { setLoc.clear(); const dl = document.getElementById('locList'); dl.innerHTML = ""; res.data.forEach(r => r.forEach(c => { if(c && c.toString().trim()) { let v = c.toString().trim().toUpperCase(); setLoc.add(v); let o = document.createElement('option'); o.value = v; dl.appendChild(o); } })); }}); }
-    
+    function clearCache() { if(confirm("Clear?")) { localStorage.clear(); location.reload(); } }
+    function recoverBackup() { const b = localStorage.getItem('wh_v820_backup'); if(b) { data = JSON.parse(b); render(); } }
+
     function playSound(f, d) {
         if(!audioCtx) return;
         const g = audioCtx.createGain(); g.gain.setValueAtTime(0.1, audioCtx.currentTime);
@@ -126,7 +134,7 @@
         if(!lv || !op) { playSound(200, 0.5); return; }
         if (setLoc.size > 0 && !setLoc.has(lv)) { playSound(200, 0.5); return; }
 
-        let batch = [], mismatch = false;
+        let batch = [], any = false, mismatch = false;
         const date = new Date().toISOString().slice(0,10).replace(/-/g, "");
 
         for(let i=1; i<=6; i++) {
@@ -135,15 +143,16 @@
             if(!sv) continue;
             if(dailyActive && dbDaily[sv] === undefined && forceSKU !== sv) { mismatch = true; forceSKU = sv; break; }
             if(!qv || qv <= 0) { playSound(200, 0.5); return; }
+            any = true;
             batch.push({ id: Date.now()+i, _originSKU: sv, SKU: dbMaster[sv]?dbMaster[sv].b:sv, Name: dbMaster[sv]?dbMaster[sv].c:"N/A", Quantity: qv, Location: lv, Date: date });
         }
 
         if(mismatch) {
-            playSound(300, 0.3); const b = document.getElementById('saveBtn'); b.innerText = "不在清单，再按一次保存"; b.style.background = "orange";
-            setTimeout(() => { b.innerText = "保存全部 (SAVE)"; b.style.background = ""; forceSKU = null; }, 3000);
+            playSound(300, 0.3); const b = document.getElementById('saveBtn'); b.innerText = "SKU MISMATCH! TAP AGAIN"; b.style.background = "orange";
+            setTimeout(() => { b.innerText = "SAVE ALL"; b.style.background = ""; forceSKU = null; }, 3000);
             return;
         }
-        if(!batch.length) return;
+        if(!any) return;
 
         data = [...batch, ...data]; render(); saveLocal(); playSound(1000, 0.1);
         for(let i=1; i<=6; i++) { document.getElementById('s'+i).value = ""; document.getElementById('q'+i).value = ""; }
@@ -153,6 +162,7 @@
     function render() {
         const tbody = document.querySelector("#mainTable tbody"); tbody.innerHTML = "";
         let cumulative = {};
+        // 倒序处理以实现：后输入的如果超标才变红
         const sortedData = [...data].reverse(); 
 
         sortedData.forEach(d => {
@@ -163,7 +173,12 @@
             let diffText = "OK", rowClass = "";
             if (dailyActive) {
                 if (plan === undefined) { diffText = "EXTRA"; rowClass = "row-extra"; }
-                else if (total > plan) { diffText = "+" + (total - plan); rowClass = "row-over"; } 
+                else if (total > plan) {
+                    // 仅当本条记录导致总数超过计划时变红
+                    const prevTotal = total - d.Quantity;
+                    if (prevTotal < plan) { diffText = "+" + (total - plan); rowClass = "row-over"; }
+                    else { diffText = "+" + (total - plan); rowClass = "row-over"; }
+                } 
                 else if (total < plan) { diffText = (total - plan).toString(); rowClass = "row-under"; }
             }
 
@@ -176,50 +191,24 @@
                 <td style="font-weight:bold">${diffText}</td>
                 <td><button onclick="del(${d.id})" style="border:none;background:none;color:red;font-weight:bold">×</button></td>
             `;
-            tbody.prepend(tr); 
+            tbody.prepend(tr); // 保持最新输入的在最上面
         });
-    }
-
-    // 核心改进：导出 Excel 逻辑
-    function exportExcel() {
-        if(!data.length) return;
-        const op = document.getElementById('opName').value || "User";
-        let cumulative = {};
-        
-        // 1. 准备数据
-        const excelRows = [["SKU", "Name", "Quantity", "Location", "Date", "Difference/Status"]];
-        
-        // 我们按输入的正序来计算，确保差异值准确
-        const exportData = [...data].reverse();
-        exportData.forEach(d => {
-            const plan = dbDaily[d._originSKU];
-            cumulative[d._originSKU] = (cumulative[d._originSKU] || 0) + d.Quantity;
-            const total = cumulative[d._originSKU];
-            
-            let status = "OK";
-            if (dailyActive) {
-                if (plan === undefined) status = "EXTRA";
-                else if (total > plan) status = "+" + (total - plan);
-                else if (total < plan) status = (total - plan);
-            }
-            excelRows.push([d.SKU, d.Name, d.Quantity, d.Location, d.Date, status]);
-        });
-
-        // 2. 创建 Workbook
-        const wb = XLSX.utils.book_new();
-        const ws = XLSX.utils.aoa_to_sheet(excelRows);
-
-        // 3. 写入并下载
-        XLSX.utils.book_append_sheet(wb, ws, "PutwayList");
-        XLSX.writeFile(wb, `Putway_${op}_${new Date().toISOString().slice(0,10)}.xlsx`);
     }
 
     function updateQty(id, v) { let n=parseFloat(v); if(n>0){data.find(x=>x.id===id).Quantity=n; render(); saveLocal();} }
     function updateLoc(id, v) { let l=v.trim().toUpperCase(); if(l){data.find(x=>x.id===id).Location=l; render(); saveLocal();} }
     function del(id) { data = data.filter(x => x.id !== id); render(); saveLocal(); }
     function saveLocal() { localStorage.setItem('wh_v820_data', JSON.stringify(data)); localStorage.setItem('wh_v820_op', document.getElementById('opName').value); localStorage.setItem('wh_v820_backup', JSON.stringify(data)); }
-    function clearCache() { if(confirm("确定清空所有本地数据？")) { localStorage.clear(); location.reload(); } }
-    function recoverBackup() { const b = localStorage.getItem('wh_v820_backup'); if(b) { data = JSON.parse(b); render(); } }
+    function exportCsv() {
+        let ts = {}; data.forEach(d => ts[d._originSKU] = (ts[d._originSKU] || 0) + d.Quantity);
+        const csv = Papa.unparse([["SKU","Name","Qty","Loc","Date","Status"], ...data.map(d => {
+            const p = dbDaily[d._originSKU], t = ts[d._originSKU];
+            let s = "OK"; if(p===undefined) s="EXTRA"; else if(t>p) s="OVER"; else if(t<p) s="SHORT";
+            return [d.SKU, d.Name, d.Quantity, d.Location, d.Date, s];
+        })]);
+        const b = new Blob(["\ufeff"+csv], { type: 'text/csv;charset=utf-8;' });
+        const a = document.createElement("a"); a.href = URL.createObjectURL(b); a.download = `Putway_${new Date().toISOString().slice(0,10)}.csv`; a.click();
+    }
     function setupEnterKey() {
         const ins = Array.from(document.querySelectorAll('.panel-right input'));
         ins.forEach((input, index) => { input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); (ins[index + 1] || ins[0]).focus(); if(input.id === 'locIn') addBatch(); } }); });
