@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Warehouse V8.20.24 Android</title>
+    <title>Warehouse V8.20.25 Android</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
     <style>
         :root { --primary: #1890ff; --success: #52c41a; --danger: #ff4d4f; --extra: #b37feb; --bg: #f5f7fa; }
@@ -41,7 +41,7 @@
         table { width: 100%; border-collapse: collapse; font-size: 13px; table-layout: fixed; }
         th, td { padding: 10px 4px; border-bottom: 1px solid #f0f0f0; text-align: center; }
         
-        /* 关键修复：让 SKU 列支持换行，显示完整内容 */
+        /* SKU 长文本换行优化 */
         .td-sku { 
             word-break: break-all; 
             white-space: normal; 
@@ -80,12 +80,12 @@
         <div class="card">
             <input type="text" id="opName" placeholder="操作员姓名" onchange="saveLocal()">
             <div id="batchContainer">
-                <div class="sku-row"><input type="text" id="s1" placeholder="SKU 1"><input type="tel" id="q1" placeholder="数量"></div>
-                <div class="sku-row"><input type="text" id="s2" placeholder="SKU 2"><input type="tel" id="q2" placeholder="数量"></div>
-                <div class="sku-row"><input type="text" id="s3" placeholder="SKU 3"><input type="tel" id="q3" placeholder="数量"></div>
-                <div class="sku-row"><input type="text" id="s4" placeholder="SKU 4"><input type="tel" id="q4" placeholder="数量"></div>
-                <div class="sku-row"><input type="text" id="s5" placeholder="SKU 5"><input type="tel" id="q5" placeholder="数量"></div>
-                <div class="sku-row"><input type="text" id="s6" placeholder="SKU 6"><input type="tel" id="q6" placeholder="数量"></div>
+                <div class="sku-row"><input type="text" id="s1" placeholder="SKU 1"><input type="tel" id="q1" placeholder="Qty"></div>
+                <div class="sku-row"><input type="text" id="s2" placeholder="SKU 2"><input type="tel" id="q2" placeholder="Qty"></div>
+                <div class="sku-row"><input type="text" id="s3" placeholder="SKU 3"><input type="tel" id="q3" placeholder="Qty"></div>
+                <div class="sku-row"><input type="text" id="s4" placeholder="SKU 4"><input type="tel" id="q4" placeholder="Qty"></div>
+                <div class="sku-row"><input type="text" id="s5" placeholder="SKU 5"><input type="tel" id="q5" placeholder="Qty"></div>
+                <div class="sku-row"><input type="text" id="s6" placeholder="SKU 6"><input type="tel" id="q6" placeholder="Qty"></div>
             </div>
             <input type="text" id="locIn" list="locList" class="loc-input" placeholder="扫入库位 (LOC)">
             <datalist id="locList"></datalist>
@@ -98,8 +98,8 @@
             <table id="mainTable">
                 <thead>
                     <tr>
-                        <th style="width: 45%;">SKU (长文本自动换行)</th>
-                        <th style="width: 22%;">数量</th>
+                        <th style="width: 45%;">SKU</th>
+                        <th style="width: 22%;">Qty</th>
                         <th style="width: 18%;">状态</th>
                         <th style="width: 15%;">删</th>
                     </tr>
@@ -188,7 +188,6 @@
             any = true;
             const plan = dbDaily[sv] || 0;
             if(dailyActive && plan > 0 && (cumulative[sv] || 0) + qv > plan) hasOver = true;
-            // 存入原始 SKU，确保导出完整
             batch.push({ id: Date.now()+i, _originSKU: sv, SKU: dbMaster[sv]?dbMaster[sv].b:sv, Name: dbMaster[sv]?dbMaster[sv].c:"N/A", Quantity: qv, Location: "Patiki Warehouse: " + lv, Date: dateStr });
         }
 
@@ -258,7 +257,6 @@
                     else if (t > p) note = "+" + (t - p);
                     else if (t < p) note = (t - p);
                 }
-                // 导出保持完整 SKU 内容
                 return [d.SKU, d.Name, "", "", "", d.Quantity, d.Location, d.Date, "TRUE", note];
             })
         ]);
