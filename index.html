@@ -2,72 +2,89 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
-    <title>Warehouse V8.20.21 Final</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Warehouse V8.20.23 Android</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
     <style>
         :root { --primary: #1890ff; --success: #52c41a; --danger: #ff4d4f; --extra: #b37feb; --bg: #f5f7fa; }
         * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-        body { font-family: -apple-system, sans-serif; margin: 0; background: var(--bg); min-height: 100vh; }
-        .main-wrapper { display: flex; flex-direction: column; padding: 10px; gap: 10px; }
-        .panel-right { order: 1; } .panel-left { order: 2; }
+        body { font-family: -apple-system, Roboto, Helvetica, Arial, sans-serif; margin: 0; background: var(--bg); min-height: 100vh; overflow-x: hidden; }
+        
+        /* 安卓全屏包裹 */
+        .main-wrapper { display: flex; flex-direction: column; padding: 8px; gap: 8px; }
+        
+        /* 手机端优先顺序：录入在上，预览在下 */
+        .panel-right { order: 1; width: 100%; } 
+        .panel-left { order: 2; width: 100%; display: flex; flex-direction: column; }
+        
         @media (min-width: 900px) { 
             .main-wrapper { flex-direction: row; height: 100vh; overflow: hidden; }
-            .panel-right { flex: 5; height: 100%; display: flex; flex-direction: column; overflow-y: auto; order: 1; }
-            .panel-left { flex: 5; height: 100%; display: flex; flex-direction: column; order: 2; }
-            body { overflow: hidden; }
+            .panel-right { flex: 4; height: 100%; overflow-y: auto; }
+            .panel-left { flex: 6; height: 100%; }
         }
-        .card { background: white; border-radius: 12px; padding: 15px; border: 1px solid #e8e8e8; box-shadow: 0 2px 8px rgba(0,0,0,0.05); margin-bottom: 10px; }
+
+        .card { background: white; border-radius: 12px; padding: 12px; border: 1px solid #e8e8e8; box-shadow: 0 2px 8px rgba(0,0,0,0.05); margin-bottom: 8px; }
         label { font-size: 11px; color: #8c8c8c; font-weight: bold; margin-bottom: 4px; display: block; }
-        input { height: 38px; padding: 8px; border: 1px solid #d9d9d9; border-radius: 6px; font-size: 15px; width: 100%; background: #fafafa; margin-bottom: 8px; }
-        .loc-input { height: 50px; font-size: 20px; font-weight: bold; border: 2px solid var(--primary); background: #fffbe6; color: #d46b08; }
-        .sku-row { display: grid; grid-template-columns: 3fr 1fr; gap: 8px; margin-bottom: 2px; }
-        .file-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 5px; }
-        .file-btn { border: 1px dashed #ccc; padding: 4px; border-radius: 6px; text-align: center; background: #fff; font-size: 9px; position: relative; }
-        .file-btn input { position: absolute; top:0; left:0; width:100%; height:100%; opacity:0; cursor:pointer; }
-        .status-tag { font-size: 9px; font-weight: bold; color: #bfbfbf; }
+        
+        /* 针对安卓手指触控加大输入框高度 */
+        input { height: 44px; padding: 10px; border: 1px solid #d9d9d9; border-radius: 8px; font-size: 16px; width: 100%; background: #fafafa; margin-bottom: 8px; }
+        .loc-input { height: 54px; font-size: 22px; border: 2px solid var(--primary); background: #fffbe6; color: #d46b08; }
+        
+        .sku-row { display: grid; grid-template-columns: 3fr 1.2fr; gap: 8px; margin-bottom: 4px; }
+        
+        .file-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
+        .file-btn { border: 1px dashed #ccc; padding: 6px; border-radius: 8px; text-align: center; background: #fff; font-size: 10px; position: relative; min-height: 40px; display: flex; flex-direction: column; justify-content: center; align-items: center; }
+        .file-btn input { position: absolute; top:0; left:0; width:100%; height:100%; opacity:0; }
+        
+        .status-tag { font-size: 10px; font-weight: bold; color: #bfbfbf; margin-top: 2px; }
         .ready { color: var(--success); }
-        .btn { height: 52px; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 18px; width: 100%; }
-        .btn-save { background: var(--success); color: white; margin-top: 5px; }
-        .btn-export { background: #444; color: white; margin: 15px 0; height: 45px; font-size: 14px; flex-shrink: 0; }
-        .table-wrap { flex: 1; padding: 0 10px; overflow-y: auto; }
-        table { width: 100%; border-collapse: collapse; font-size: 12px; }
-        th, td { padding: 8px; border-bottom: 1px solid #f0f0f0; text-align: left; }
-        th { background: #fafafa; position: sticky; top: 0; z-index: 10; }
-        .row-over { background-color: #fff1f0 !important; color: #cf1322 !important; }
-        .row-under { background-color: #e6f7ff !important; color: #096dd9 !important; }
-        .row-extra { background-color: #f9f0ff !important; color: #531dab !important; }
-        .edit-input { width: 60px; padding: 4px; border: 1px solid var(--primary); border-radius: 4px; text-align: center; font-weight: bold; }
+
+        .btn { height: 54px; border: none; border-radius: 10px; font-weight: bold; cursor: pointer; font-size: 18px; width: 100%; }
+        .btn-save { background: var(--success); color: white; margin-top: 8px; box-shadow: 0 4px 10px rgba(82, 196, 26, 0.2); }
+        .btn-export { background: #444; color: white; height: 48px; font-size: 14px; flex-shrink: 0; margin-top: 10px; }
+
+        /* 表格手机端优化 */
+        .table-wrap { flex: 1; overflow-y: auto; background: white; border-radius: 12px; border: 1px solid #e8e8e8; }
+        table { width: 100%; border-collapse: collapse; font-size: 13px; table-layout: fixed; }
+        th, td { padding: 10px 4px; border-bottom: 1px solid #f0f0f0; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        th { background: #fafafa; position: sticky; top: 0; z-index: 10; font-size: 11px; color: #555; }
+        
+        /* 状态背景 */
+        .row-over { background-color: #fff1f0 !important; color: #cf1322 !important; font-weight: bold; }
+        .row-under { background-color: #e6f7ff !important; color: #096dd9 !important; font-weight: bold; }
+        .row-extra { background-color: #f9f0ff !important; color: #531dab !important; font-weight: bold; }
+        
+        .edit-input { width: 100%; padding: 4px; border: 1px solid var(--primary); border-radius: 4px; text-align: center; font-weight: bold; font-size: 14px; }
+        .del-btn { background: #ff7875; color: white; border: none; border-radius: 4px; padding: 6px 10px; font-weight: bold; }
     </style>
 </head>
 <body onclick="unlockAudio()">
 
 <div class="main-wrapper">
     <div class="panel-right">
-        <div class="card">
+        <div class="card" style="padding: 10px;">
             <div class="file-grid">
-                <div class="file-btn"><label>SKU</label><input type="file" accept=".csv" onchange="processFile('sku', this.files[0])"><span id="skuStat" class="status-tag">EMPTY</span></div>
-                <div class="file-btn"><label>DAILY</label><input type="file" accept=".csv" onchange="processFile('check', this.files[0])"><span id="checkStat" class="status-tag">OPTIONAL</span></div>
-                <div class="file-btn"><label>LOC</label><input type="file" accept=".csv" onchange="loadLocFile(this.files[0])"><span id="locStat" class="status-tag">EMPTY</span></div>
+                <div class="file-btn"><span>SKU</span><input type="file" accept=".csv" onchange="processFile('sku', this.files[0])"><span id="skuStat" class="status-tag">EMPTY</span></div>
+                <div class="file-btn"><span>DAILY</span><input type="file" accept=".csv" onchange="processFile('check', this.files[0])"><span id="checkStat" class="status-tag">OPTIONAL</span></div>
+                <div class="file-btn"><span>LOC</span><input type="file" accept=".csv" onchange="loadLocFile(this.files[0])"><span id="locStat" class="status-tag">EMPTY</span></div>
             </div>
             <div style="display: flex; justify-content: space-between; margin-top: 8px;">
-                <button onclick="clearCache()" style="font-size:9px; color:red; border:none; background:none;">[清空缓存]</button>
-                <button onclick="recoverBackup()" style="font-size:9px; color:blue; border:none; background:none;">[恢复备份]</button>
+                <button onclick="clearCache()" style="font-size:10px; color:red; border:none; background:none; padding:5px;">[清空缓存]</button>
+                <button onclick="recoverBackup()" style="font-size:10px; color:blue; border:none; background:none; padding:5px;">[恢复数据]</button>
             </div>
         </div>
 
         <div class="card">
-            <label>OPERATOR 操作员</label>
-            <input type="text" id="opName" placeholder="Name" onchange="saveLocal()">
+            <input type="text" id="opName" placeholder="操作员姓名" onchange="saveLocal()">
             <div id="batchContainer">
-                <div class="sku-row"><input type="text" id="s1" placeholder="SKU 1"><input type="tel" id="q1" placeholder="Qty"></div>
-                <div class="sku-row"><input type="text" id="s2" placeholder="SKU 2"><input type="tel" id="q2" placeholder="Qty"></div>
-                <div class="sku-row"><input type="text" id="s3" placeholder="SKU 3"><input type="tel" id="q3" placeholder="Qty"></div>
-                <div class="sku-row"><input type="text" id="s4" placeholder="SKU 4"><input type="tel" id="q4" placeholder="Qty"></div>
-                <div class="sku-row"><input type="text" id="s5" placeholder="SKU 5"><input type="tel" id="q5" placeholder="Qty"></div>
-                <div class="sku-row"><input type="text" id="s6" placeholder="SKU 6"><input type="tel" id="q6" placeholder="Qty"></div>
+                <div class="sku-row"><input type="text" id="s1" placeholder="SKU 1"><input type="tel" id="q1" placeholder="数量"></div>
+                <div class="sku-row"><input type="text" id="s2" placeholder="SKU 2"><input type="tel" id="q2" placeholder="数量"></div>
+                <div class="sku-row"><input type="text" id="s3" placeholder="SKU 3"><input type="tel" id="q3" placeholder="数量"></div>
+                <div class="sku-row"><input type="text" id="s4" placeholder="SKU 4"><input type="tel" id="q4" placeholder="数量"></div>
+                <div class="sku-row"><input type="text" id="s5" placeholder="SKU 5"><input type="tel" id="q5" placeholder="数量"></div>
+                <div class="sku-row"><input type="text" id="s6" placeholder="SKU 6"><input type="tel" id="q6" placeholder="数量"></div>
             </div>
-            <input type="text" id="locIn" list="locList" class="loc-input" placeholder="扫库位 (LOC)">
+            <input type="text" id="locIn" list="locList" class="loc-input" placeholder="扫入库位 (LOC)">
             <datalist id="locList"></datalist>
             <button class="btn btn-save" id="saveBtn" onclick="addBatch()">SAVE ALL (保存并备份)</button>
         </div>
@@ -76,11 +93,18 @@
     <div class="panel-left">
         <div class="table-wrap">
             <table id="mainTable">
-                <thead><tr><th>SKU</th><th>QTY</th><th>LOCATION</th><th>+/-</th><th>ACT</th></tr></thead>
+                <thead>
+                    <tr>
+                        <th style="width: 35%;">SKU</th>
+                        <th style="width: 20%;">QTY</th>
+                        <th style="width: 15%;">+/-</th>
+                        <th style="width: 15%;">ACT</th>
+                    </tr>
+                </thead>
                 <tbody></tbody>
             </table>
         </div>
-        <div style="padding: 0 15px;"><button class="btn btn-export" onclick="exportCsv()">EXPORT CSV</button></div>
+        <button class="btn btn-export" onclick="exportCsv()">EXPORT CSV</button>
     </div>
 </div>
 
@@ -98,7 +122,9 @@
         if (cache) { data = JSON.parse(cache); render(); }
         if (op) document.getElementById('opName').value = op;
         const cM = localStorage.getItem('csv_master'), cC = localStorage.getItem('csv_check'), cL = localStorage.getItem('csv_loc');
-        if(cM) parseSKU(cM); if(cC) parseCheck(cC); if(cL) parseLoc(cL);
+        if(cM) { parseSKU(cM); updateStat('skuStat', true); }
+        if(cC) { parseCheck(cC); updateStat('checkStat', true); }
+        if(cL) { parseLoc(cL); updateStat('locStat', true); }
         setupEnterKey();
     };
 
@@ -115,10 +141,10 @@
     function parseCheck(txt) { Papa.parse(txt, { complete: (res) => { dbDaily = {}; dailyActive = false; res.data.forEach(r => { if(r[0]) { dbDaily[r[0].trim().toUpperCase()] = parseFloat(r[1]) || 0; dailyActive = true; } }); }}); }
     function parseLoc(txt) { Papa.parse(txt, { complete: (res) => { setLoc.clear(); const dl = document.getElementById('locList'); dl.innerHTML = ""; res.data.forEach(r => r.forEach(c => { if(c && c.toString().trim()) { let v = c.toString().trim().toUpperCase(); setLoc.add(v); let o = document.createElement('option'); o.value = v; dl.appendChild(o); } })); }}); }
     function updateStat(id, r) { const s = document.getElementById(id); s.innerText = r ? "READY" : "EMPTY"; s.className = r ? "status-tag ready" : "status-tag"; }
-    function clearCache() { if(confirm("确定清空数据？")) { localStorage.clear(); location.reload(); } }
+    function clearCache() { if(confirm("确定清空所有数据？")) { localStorage.clear(); location.reload(); } }
     function recoverBackup() {
         const b = localStorage.getItem('wh_v820_backup');
-        if(b) { data = JSON.parse(b); render(); alert("已从备份恢复数据"); }
+        if(b) { data = JSON.parse(b); render(); alert("数据已恢复"); }
     }
 
     function playSound(type) {
@@ -142,7 +168,7 @@
         unlockAudio();
         const lv = document.getElementById('locIn').value.trim().toUpperCase();
         const op = document.getElementById('opName').value.trim();
-        if(!lv || !op) { playSound('error'); alert("Loc & Name Required!"); return; }
+        if(!lv || !op) { playSound('error'); return; }
         if (setLoc.size > 0 && !setLoc.has(lv)) { playSound('error'); return; }
 
         let batch = [], any = false, mismatch = false, hasOver = false;
@@ -163,7 +189,7 @@
         }
 
         if(mismatch) {
-            playSound('error'); const b = document.getElementById('saveBtn'); b.innerText = "不在清单，再按一次保存"; b.style.background = "orange";
+            playSound('error'); const b = document.getElementById('saveBtn'); b.innerText = "不在清单，再点一次保存"; b.style.background = "orange";
             setTimeout(() => { b.innerText = "SAVE ALL (保存并备份)"; b.style.background = ""; forceSKU = null; }, 3000);
             return;
         }
@@ -185,40 +211,39 @@
             const total = cumulative[d._originSKU];
             let diffText = "OK", rowClass = "";
             if (dailyActive) {
-                if (plan === undefined) { diffText = "EXTRA"; rowClass = "row-extra"; }
+                if (plan === undefined) { diffText = "EXT"; rowClass = "row-extra"; }
                 else if (total > plan) {
                     const prevTotal = total - d.Quantity;
                     diffText = "+" + (total - plan);
-                    if (prevTotal < plan) rowClass = "row-over"; else rowClass = "row-over";
+                    rowClass = "row-over";
                 } 
                 else if (total < plan) { diffText = (total - plan).toString(); rowClass = "row-under"; }
             }
             let tr = document.createElement('tr');
             tr.className = rowClass;
             tr.innerHTML = `
-                <td><b>${d.SKU}</b></td>
+                <td style="font-weight:bold">${d.SKU}</td>
                 <td><input type="number" class="edit-input" value="${d.Quantity}" onchange="updateQty(${d.id},this.value)"></td>
-                <td><input type="text" style="width:100%; border:1px solid #1890ff; padding:4px;" value="${d.Location.replace('Patiki Warehouse: ', '')}" onchange="updateLoc(${d.id},this.value)"></td>
-                <td style="font-weight:bold">${diffText}</td>
-                <td><button onclick="del(${d.id})" style="background:#ff7875;color:white;border:none;border-radius:4px;padding:4px 8px;">DEL</button></td>
+                <td>${diffText}</td>
+                <td><button class="del-btn" onclick="del(${d.id})">×</button></td>
             `;
             tbody.prepend(tr); 
         });
     }
 
     function updateQty(id, v) { let n=parseFloat(v); if(n>0){data.find(x=>x.id===id).Quantity=n; render(); saveLocal();} }
-    function updateLoc(id, v) { let l=v.trim().toUpperCase(); if(l){data.find(x=>x.id===id).Location="Patiki Warehouse: "+l; render(); saveLocal();} }
-    function del(id) { if(confirm("确定删除？")){data = data.filter(x => x.id !== id); render(); saveLocal();} }
-    function saveLocal() { localStorage.setItem('wh_v820_data', JSON.stringify(data)); localStorage.setItem('wh_v820_op', document.getElementById('opName').value); localStorage.setItem('wh_v820_backup', JSON.stringify(data)); }
+    function del(id) { if(confirm("删除？")){data = data.filter(x => x.id !== id); render(); saveLocal();} }
+    function saveLocal() { 
+        localStorage.setItem('wh_v820_data', JSON.stringify(data)); 
+        localStorage.setItem('wh_v820_op', document.getElementById('opName').value); 
+        localStorage.setItem('wh_v820_backup', JSON.stringify(data));
+    }
     
     function exportCsv() {
         if(!data.length) return;
-        let ts = {}; 
-        data.forEach(d => ts[d._originSKU] = (ts[d._originSKU] || 0) + d.Quantity);
-        
+        let ts = {}; data.forEach(d => ts[d._originSKU] = (ts[d._originSKU] || 0) + d.Quantity);
         const op = document.getElementById('opName').value.trim() || "User";
         const dateNow = new Date().toISOString().slice(0,10).replace(/-/g, "");
-        
         const csv = Papa.unparse([
             ["SKU","Name","BatchSerialNumber","SupplierSKU","ExpiryDate_YYYYMMDD","Quantity","Location","DateReceived_YYYYMMDD","Received","Exception_Note"], 
             ...data.map(d => {
