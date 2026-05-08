@@ -3,17 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Warehouse V8.20.23 Android</title>
+    <title>Warehouse V8.20.24 Android</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
     <style>
         :root { --primary: #1890ff; --success: #52c41a; --danger: #ff4d4f; --extra: #b37feb; --bg: #f5f7fa; }
         * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
         body { font-family: -apple-system, Roboto, Helvetica, Arial, sans-serif; margin: 0; background: var(--bg); min-height: 100vh; overflow-x: hidden; }
         
-        /* 安卓全屏包裹 */
         .main-wrapper { display: flex; flex-direction: column; padding: 8px; gap: 8px; }
-        
-        /* 手机端优先顺序：录入在上，预览在下 */
         .panel-right { order: 1; width: 100%; } 
         .panel-left { order: 2; width: 100%; display: flex; flex-direction: column; }
         
@@ -24,9 +21,6 @@
         }
 
         .card { background: white; border-radius: 12px; padding: 12px; border: 1px solid #e8e8e8; box-shadow: 0 2px 8px rgba(0,0,0,0.05); margin-bottom: 8px; }
-        label { font-size: 11px; color: #8c8c8c; font-weight: bold; margin-bottom: 4px; display: block; }
-        
-        /* 针对安卓手指触控加大输入框高度 */
         input { height: 44px; padding: 10px; border: 1px solid #d9d9d9; border-radius: 8px; font-size: 16px; width: 100%; background: #fafafa; margin-bottom: 8px; }
         .loc-input { height: 54px; font-size: 22px; border: 2px solid var(--primary); background: #fffbe6; color: #d46b08; }
         
@@ -40,16 +34,25 @@
         .ready { color: var(--success); }
 
         .btn { height: 54px; border: none; border-radius: 10px; font-weight: bold; cursor: pointer; font-size: 18px; width: 100%; }
-        .btn-save { background: var(--success); color: white; margin-top: 8px; box-shadow: 0 4px 10px rgba(82, 196, 26, 0.2); }
+        .btn-save { background: var(--success); color: white; margin-top: 8px; }
         .btn-export { background: #444; color: white; height: 48px; font-size: 14px; flex-shrink: 0; margin-top: 10px; }
 
-        /* 表格手机端优化 */
         .table-wrap { flex: 1; overflow-y: auto; background: white; border-radius: 12px; border: 1px solid #e8e8e8; }
         table { width: 100%; border-collapse: collapse; font-size: 13px; table-layout: fixed; }
-        th, td { padding: 10px 4px; border-bottom: 1px solid #f0f0f0; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        th, td { padding: 10px 4px; border-bottom: 1px solid #f0f0f0; text-align: center; }
+        
+        /* 关键修复：让 SKU 列支持换行，显示完整内容 */
+        .td-sku { 
+            word-break: break-all; 
+            white-space: normal; 
+            text-align: left; 
+            padding-left: 8px;
+            font-size: 12px;
+            line-height: 1.2;
+        }
+
         th { background: #fafafa; position: sticky; top: 0; z-index: 10; font-size: 11px; color: #555; }
         
-        /* 状态背景 */
         .row-over { background-color: #fff1f0 !important; color: #cf1322 !important; font-weight: bold; }
         .row-under { background-color: #e6f7ff !important; color: #096dd9 !important; font-weight: bold; }
         .row-extra { background-color: #f9f0ff !important; color: #531dab !important; font-weight: bold; }
@@ -62,11 +65,11 @@
 
 <div class="main-wrapper">
     <div class="panel-right">
-        <div class="card" style="padding: 10px;">
+        <div class="card">
             <div class="file-grid">
-                <div class="file-btn"><span>SKU</span><input type="file" accept=".csv" onchange="processFile('sku', this.files[0])"><span id="skuStat" class="status-tag">EMPTY</span></div>
-                <div class="file-btn"><span>DAILY</span><input type="file" accept=".csv" onchange="processFile('check', this.files[0])"><span id="checkStat" class="status-tag">OPTIONAL</span></div>
-                <div class="file-btn"><span>LOC</span><input type="file" accept=".csv" onchange="loadLocFile(this.files[0])"><span id="locStat" class="status-tag">EMPTY</span></div>
+                <div class="file-btn"><span>SKU库</span><input type="file" accept=".csv" onchange="processFile('sku', this.files[0])"><span id="skuStat" class="status-tag">EMPTY</span></div>
+                <div class="file-btn"><span>DAILY清单</span><input type="file" accept=".csv" onchange="processFile('check', this.files[0])"><span id="checkStat" class="status-tag">OPTIONAL</span></div>
+                <div class="file-btn"><span>库位表</span><input type="file" accept=".csv" onchange="loadLocFile(this.files[0])"><span id="locStat" class="status-tag">EMPTY</span></div>
             </div>
             <div style="display: flex; justify-content: space-between; margin-top: 8px;">
                 <button onclick="clearCache()" style="font-size:10px; color:red; border:none; background:none; padding:5px;">[清空缓存]</button>
@@ -95,10 +98,10 @@
             <table id="mainTable">
                 <thead>
                     <tr>
-                        <th style="width: 35%;">SKU</th>
-                        <th style="width: 20%;">QTY</th>
-                        <th style="width: 15%;">+/-</th>
-                        <th style="width: 15%;">ACT</th>
+                        <th style="width: 45%;">SKU (长文本自动换行)</th>
+                        <th style="width: 22%;">数量</th>
+                        <th style="width: 18%;">状态</th>
+                        <th style="width: 15%;">删</th>
                     </tr>
                 </thead>
                 <tbody></tbody>
@@ -185,6 +188,7 @@
             any = true;
             const plan = dbDaily[sv] || 0;
             if(dailyActive && plan > 0 && (cumulative[sv] || 0) + qv > plan) hasOver = true;
+            // 存入原始 SKU，确保导出完整
             batch.push({ id: Date.now()+i, _originSKU: sv, SKU: dbMaster[sv]?dbMaster[sv].b:sv, Name: dbMaster[sv]?dbMaster[sv].c:"N/A", Quantity: qv, Location: "Patiki Warehouse: " + lv, Date: dateStr });
         }
 
@@ -222,7 +226,7 @@
             let tr = document.createElement('tr');
             tr.className = rowClass;
             tr.innerHTML = `
-                <td style="font-weight:bold">${d.SKU}</td>
+                <td class="td-sku"><b>${d.SKU}</b></td>
                 <td><input type="number" class="edit-input" value="${d.Quantity}" onchange="updateQty(${d.id},this.value)"></td>
                 <td>${diffText}</td>
                 <td><button class="del-btn" onclick="del(${d.id})">×</button></td>
@@ -254,6 +258,7 @@
                     else if (t > p) note = "+" + (t - p);
                     else if (t < p) note = (t - p);
                 }
+                // 导出保持完整 SKU 内容
                 return [d.SKU, d.Name, "", "", "", d.Quantity, d.Location, d.Date, "TRUE", note];
             })
         ]);
