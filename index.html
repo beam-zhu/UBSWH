@@ -3,53 +3,41 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Warehouse V8.20.26 Android</title>
+    <title>Warehouse V8.20.27 Professional</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
     <style>
         :root { --primary: #1890ff; --success: #52c41a; --danger: #ff4d4f; --extra: #b37feb; --bg: #f5f7fa; }
         * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
         body { font-family: -apple-system, Roboto, Helvetica, Arial, sans-serif; margin: 0; background: var(--bg); min-height: 100vh; overflow-x: hidden; }
-        
         .main-wrapper { display: flex; flex-direction: column; padding: 8px; gap: 8px; }
         .panel-right { order: 1; width: 100%; } 
         .panel-left { order: 2; width: 100%; display: flex; flex-direction: column; }
-        
         @media (min-width: 900px) { 
             .main-wrapper { flex-direction: row; height: 100vh; overflow: hidden; }
             .panel-right { flex: 4; height: 100%; overflow-y: auto; }
             .panel-left { flex: 6; height: 100%; }
         }
-
         .card { background: white; border-radius: 12px; padding: 12px; border: 1px solid #e8e8e8; box-shadow: 0 2px 8px rgba(0,0,0,0.05); margin-bottom: 8px; }
         input { height: 44px; padding: 10px; border: 1px solid #d9d9d9; border-radius: 8px; font-size: 16px; width: 100%; background: #fafafa; margin-bottom: 8px; }
         .loc-input { height: 54px; font-size: 22px; border: 2px solid var(--primary); background: #fffbe6; color: #d46b08; }
-        
         .sku-row { display: grid; grid-template-columns: 3fr 1.2fr; gap: 8px; margin-bottom: 4px; }
-        
         .file-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
         .file-btn { border: 1px dashed #ccc; padding: 6px; border-radius: 8px; text-align: center; background: #fff; font-size: 10px; position: relative; min-height: 40px; display: flex; flex-direction: column; justify-content: center; align-items: center; }
         .file-btn input { position: absolute; top:0; left:0; width:100%; height:100%; opacity:0; }
-        
         .status-tag { font-size: 10px; font-weight: bold; color: #bfbfbf; margin-top: 2px; }
         .ready { color: var(--success); }
-
         .btn { height: 54px; border: none; border-radius: 10px; font-weight: bold; cursor: pointer; font-size: 18px; width: 100%; }
         .btn-save { background: var(--success); color: white; margin-top: 8px; }
         .btn-export { background: #444; color: white; height: 48px; font-size: 14px; flex-shrink: 0; margin-top: 10px; }
-
         .table-wrap { flex: 1; overflow-y: auto; background: white; border-radius: 12px; border: 1px solid #e8e8e8; }
         table { width: 100%; border-collapse: collapse; font-size: 12px; table-layout: fixed; }
         th, td { padding: 8px 2px; border-bottom: 1px solid #f0f0f0; text-align: center; vertical-align: middle; }
-        
         .td-sku { word-break: break-all; white-space: normal; text-align: left; padding-left: 4px; font-weight: bold; font-size: 13px; }
         .td-loc { font-size: 11px; color: #666; word-break: break-all; }
-
         th { background: #fafafa; position: sticky; top: 0; z-index: 10; font-size: 10px; color: #555; }
-        
         .row-over { background-color: #fff1f0 !important; color: #cf1322 !important; }
         .row-under { background-color: #e6f7ff !important; color: #096dd9 !important; }
         .row-extra { background-color: #f9f0ff !important; color: #531dab !important; }
-        
         .edit-input { width: 100%; padding: 4px; border: 1px solid var(--primary); border-radius: 4px; text-align: center; font-size: 13px; }
         .del-btn { background: #ff7875; color: white; border: none; border-radius: 4px; padding: 4px 8px; font-weight: bold; }
     </style>
@@ -138,27 +126,17 @@
     function parseCheck(txt) { Papa.parse(txt, { complete: (res) => { dbDaily = {}; dailyActive = false; res.data.forEach(r => { if(r[0]) { dbDaily[r[0].trim().toUpperCase()] = parseFloat(r[1]) || 0; dailyActive = true; } }); }}); }
     function parseLoc(txt) { Papa.parse(txt, { complete: (res) => { setLoc.clear(); const dl = document.getElementById('locList'); dl.innerHTML = ""; res.data.forEach(r => r.forEach(c => { if(c && c.toString().trim()) { let v = c.toString().trim().toUpperCase(); setLoc.add(v); let o = document.createElement('option'); o.value = v; dl.appendChild(o); } })); }}); }
     function updateStat(id, r) { const s = document.getElementById(id); s.innerText = r ? "READY" : "EMPTY"; s.className = r ? "status-tag ready" : "status-tag"; }
-    function clearCache() { if(confirm("确定清空所有数据？")) { localStorage.clear(); location.reload(); } }
-    function recoverBackup() {
-        const b = localStorage.getItem('wh_v820_backup');
-        if(b) { data = JSON.parse(b); render(); alert("数据已恢复"); }
-    }
+    function clearCache() { if(confirm("确定清空数据？")) { localStorage.clear(); location.reload(); } }
+    function recoverBackup() { const b = localStorage.getItem('wh_v820_backup'); if(b) { data = JSON.parse(b); render(); alert("数据已恢复"); } }
 
     function playSound(type) {
         if(!audioCtx) return;
         const g = audioCtx.createGain(); g.gain.setValueAtTime(0.1, audioCtx.currentTime);
         g.connect(audioCtx.destination);
         const o = audioCtx.createOscillator();
-        if(type === 'success') {
-            o.type='sine'; o.frequency.setValueAtTime(1000, audioCtx.currentTime);
-            o.start(); o.stop(audioCtx.currentTime + 0.1);
-        } else if(type === 'warn') {
-            o.type='square'; o.frequency.setValueAtTime(440, audioCtx.currentTime);
-            o.start(); o.stop(audioCtx.currentTime + 0.3);
-        } else {
-            o.type='sawtooth'; o.frequency.setValueAtTime(150, audioCtx.currentTime);
-            o.start(); o.stop(audioCtx.currentTime + 0.4);
-        }
+        if(type === 'success') { o.type='sine'; o.frequency.setValueAtTime(1000, audioCtx.currentTime); o.start(); o.stop(audioCtx.currentTime + 0.1); }
+        else if(type === 'warn') { o.type='square'; o.frequency.setValueAtTime(440, audioCtx.currentTime); o.start(); o.stop(audioCtx.currentTime + 0.3); }
+        else { o.type='sawtooth'; o.frequency.setValueAtTime(150, audioCtx.currentTime); o.start(); o.stop(audioCtx.currentTime + 0.4); }
     }
 
     function addBatch() {
@@ -168,10 +146,8 @@
         if(!lv || !op) { playSound('error'); return; }
         if (setLoc.size > 0 && !setLoc.has(lv)) { playSound('error'); return; }
 
-        let batch = [], any = false, mismatch = false, hasOver = false;
+        let batch = [], any = false, mismatch = false;
         const dateStr = new Date().toISOString().slice(0,10).replace(/-/g, "");
-        let cumulative = {};
-        data.forEach(d => cumulative[d._originSKU] = (cumulative[d._originSKU] || 0) + d.Quantity);
 
         for(let i=1; i<=6; i++) {
             const sv = document.getElementById('s'+i).value.trim().toUpperCase();
@@ -180,9 +156,6 @@
             if(dailyActive && dbDaily[sv] === undefined && forceSKU !== sv) { mismatch = true; forceSKU = sv; break; }
             if(!qv || qv <= 0) { playSound('error'); return; }
             any = true;
-            const plan = dbDaily[sv] || 0;
-            if(dailyActive && plan > 0 && (cumulative[sv] || 0) + qv > plan) hasOver = true;
-            
             batch.push({ 
                 id: Date.now()+i, 
                 _originSKU: sv, 
@@ -202,35 +175,39 @@
         }
         if(!any) return;
         data = [...batch, ...data]; render(); saveLocal(); 
+        
+        // 声音反馈逻辑改为：只要包含超量SKU就播警告音
+        let hasOver = false;
+        let totals = {}; data.forEach(d => totals[d._originSKU] = (totals[d._originSKU] || 0) + d.Quantity);
+        batch.forEach(b => { if(dailyActive && dbDaily[b._originSKU] && totals[b._originSKU] > dbDaily[b._originSKU]) hasOver = true; });
         playSound(hasOver ? 'warn' : 'success');
+
         for(let i=1; i<=6; i++) { document.getElementById('s'+i).value = ""; document.getElementById('q'+i).value = ""; }
         document.getElementById('locIn').value = ""; document.getElementById('s1').focus();
         forceSKU = null;
     }
 
+    // --- 核心修正：渲染时全局计算 SKU 状态 ---
     function render() {
         const tbody = document.querySelector("#mainTable tbody"); tbody.innerHTML = "";
-        let cumulative = {};
-        const sortedData = [...data].reverse(); 
-        sortedData.forEach(d => {
+        let totals = {}; 
+        data.forEach(d => totals[d._originSKU] = (totals[d._originSKU] || 0) + d.Quantity);
+
+        // 这里的 data 顺序不需要反转，显示上用 prepend 保证最新在顶
+        data.forEach(d => {
             const plan = dbDaily[d._originSKU];
-            cumulative[d._originSKU] = (cumulative[d._originSKU] || 0) + d.Quantity;
-            const total = cumulative[d._originSKU];
+            const currentTotal = totals[d._originSKU];
             let diffText = "OK", rowClass = "";
+
             if (dailyActive) {
                 if (plan === undefined) { diffText = "EXT"; rowClass = "row-extra"; }
-                else if (total > plan) {
-                    diffText = "+" + (total - plan);
-                    rowClass = "row-over";
-                } 
-                else if (total < plan) { diffText = (total - plan).toString(); rowClass = "row-under"; }
+                else if (currentTotal > plan) { diffText = "+" + (currentTotal - plan); rowClass = "row-over"; } 
+                else if (currentTotal < plan) { diffText = (currentTotal - plan).toString(); rowClass = "row-under"; }
+                // 如果刚好相等，diffText 保持 "OK"，rowClass 保持空（白色）
             }
 
-            // 处理 SKU 显示：只显示 ~ 后面的内容
             let displaySKU = d.SKU;
-            if (displaySKU.includes('~')) {
-                displaySKU = displaySKU.split('~').pop();
-            }
+            if (displaySKU.includes('~')) displaySKU = displaySKU.split('~').pop();
 
             let tr = document.createElement('tr');
             tr.className = rowClass;
@@ -241,7 +218,7 @@
                 <td style="font-weight:bold; font-size:11px;">${diffText}</td>
                 <td><button class="del-btn" onclick="del(${d.id})">×</button></td>
             `;
-            tbody.prepend(tr); 
+            tbody.appendChild(tr); // 维持保存时的先后顺序，但你可以根据需要改回 prepend
         });
     }
 
