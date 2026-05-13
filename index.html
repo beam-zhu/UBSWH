@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Warehouse V8.20.27 Professional</title>
+    <title>Warehouse V8.20.28 Professional</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
     <style>
         :root { --primary: #1890ff; --success: #52c41a; --danger: #ff4d4f; --extra: #b37feb; --bg: #f5f7fa; }
@@ -22,7 +22,7 @@
         .loc-input { height: 54px; font-size: 22px; border: 2px solid var(--primary); background: #fffbe6; color: #d46b08; }
         .sku-row { display: grid; grid-template-columns: 3fr 1.2fr; gap: 8px; margin-bottom: 4px; }
         .file-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
-        .file-btn { border: 1px dashed #ccc; padding: 6px; border-radius: 8px; text-align: center; background: #fff; font-size: 10px; position: relative; min-height: 40px; display: flex; flex-direction: column; justify-content: center; align-items: center; }
+        .file-btn { border: 1px dashed #ccc; padding: 4px; border-radius: 8px; text-align: center; background: #fff; font-size: 10px; position: relative; min-height: 40px; display: flex; flex-direction: column; justify-content: center; align-items: center; }
         .file-btn input { position: absolute; top:0; left:0; width:100%; height:100%; opacity:0; }
         .status-tag { font-size: 10px; font-weight: bold; color: #bfbfbf; margin-top: 2px; }
         .ready { color: var(--success); }
@@ -61,12 +61,12 @@
         <div class="card">
             <input type="text" id="opName" placeholder="操作员姓名" onchange="saveLocal()">
             <div id="batchContainer">
-                <div class="sku-row"><input type="text" id="s1" placeholder="SKU 1"><input type="tel" id="q1" placeholder="Qty"></div>
-                <div class="sku-row"><input type="text" id="s2" placeholder="SKU 2"><input type="tel" id="q2" placeholder="Qty"></div>
-                <div class="sku-row"><input type="text" id="s3" placeholder="SKU 3"><input type="tel" id="q3" placeholder="Qty"></div>
-                <div class="sku-row"><input type="text" id="s4" placeholder="SKU 4"><input type="tel" id="q4" placeholder="Qty"></div>
-                <div class="sku-row"><input type="text" id="s5" placeholder="SKU 5"><input type="tel" id="q5" placeholder="Qty"></div>
-                <div class="sku-row"><input type="text" id="s6" placeholder="SKU 6"><input type="tel" id="q6" placeholder="Qty"></div>
+                <div class="sku-row"><input type="text" id="s1" placeholder="SKU 1" inputmode="decimal"><input type="tel" id="q1" placeholder="Qty"></div>
+                <div class="sku-row"><input type="text" id="s2" placeholder="SKU 2" inputmode="decimal"><input type="tel" id="q2" placeholder="Qty"></div>
+                <div class="sku-row"><input type="text" id="s3" placeholder="SKU 3" inputmode="decimal"><input type="tel" id="q3" placeholder="Qty"></div>
+                <div class="sku-row"><input type="text" id="s4" placeholder="SKU 4" inputmode="decimal"><input type="tel" id="q4" placeholder="Qty"></div>
+                <div class="sku-row"><input type="text" id="s5" placeholder="SKU 5" inputmode="decimal"><input type="tel" id="q5" placeholder="Qty"></div>
+                <div class="sku-row"><input type="text" id="s6" placeholder="SKU 6" inputmode="decimal"><input type="tel" id="q6" placeholder="Qty"></div>
             </div>
             <input type="text" id="locIn" list="locList" class="loc-input" placeholder="扫入库位 (LOC)">
             <datalist id="locList"></datalist>
@@ -176,7 +176,6 @@
         if(!any) return;
         data = [...batch, ...data]; render(); saveLocal(); 
         
-        // 声音反馈逻辑改为：只要包含超量SKU就播警告音
         let hasOver = false;
         let totals = {}; data.forEach(d => totals[d._originSKU] = (totals[d._originSKU] || 0) + d.Quantity);
         batch.forEach(b => { if(dailyActive && dbDaily[b._originSKU] && totals[b._originSKU] > dbDaily[b._originSKU]) hasOver = true; });
@@ -187,13 +186,11 @@
         forceSKU = null;
     }
 
-    // --- 核心修正：渲染时全局计算 SKU 状态 ---
     function render() {
         const tbody = document.querySelector("#mainTable tbody"); tbody.innerHTML = "";
         let totals = {}; 
         data.forEach(d => totals[d._originSKU] = (totals[d._originSKU] || 0) + d.Quantity);
 
-        // 这里的 data 顺序不需要反转，显示上用 prepend 保证最新在顶
         data.forEach(d => {
             const plan = dbDaily[d._originSKU];
             const currentTotal = totals[d._originSKU];
@@ -203,7 +200,6 @@
                 if (plan === undefined) { diffText = "EXT"; rowClass = "row-extra"; }
                 else if (currentTotal > plan) { diffText = "+" + (currentTotal - plan); rowClass = "row-over"; } 
                 else if (currentTotal < plan) { diffText = (currentTotal - plan).toString(); rowClass = "row-under"; }
-                // 如果刚好相等，diffText 保持 "OK"，rowClass 保持空（白色）
             }
 
             let displaySKU = d.SKU;
@@ -218,7 +214,7 @@
                 <td style="font-weight:bold; font-size:11px;">${diffText}</td>
                 <td><button class="del-btn" onclick="del(${d.id})">×</button></td>
             `;
-            tbody.appendChild(tr); // 维持保存时的先后顺序，但你可以根据需要改回 prepend
+            tbody.appendChild(tr); 
         });
     }
 
