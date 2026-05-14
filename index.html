@@ -3,79 +3,67 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Warehouse V8.20.29 Spiritual</title>
+    <title>Warehouse V8.20.30 Spiritual</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
     <style>
         :root { --primary: #1890ff; --success: #52c41a; --danger: #ff4d4f; --extra: #b37feb; --bg: #f5f7fa; }
         * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
         body { font-family: -apple-system, Roboto, Helvetica, Arial, sans-serif; margin: 0; background: var(--bg); min-height: 100vh; overflow-x: hidden; position: relative; }
         
-        /* 背景水印设置 */
+        /* 经文水印 - 强化版 */
         .bg-watermark {
-            position: fixed;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            width: 85%;
+            width: 90%;
+            margin: 15px auto;
             text-align: center;
-            color: #000;
-            opacity: 0.04; /* 极低透明度，确保不干扰操作 */
-            font-size: 20px;
+            color: #555;
+            opacity: 0.12; /* 调高透明度到 12%，隐约可见但不过分 */
+            font-size: 14px;
             font-style: italic;
-            pointer-events: none; /* 穿透点击，不影响操作 */
-            z-index: -1; /* 至于最底层 */
-            line-height: 1.6;
+            pointer-events: none;
+            line-height: 1.8;
+            border-top: 1px solid #ccc;
+            border-bottom: 1px solid #ccc;
+            padding: 10px 0;
         }
 
-        .main-wrapper { display: flex; flex-direction: column; padding: 8px; gap: 8px; position: relative; z-index: 1; }
+        .main-wrapper { display: flex; flex-direction: column; padding: 8px; gap: 8px; }
         .panel-right { order: 1; width: 100%; } 
-        .panel-left { order: 2; width: 100%; display: flex; flex-direction: column; }
+        .panel-left { order: 3; width: 100%; display: flex; flex-direction: column; }
+        .watermark-container { order: 2; width: 100%; } /* 将水印放在两个面板中间 */
         
         @media (min-width: 900px) { 
             .main-wrapper { flex-direction: row; height: 100vh; overflow: hidden; }
             .panel-right { flex: 4; height: 100%; overflow-y: auto; }
             .panel-left { flex: 6; height: 100%; }
-            .bg-watermark { font-size: 32px; }
+            .watermark-container { position: fixed; bottom: 20px; right: 20px; width: 300px; opacity: 0.2; }
         }
 
-        .card { background: rgba(255, 255, 255, 0.9); border-radius: 12px; padding: 12px; border: 1px solid #e8e8e8; box-shadow: 0 2px 8px rgba(0,0,0,0.05); margin-bottom: 8px; }
+        .card { background: white; border-radius: 12px; padding: 12px; border: 1px solid #e8e8e8; box-shadow: 0 2px 8px rgba(0,0,0,0.05); margin-bottom: 8px; }
         input { height: 44px; padding: 10px; border: 1px solid #d9d9d9; border-radius: 8px; font-size: 16px; width: 100%; background: #fafafa; margin-bottom: 8px; }
         .loc-input { height: 54px; font-size: 22px; border: 2px solid var(--primary); background: #fffbe6; color: #d46b08; }
-        
         .sku-row { display: grid; grid-template-columns: 3fr 1.2fr; gap: 8px; margin-bottom: 4px; }
         .file-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
         .file-btn { border: 1px dashed #ccc; padding: 4px; border-radius: 8px; text-align: center; background: #fff; font-size: 10px; position: relative; min-height: 40px; display: flex; flex-direction: column; justify-content: center; align-items: center; }
         .file-btn input { position: absolute; top:0; left:0; width:100%; height:100%; opacity:0; }
-        
         .status-tag { font-size: 10px; font-weight: bold; color: #bfbfbf; margin-top: 2px; }
         .ready { color: var(--success); }
-
         .btn { height: 54px; border: none; border-radius: 10px; font-weight: bold; cursor: pointer; font-size: 18px; width: 100%; }
         .btn-save { background: var(--success); color: white; margin-top: 8px; }
         .btn-export { background: #444; color: white; height: 48px; font-size: 14px; flex-shrink: 0; margin-top: 10px; }
-
-        .table-wrap { flex: 1; overflow-y: auto; background: rgba(255, 255, 255, 0.85); border-radius: 12px; border: 1px solid #e8e8e8; }
+        .table-wrap { flex: 1; overflow-y: auto; background: white; border-radius: 12px; border: 1px solid #e8e8e8; }
         table { width: 100%; border-collapse: collapse; font-size: 12px; table-layout: fixed; }
         th, td { padding: 8px 2px; border-bottom: 1px solid #f0f0f0; text-align: center; vertical-align: middle; }
-        
         .td-sku { word-break: break-all; white-space: normal; text-align: left; padding-left: 4px; font-weight: bold; font-size: 13px; }
         .td-loc { font-size: 11px; color: #666; word-break: break-all; }
         th { background: #fafafa; position: sticky; top: 0; z-index: 10; font-size: 10px; color: #555; }
-        
-        .row-over { background-color: rgba(255, 241, 240, 0.8) !important; color: #cf1322 !important; }
-        .row-under { background-color: rgba(230, 247, 255, 0.8) !important; color: #096dd9 !important; }
-        .row-extra { background-color: rgba(249, 240, 255, 0.8) !important; color: #531dab !important; }
-        
+        .row-over { background-color: #fff1f0 !important; color: #cf1322 !important; }
+        .row-under { background-color: #e6f7ff !important; color: #096dd9 !important; }
+        .row-extra { background-color: #f9f0ff !important; color: #531dab !important; }
         .edit-input { width: 100%; padding: 4px; border: 1px solid var(--primary); border-radius: 4px; text-align: center; font-size: 13px; }
         .del-btn { background: #ff7875; color: white; border: none; border-radius: 4px; padding: 4px 8px; font-weight: bold; }
     </style>
 </head>
 <body onclick="unlockAudio()">
-
-<div class="bg-watermark">
-    敬畏耶和华是智慧的开端；认识至圣者便是聪明。<br>
-    The fear of the LORD is the beginning of wisdom, and knowledge of the Holy One is understanding.
-</div>
 
 <div class="main-wrapper">
     <div class="panel-right">
@@ -104,6 +92,13 @@
             <input type="text" id="locIn" list="locList" class="loc-input" placeholder="扫入库位 (LOC)">
             <datalist id="locList"></datalist>
             <button class="btn btn-save" id="saveBtn" onclick="addBatch()">SAVE ALL (保存并备份)</button>
+        </div>
+    </div>
+
+    <div class="watermark-container">
+        <div class="bg-watermark">
+            敬畏耶和华是智慧的开端；认识至圣者便是聪明。<br>
+            The fear of the LORD is the beginning of wisdom...
         </div>
     </div>
 
@@ -178,10 +173,8 @@
         const op = document.getElementById('opName').value.trim();
         if(!lv || !op) { playSound('error'); return; }
         if (setLoc.size > 0 && !setLoc.has(lv)) { playSound('error'); return; }
-
         let batch = [], any = false, mismatch = false;
         const dateStr = new Date().toISOString().slice(0,10).replace(/-/g, "");
-
         for(let i=1; i<=6; i++) {
             const sv = document.getElementById('s'+i).value.trim().toUpperCase();
             const qv = parseFloat(document.getElementById('q'+i).value);
@@ -189,18 +182,8 @@
             if(dailyActive && dbDaily[sv] === undefined && forceSKU !== sv) { mismatch = true; forceSKU = sv; break; }
             if(!qv || qv <= 0) { playSound('error'); return; }
             any = true;
-            batch.push({ 
-                id: Date.now()+i, 
-                _originSKU: sv, 
-                SKU: dbMaster[sv]?dbMaster[sv].b:sv, 
-                Name: dbMaster[sv]?dbMaster[sv].c:"N/A", 
-                Quantity: qv, 
-                Location: lv, 
-                FullLocation: "Patiki Warehouse: " + lv,
-                Date: dateStr 
-            });
+            batch.push({ id: Date.now()+i, _originSKU: sv, SKU: dbMaster[sv]?dbMaster[sv].b:sv, Name: dbMaster[sv]?dbMaster[sv].c:"N/A", Quantity: qv, Location: lv, FullLocation: "Patiki Warehouse: " + lv, Date: dateStr });
         }
-
         if(mismatch) {
             playSound('error'); const b = document.getElementById('saveBtn'); b.innerText = "不在清单，再点一次保存"; b.style.background = "orange";
             setTimeout(() => { b.innerText = "SAVE ALL (保存并备份)"; b.style.background = ""; forceSKU = null; }, 3000);
@@ -208,12 +191,9 @@
         }
         if(!any) return;
         data = [...batch, ...data]; render(); saveLocal(); 
-        
-        let hasOver = false;
         let totals = {}; data.forEach(d => totals[d._originSKU] = (totals[d._originSKU] || 0) + d.Quantity);
-        batch.forEach(b => { if(dailyActive && dbDaily[b._originSKU] && totals[b._originSKU] > dbDaily[b._originSKU]) hasOver = true; });
-        playSound(hasOver ? 'warn' : 'success');
-
+        let over = false; batch.forEach(b => { if(dailyActive && dbDaily[b._originSKU] && totals[b._originSKU] > dbDaily[b._originSKU]) over = true; });
+        playSound(over ? 'warn' : 'success');
         for(let i=1; i<=6; i++) { document.getElementById('s'+i).value = ""; document.getElementById('q'+i).value = ""; }
         document.getElementById('locIn').value = ""; document.getElementById('s1').focus();
         forceSKU = null;
@@ -221,65 +201,36 @@
 
     function render() {
         const tbody = document.querySelector("#mainTable tbody"); tbody.innerHTML = "";
-        let totals = {}; 
-        data.forEach(d => totals[d._originSKU] = (totals[d._originSKU] || 0) + d.Quantity);
-
+        let totals = {}; data.forEach(d => totals[d._originSKU] = (totals[d._originSKU] || 0) + d.Quantity);
         data.forEach(d => {
-            const plan = dbDaily[d._originSKU];
-            const currentTotal = totals[d._originSKU];
-            let diffText = "OK", rowClass = "";
-
+            const plan = dbDaily[d._originSKU], total = totals[d._originSKU];
+            let diff = "OK", row = "";
             if (dailyActive) {
-                if (plan === undefined) { diffText = "EXT"; rowClass = "row-extra"; }
-                else if (currentTotal > plan) { diffText = "+" + (currentTotal - plan); rowClass = "row-over"; } 
-                else if (currentTotal < plan) { diffText = (currentTotal - plan).toString(); rowClass = "row-under"; }
+                if (plan === undefined) { diff = "EXT"; row = "row-extra"; }
+                else if (total > plan) { diff = "+" + (total - plan); row = "row-over"; } 
+                else if (total < plan) { diff = (total - plan).toString(); row = "row-under"; }
             }
-
-            let displaySKU = d.SKU;
-            if (displaySKU.includes('~')) displaySKU = displaySKU.split('~').pop();
-
-            let tr = document.createElement('tr');
-            tr.className = rowClass;
-            tr.innerHTML = `
-                <td class="td-sku">${displaySKU}</td>
-                <td class="td-loc">${d.Location}</td>
-                <td><input type="number" class="edit-input" value="${d.Quantity}" onchange="updateQty(${d.id},this.value)"></td>
-                <td style="font-weight:bold; font-size:11px;">${diffText}</td>
-                <td><button class="del-btn" onclick="del(${d.id})">×</button></td>
-            `;
+            let skuD = d.SKU; if (skuD.includes('~')) skuD = skuD.split('~').pop();
+            let tr = document.createElement('tr'); tr.className = row;
+            tr.innerHTML = `<td class="td-sku">${skuD}</td><td class="td-loc">${d.Location}</td><td><input type="number" class="edit-input" value="${d.Quantity}" onchange="updateQty(${d.id},this.value)"></td><td style="font-weight:bold; font-size:11px;">${diff}</td><td><button class="del-btn" onclick="del(${d.id})">×</button></td>`;
             tbody.appendChild(tr); 
         });
     }
 
     function updateQty(id, v) { let n=parseFloat(v); if(n>0){data.find(x=>x.id===id).Quantity=n; render(); saveLocal();} }
     function del(id) { if(confirm("删除？")){data = data.filter(x => x.id !== id); render(); saveLocal();} }
-    function saveLocal() { 
-        localStorage.setItem('wh_v820_data', JSON.stringify(data)); 
-        localStorage.setItem('wh_v820_op', document.getElementById('opName').value); 
-        localStorage.setItem('wh_v820_backup', JSON.stringify(data));
-    }
-    
+    function saveLocal() { localStorage.setItem('wh_v820_data', JSON.stringify(data)); localStorage.setItem('wh_v820_op', document.getElementById('opName').value); localStorage.setItem('wh_v820_backup', JSON.stringify(data)); }
     function exportCsv() {
         if(!data.length) return;
         let ts = {}; data.forEach(d => ts[d._originSKU] = (ts[d._originSKU] || 0) + d.Quantity);
-        const op = document.getElementById('opName').value.trim() || "User";
-        const dateNow = new Date().toISOString().slice(0,10).replace(/-/g, "");
-        const csv = Papa.unparse([
-            ["SKU","Name","BatchSerialNumber","SupplierSKU","ExpiryDate_YYYYMMDD","Quantity","Location","DateReceived_YYYYMMDD","Received","Exception_Note"], 
-            ...data.map(d => {
-                const p = dbDaily[d._originSKU], t = ts[d._originSKU];
-                let note = "";
-                if (dailyActive) {
-                    if (p === undefined) note = "NOT IN LIST";
-                    else if (t > p) note = "+" + (t - p);
-                    else if (t < p) note = (t - p);
-                }
-                return [d.SKU, d.Name, "", "", "", d.Quantity, d.FullLocation, d.Date, "TRUE", note];
-            })
-        ]);
+        const op = document.getElementById('opName').value.trim() || "User", dt = new Date().toISOString().slice(0,10).replace(/-/g, "");
+        const csv = Papa.unparse([["SKU","Name","BatchSerialNumber","SupplierSKU","ExpiryDate_YYYYMMDD","Quantity","Location","DateReceived_YYYYMMDD","Received","Exception_Note"], ...data.map(d => {
+            const p = dbDaily[d._originSKU], t = ts[d._originSKU];
+            let n = ""; if (dailyActive) { if (p === undefined) n = "NOT IN LIST"; else if (t > p) n = "+" + (t - p); else if (t < p) n = (t - p); }
+            return [d.SKU, d.Name, "", "", "", d.Quantity, d.FullLocation, d.Date, "TRUE", n];
+        })]);
         const b = new Blob(["\ufeff"+csv], { type: 'text/csv;charset=utf-8;' });
-        const a = document.createElement("a"); a.href = URL.createObjectURL(b); 
-        a.download = `Putway_${op}_${dateNow}.csv`; a.click();
+        const a = document.createElement("a"); a.href = URL.createObjectURL(b); a.download = `Putway_${op}_${dt}.csv`; a.click();
     }
     function setupEnterKey() {
         const ins = Array.from(document.querySelectorAll('.panel-right input'));
