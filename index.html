@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Warehouse V8.20.33 Professional</title>
+    <title>Warehouse V8.20.34 Professional</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
     <style>
         :root { --primary: #1890ff; --success: #52c41a; --danger: #ff4d4f; --extra: #b37feb; --bg: #f5f7fa; }
@@ -159,11 +159,12 @@
     function loadLocFile(f) { if(!f) return; const r = new FileReader(); r.onload=(e)=>{parseLoc(e.target.result); localStorage.setItem('csv_loc',e.target.result); updateStat('locStat',true); render();}; r.readAsText(f); }
     function parseSKU(txt) { Papa.parse(txt, { complete: (res) => { dbMaster = {}; res.data.forEach((r, i) => { if(i>0 && r[0]) dbMaster[r[0].trim().toUpperCase()] = {b:r[1]||"", c:r[2]||""}; }); }}); }
     
+    // --- 核心修正：增加索引判断 (i > 0)，完美过滤掉第一行的文本表头 ---
     function parseCheck(txt) { 
         Papa.parse(txt, { complete: (res) => { 
             dbDaily = {}; dailyOrder = []; dailyActive = false; 
-            res.data.forEach(r => { 
-                if(r[0]) { 
+            res.data.forEach((r, i) => { 
+                if(i > 0 && r[0]) { // i > 0 确保跳过第一行(i=0)的表头文字
                     let k = r[0].trim().toUpperCase();
                     let q = parseFloat(r[1]) || 0;
                     if (dbDaily[k] !== undefined) {
