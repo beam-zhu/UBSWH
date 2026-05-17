@@ -3,20 +3,19 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Warehouse V8.20.30 Spiritual</title>
+    <title>Warehouse V8.20.31 Professional</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
     <style>
         :root { --primary: #1890ff; --success: #52c41a; --danger: #ff4d4f; --extra: #b37feb; --bg: #f5f7fa; }
         * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
         body { font-family: -apple-system, Roboto, Helvetica, Arial, sans-serif; margin: 0; background: var(--bg); min-height: 100vh; overflow-x: hidden; position: relative; }
         
-        /* 经文水印 - 强化版 */
         .bg-watermark {
             width: 90%;
             margin: 15px auto;
             text-align: center;
             color: #555;
-            opacity: 0.12; /* 调高透明度到 12%，隐约可见但不过分 */
+            opacity: 0.12;
             font-size: 14px;
             font-style: italic;
             pointer-events: none;
@@ -29,7 +28,7 @@
         .main-wrapper { display: flex; flex-direction: column; padding: 8px; gap: 8px; }
         .panel-right { order: 1; width: 100%; } 
         .panel-left { order: 3; width: 100%; display: flex; flex-direction: column; }
-        .watermark-container { order: 2; width: 100%; } /* 将水印放在两个面板中间 */
+        .watermark-container { order: 2; width: 100%; }
         
         @media (min-width: 900px) { 
             .main-wrapper { flex-direction: row; height: 100vh; overflow: hidden; }
@@ -50,16 +49,25 @@
         .btn { height: 54px; border: none; border-radius: 10px; font-weight: bold; cursor: pointer; font-size: 18px; width: 100%; }
         .btn-save { background: var(--success); color: white; margin-top: 8px; }
         .btn-export { background: #444; color: white; height: 48px; font-size: 14px; flex-shrink: 0; margin-top: 10px; }
+        
         .table-wrap { flex: 1; overflow-y: auto; background: white; border-radius: 12px; border: 1px solid #e8e8e8; }
         table { width: 100%; border-collapse: collapse; font-size: 12px; table-layout: fixed; }
         th, td { padding: 8px 2px; border-bottom: 1px solid #f0f0f0; text-align: center; vertical-align: middle; }
+        
         .td-sku { word-break: break-all; white-space: normal; text-align: left; padding-left: 4px; font-weight: bold; font-size: 13px; }
         .td-loc { font-size: 11px; color: #666; word-break: break-all; }
         th { background: #fafafa; position: sticky; top: 0; z-index: 10; font-size: 10px; color: #555; }
+        
+        /* 颜色基调与状态样式 */
         .row-over { background-color: #fff1f0 !important; color: #cf1322 !important; }
         .row-under { background-color: #e6f7ff !important; color: #096dd9 !important; }
         .row-extra { background-color: #f9f0ff !important; color: #531dab !important; }
-        .edit-input { width: 100%; padding: 4px; border: 1px solid var(--primary); border-radius: 4px; text-align: center; font-size: 13px; }
+        
+        /* 核心：暗色调与实收黑色字体样式 */
+        .status-pending { color: #aaaaaa !important; } /* 待收货：暗色调灰色 */
+        .status-active { color: #222222 !important; }   /* 有实收：标准黑字 */
+        
+        .edit-input { width: 100%; padding: 4px; border: 1px solid var(--primary); border-radius: 4px; text-align: center; font-size: 13px; background: transparent; }
         .del-btn { background: #ff7875; color: white; border: none; border-radius: 4px; padding: 4px 8px; font-weight: bold; }
     </style>
 </head>
@@ -122,7 +130,7 @@
 </div>
 
 <script>
-    let dbMaster = {}, dbDaily = {}, setLoc = new Set(), data = [];
+    let dbMaster = {}, dbDaily = {}, setLoc = new Set(), data = [], dailyOrder = [];
     let dailyActive = false, audioCtx = null, forceSKU = null;
 
     function unlockAudio() {
@@ -132,13 +140,14 @@
 
     window.onload = () => {
         const cache = localStorage.getItem('wh_v820_data'), op = localStorage.getItem('wh_v820_op');
-        if (cache) { data = JSON.parse(cache); render(); }
+        if (cache) { data = JSON.parse(cache); }
         if (op) document.getElementById('opName').value = op;
         const cM = localStorage.getItem('csv_master'), cC = localStorage.getItem('csv_check'), cL = localStorage.getItem('csv_loc');
         if(cM) { parseSKU(cM); updateStat('skuStat', true); }
         if(cC) { parseCheck(cC); updateStat('checkStat', true); }
         if(cL) { parseLoc(cL); updateStat('locStat', true); }
         setupEnterKey();
+        render();
     };
 
     function processFile(t, f) {
@@ -147,11 +156,26 @@
             const txt = e.target.result;
             if(t==='sku') { parseSKU(txt); localStorage.setItem('csv_master', txt); updateStat('skuStat', true); }
             if(t==='check') { parseCheck(txt); localStorage.setItem('csv_check', txt); updateStat('checkStat', true); }
+            render();
         }; r.readAsText(f);
     }
-    function loadLocFile(f) { if(!f) return; const r = new FileReader(); r.onload=(e)=>{parseLoc(e.target.result); localStorage.setItem('csv_loc',e.target.result); updateStat('locStat',true);}; r.readAsText(f); }
+    function loadLocFile(f) { if(!f) return; const r = new FileReader(); r.onload=(e)=>{parseLoc(e.target.result); localStorage.setItem('csv_loc',e.target.result); updateStat('locStat',true); render();}; r.readAsText(f); }
     function parseSKU(txt) { Papa.parse(txt, { complete: (res) => { dbMaster = {}; res.data.forEach((r, i) => { if(i>0 && r[0]) dbMaster[r[0].trim().toUpperCase()] = {b:r[1]||"", c:r[2]||""}; }); }}); }
-    function parseCheck(txt) { Papa.parse(txt, { complete: (res) => { dbDaily = {}; dailyActive = false; res.data.forEach(r => { if(r[0]) { dbDaily[r[0].trim().toUpperCase()] = parseFloat(r[1]) || 0; dailyActive = true; } }); }}); }
+    
+    function parseCheck(txt) { 
+        Papa.parse(txt, { complete: (res) => { 
+            dbDaily = {}; dailyOrder = []; dailyActive = false; 
+            res.data.forEach(r => { 
+                if(r[0]) { 
+                    let k = r[0].trim().toUpperCase();
+                    dbDaily[k] = parseFloat(r[1]) || 0; 
+                    dailyOrder.push(k); // 忠实记录 1-9 的物理原始顺序
+                    dailyActive = true; 
+                } 
+            }); 
+        }}); 
+    }
+
     function parseLoc(txt) { Papa.parse(txt, { complete: (res) => { setLoc.clear(); const dl = document.getElementById('locList'); dl.innerHTML = ""; res.data.forEach(r => r.forEach(c => { if(c && c.toString().trim()) { let v = c.toString().trim().toUpperCase(); setLoc.add(v); let o = document.createElement('option'); o.value = v; dl.appendChild(o); } })); }}); }
     function updateStat(id, r) { const s = document.getElementById(id); s.innerText = r ? "READY" : "EMPTY"; s.className = r ? "status-tag ready" : "status-tag"; }
     function clearCache() { if(confirm("确定清空数据？")) { localStorage.clear(); location.reload(); } }
@@ -173,8 +197,10 @@
         const op = document.getElementById('opName').value.trim();
         if(!lv || !op) { playSound('error'); return; }
         if (setLoc.size > 0 && !setLoc.has(lv)) { playSound('error'); return; }
+
         let batch = [], any = false, mismatch = false;
         const dateStr = new Date().toISOString().slice(0,10).replace(/-/g, "");
+
         for(let i=1; i<=6; i++) {
             const sv = document.getElementById('s'+i).value.trim().toUpperCase();
             const qv = parseFloat(document.getElementById('q'+i).value);
@@ -182,56 +208,214 @@
             if(dailyActive && dbDaily[sv] === undefined && forceSKU !== sv) { mismatch = true; forceSKU = sv; break; }
             if(!qv || qv <= 0) { playSound('error'); return; }
             any = true;
-            batch.push({ id: Date.now()+i, _originSKU: sv, SKU: dbMaster[sv]?dbMaster[sv].b:sv, Name: dbMaster[sv]?dbMaster[sv].c:"N/A", Quantity: qv, Location: lv, FullLocation: "Patiki Warehouse: " + lv, Date: dateStr });
+            batch.push({ 
+                id: Date.now()+i, 
+                _originSKU: sv, 
+                SKU: dbMaster[sv]?dbMaster[sv].b:sv, 
+                Name: dbMaster[sv]?dbMaster[sv].c:"N/A", 
+                Quantity: qv, 
+                Location: lv, 
+                FullLocation: "Patiki Warehouse: " + lv,
+                Date: dateStr 
+            });
         }
+
         if(mismatch) {
             playSound('error'); const b = document.getElementById('saveBtn'); b.innerText = "不在清单，再点一次保存"; b.style.background = "orange";
             setTimeout(() => { b.innerText = "SAVE ALL (保存并备份)"; b.style.background = ""; forceSKU = null; }, 3000);
             return;
         }
         if(!any) return;
-        data = [...batch, ...data]; render(); saveLocal(); 
+        data = [...data, ...batch]; render(); saveLocal(); 
+        
+        let hasOver = false;
         let totals = {}; data.forEach(d => totals[d._originSKU] = (totals[d._originSKU] || 0) + d.Quantity);
-        let over = false; batch.forEach(b => { if(dailyActive && dbDaily[b._originSKU] && totals[b._originSKU] > dbDaily[b._originSKU]) over = true; });
-        playSound(over ? 'warn' : 'success');
+        batch.forEach(b => { if(dailyActive && dbDaily[b._originSKU] && totals[b._originSKU] > dbDaily[b._originSKU]) hasOver = true; });
+        playSound(hasOver ? 'warn' : 'success');
+
         for(let i=1; i<=6; i++) { document.getElementById('s'+i).value = ""; document.getElementById('q'+i).value = ""; }
         document.getElementById('locIn').value = ""; document.getElementById('s1').focus();
         forceSKU = null;
     }
 
+    // --- 核心大脑：全自动核对、置顶与排序引擎 ---
     function render() {
         const tbody = document.querySelector("#mainTable tbody"); tbody.innerHTML = "";
-        let totals = {}; data.forEach(d => totals[d._originSKU] = (totals[d._originSKU] || 0) + d.Quantity);
+        
+        // 1. 统计当前所有的实际录入数量和库位
+        let realTotals = {};
+        let realLocs = {};
+        let hasInputSet = new Set(); // 记录哪些 SKU 产生了实收记录
+
         data.forEach(d => {
-            const plan = dbDaily[d._originSKU], total = totals[d._originSKU];
-            let diff = "OK", row = "";
-            if (dailyActive) {
-                if (plan === undefined) { diff = "EXT"; row = "row-extra"; }
-                else if (total > plan) { diff = "+" + (total - plan); row = "row-over"; } 
-                else if (total < plan) { diff = (total - plan).toString(); row = "row-under"; }
+            realTotals[d._originSKU] = (realTotals[d._originSKU] || 0) + d.Quantity;
+            realLocs[d._originSKU] = d.Location; // 用最新的录入库位来作为显示库位
+            hasInputSet.add(d._originSKU);
+        });
+
+        // 2. 构造所有的“合并行视图”对象
+        let allItems = [];
+
+        // 第一步：将 Daily 里的条目全部按物理顺序生成出来
+        let processedDailyKeys = new Set();
+        dailyOrder.forEach(k => {
+            if (processedDailyKeys.has(k)) return; // 去重
+            processedDailyKeys.add(k);
+            
+            let plan = dbDaily[k];
+            let total = realTotals[k] || 0;
+            let hasInput = hasInputSet.has(k);
+            
+            let diffText = "OK";
+            let isException = false;
+            let rowClass = "";
+
+            if (total > plan) { diffText = "+" + (total - plan); isException = true; rowClass = "row-over"; }
+            else if (total < plan) { diffText = (total - plan).toString(); isException = true; rowClass = "row-under"; }
+
+            // 转换要显示的简短 SKU
+            let masterSKU = dbMaster[k] ? dbMaster[k].b : k;
+            let displaySKU = masterSKU;
+            if (displaySKU.includes('~')) displaySKU = displaySKU.split('~').pop();
+
+            allItems.push({
+                _originSKU: k,
+                displaySKU: displaySKU,
+                location: realLocs[k] || "—",
+                quantity: total,
+                diffText: diffText,
+                isException: isException,
+                rowClass: rowClass,
+                hasInput: hasInput,
+                source: 'daily' // 标记属于清单内部
+            });
+        });
+
+        // 第二步：处理那些不在 Daily 清单内，强行保存进来的 EXT (紫色异常)
+        hasInputSet.forEach(k => {
+            if (dbDaily[k] === undefined) {
+                let total = realTotals[k] || 0;
+                let masterSKU = dbMaster[k] ? dbMaster[k].b : k;
+                let displaySKU = masterSKU;
+                if (displaySKU.includes('~')) displaySKU = displaySKU.split('~').pop();
+
+                allItems.push({
+                    _originSKU: k,
+                    displaySKU: displaySKU,
+                    location: realLocs[k] || "—",
+                    quantity: total,
+                    diffText: "EXT",
+                    isException: true,
+                    rowClass: "row-extra",
+                    hasInput: true,
+                    source: 'extra'
+                });
             }
-            let skuD = d.SKU; if (skuD.includes('~')) skuD = skuD.split('~').pop();
-            let tr = document.createElement('tr'); tr.className = row;
-            tr.innerHTML = `<td class="td-sku">${skuD}</td><td class="td-loc">${d.Location}</td><td><input type="number" class="edit-input" value="${d.Quantity}" onchange="updateQty(${d.id},this.value)"></td><td style="font-weight:bold; font-size:11px;">${diff}</td><td><button class="del-btn" onclick="del(${d.id})">×</button></td>`;
-            tbody.appendChild(tr); 
+        });
+
+        // 3. 核心排序策略：有异常的（包括未录入完的负数、多收、清单外）置顶，正常的沉底
+        allItems.sort((a, b) => {
+            // 如果 dailyActive 没开启，就不启动复杂的置顶逻辑，按原始来
+            if (!dailyActive) return 0;
+
+            // 1. 优先比对是否异常（isException）
+            if (a.isException && !b.isException) return -1;
+            if (!a.isException && b.isException) return 1;
+
+            // 2. 如果同为异常，或者同为正常，则保持物理 1-9 的先后排列顺序（通过在原数组中的索引对比）
+            return 0; 
+        });
+
+        // 4. 渲染到前端 HTML 表格中
+        allItems.forEach(item => {
+            let tr = document.createElement('tr');
+            tr.className = item.rowClass;
+            
+            // 字体显色切换：没有录入过数据的显示 status-pending（暗色调），录入过的显示 status-active（深黑色）
+            let fontStyleClass = item.hasInput ? "status-active" : "status-pending";
+            tr.classList.add(fontStyleClass);
+
+            // 构造数量编辑框的 HTML
+            let qtyCellHtml = "";
+            if (item.hasInput) {
+                qtyCellHtml = `<input type="number" class="edit-input" value="${item.quantity}" onchange="updateGlobalQty('${item._originSKU}', this.value)">`;
+            } else {
+                qtyCellHtml = `<span style="font-size:13px;">0</span> <span style="font-size:10px;color:#aaa;">(待收:${dbDaily[item._originSKU]})</span>`;
+            }
+
+            // 构造删除按钮：没有实收的行不允许删（因为它是任务预显）
+            let delCellHtml = item.hasInput ? `<button class="del-btn" onclick="deleteGlobalSKU('${item._originSKU}')">×</button>` : "—";
+
+            tr.innerHTML = `
+                <td class="td-sku">${item.displaySKU}</td>
+                <td class="td-loc">${item.location}</td>
+                <td>${qtyCellHtml}</td>
+                <td style="font-weight:bold; font-size:11px;">${item.diffText}</td>
+                <td>${delCellHtml}</td>
+            `;
+            tbody.appendChild(tr);
         });
     }
 
-    function updateQty(id, v) { let n=parseFloat(v); if(n>0){data.find(x=>x.id===id).Quantity=n; render(); saveLocal();} }
-    function del(id) { if(confirm("删除？")){data = data.filter(x => x.id !== id); render(); saveLocal();} }
-    function saveLocal() { localStorage.setItem('wh_v820_data', JSON.stringify(data)); localStorage.setItem('wh_v820_op', document.getElementById('opName').value); localStorage.setItem('wh_v820_backup', JSON.stringify(data)); }
+    // 由于数据结构改为了“任务合并视图”，修改和删除逻辑也需要升级为“按SKU全局联动”
+    function updateGlobalQty(originSKU, newQtyStr) {
+        let n = parseFloat(newQtyStr);
+        if (n >= 0) {
+            // 清空旧的这个 SKU 记录，合并成一条新记录注入，以保证总数被平准修改
+            data = data.filter(x => x._originSKU !== originSKU);
+            if (n > 0) {
+                const dateStr = new Date().toISOString().slice(0,10).replace(/-/g, "");
+                data.push({
+                    id: Date.now(),
+                    _originSKU: originSKU,
+                    SKU: dbMaster[originSKU] ? dbMaster[originSKU].b : originSKU,
+                    Name: dbMaster[originSKU] ? dbMaster[originSKU].c : "N/A",
+                    Quantity: n,
+                    Location: "EDITED",
+                    FullLocation: "Patiki Warehouse: EDITED",
+                    Date: dateStr
+                });
+            }
+            render();
+            saveLocal();
+        }
+    }
+
+    function deleteGlobalSKU(originSKU) {
+        if (confirm(`确定要清空 SKU [${originSKU}] 的所有实收数据吗？`)) {
+            data = data.filter(x => x._originSKU !== originSKU);
+            render();
+            saveLocal();
+        }
+    }
+
+    function saveLocal() { 
+        localStorage.setItem('wh_v820_data', JSON.stringify(data)); 
+        localStorage.setItem('wh_v820_op', document.getElementById('opName').value); 
+        localStorage.setItem('wh_v820_backup', JSON.stringify(data));
+    }
+    
     function exportCsv() {
         if(!data.length) return;
         let ts = {}; data.forEach(d => ts[d._originSKU] = (ts[d._originSKU] || 0) + d.Quantity);
-        const op = document.getElementById('opName').value.trim() || "User", dt = new Date().toISOString().slice(0,10).replace(/-/g, "");
-        const csv = Papa.unparse([["SKU","Name","BatchSerialNumber","SupplierSKU","ExpiryDate_YYYYMMDD","Quantity","Location","DateReceived_YYYYMMDD","Received","Exception_Note"], ...data.map(d => {
-            const p = dbDaily[d._originSKU], t = ts[d._originSKU];
-            let n = ""; if (dailyActive) { if (p === undefined) n = "NOT IN LIST"; else if (t > p) n = "+" + (t - p); else if (t < p) n = (t - p); }
-            return [d.SKU, d.Name, "", "", "", d.Quantity, d.FullLocation, d.Date, "TRUE", n];
-        })]);
+        const op = document.getElementById('opName').value.trim() || "User", dateNow = new Date().toISOString().slice(0,10).replace(/-/g, "");
+        const csv = Papa.unparse([
+            ["SKU","Name","BatchSerialNumber","SupplierSKU","ExpiryDate_YYYYMMDD","Quantity","Location","DateReceived_YYYYMMDD","Received","Exception_Note"], 
+            ...data.map(d => {
+                const p = dbDaily[d._originSKU], t = ts[d._originSKU];
+                let note = "";
+                if (dailyActive) {
+                    if (p === undefined) note = "NOT IN LIST";
+                    else if (t > p) note = "+" + (t - p);
+                    else if (t < p) note = (t - p);
+                }
+                return [d.SKU, d.Name, "", "", "", d.Quantity, d.FullLocation, d.Date, "TRUE", note];
+            })
+        ]);
         const b = new Blob(["\ufeff"+csv], { type: 'text/csv;charset=utf-8;' });
-        const a = document.createElement("a"); a.href = URL.createObjectURL(b); a.download = `Putway_${op}_${dt}.csv`; a.click();
+        const a = document.createElement("a"); a.href = URL.createObjectURL(b); a.download = `Putway_${op}_${dateNow}.csv`; a.click();
     }
+    
     function setupEnterKey() {
         const ins = Array.from(document.querySelectorAll('.panel-right input'));
         ins.forEach((input, index) => { input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); (ins[index + 1] || ins[0]).focus(); if(input.id === 'locIn') addBatch(); } }); });
