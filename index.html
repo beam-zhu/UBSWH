@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Warehouse V8.20.31 Professional</title>
+    <title>Warehouse V8.20.32 Professional</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
     <style>
         :root { --primary: #1890ff; --success: #52c41a; --danger: #ff4d4f; --extra: #b37feb; --bg: #f5f7fa; }
@@ -58,14 +58,12 @@
         .td-loc { font-size: 11px; color: #666; word-break: break-all; }
         th { background: #fafafa; position: sticky; top: 0; z-index: 10; font-size: 10px; color: #555; }
         
-        /* 颜色基调与状态样式 */
         .row-over { background-color: #fff1f0 !important; color: #cf1322 !important; }
         .row-under { background-color: #e6f7ff !important; color: #096dd9 !important; }
         .row-extra { background-color: #f9f0ff !important; color: #531dab !important; }
         
-        /* 核心：暗色调与实收黑色字体样式 */
-        .status-pending { color: #aaaaaa !important; } /* 待收货：暗色调灰色 */
-        .status-active { color: #222222 !important; }   /* 有实收：标准黑字 */
+        .status-pending { color: #aaaaaa !important; } 
+        .status-active { color: #222222 !important; }   
         
         .edit-input { width: 100%; padding: 4px; border: 1px solid var(--primary); border-radius: 4px; text-align: center; font-size: 13px; background: transparent; }
         .del-btn { background: #ff7875; color: white; border: none; border-radius: 4px; padding: 4px 8px; font-weight: bold; }
@@ -147,32 +145,38 @@
         if(cC) { parseCheck(cC); updateStat('checkStat', true); }
         if(cL) { parseLoc(cL); updateStat('locStat', true); }
         setupEnterKey();
-        render();
+        setTimeout(render, 300); // 延迟缓冲确保异步数据渲染完整
     };
 
     function processFile(t, f) {
         if(!f) return; const r = new FileReader();
         r.onload = (e) => {
             const txt = e.target.result;
-            if(t==='sku') { parseSKU(txt); localStorage.setItem('csv_master', txt); updateStat('skuStat', true); }
+            if(t==='sku') { parseSKU(txt); localStorage.setItem('csv_master', txt); updateStat('skuStat', true); render(); }
             if(t==='check') { parseCheck(txt); localStorage.setItem('csv_check', txt); updateStat('checkStat', true); }
-            render();
         }; r.readAsText(f);
     }
     function loadLocFile(f) { if(!f) return; const r = new FileReader(); r.onload=(e)=>{parseLoc(e.target.result); localStorage.setItem('csv_loc',e.target.result); updateStat('locStat',true); render();}; r.readAsText(f); }
     function parseSKU(txt) { Papa.parse(txt, { complete: (res) => { dbMaster = {}; res.data.forEach((r, i) => { if(i>0 && r[0]) dbMaster[r[0].trim().toUpperCase()] = {b:r[1]||"", c:r[2]||""}; }); }}); }
     
+    // --- 核心修正：导入 Daily 时对重复 SKU 自动进行累加合并 ---
     function parseCheck(txt) { 
         Papa.parse(txt, { complete: (res) => { 
             dbDaily = {}; dailyOrder = []; dailyActive = false; 
             res.data.forEach(r => { 
                 if(r[0]) { 
                     let k = r[0].trim().toUpperCase();
-                    dbDaily[k] = parseFloat(r[1]) || 0; 
-                    dailyOrder.push(k); // 忠实记录 1-9 的物理原始顺序
+                    let q = parseFloat(r[1]) || 0;
+                    if (dbDaily[k] !== undefined) {
+                        dbDaily[k] += q; // 核心：如果清单内部有重复SKU，直接累加数量合并
+                    } else {
+                        dbDaily[k] = q; 
+                        dailyOrder.push(k); // 只有在第一次出现时记录 1-9 的原始位置，防止看板行重复
+                    }
                     dailyActive = true; 
                 } 
             }); 
+            render();
         }}); 
     }
 
@@ -238,60 +242,42 @@
         forceSKU = null;
     }
 
-    // --- 核心大脑：全自动核对、置顶与排序引擎 ---
     function render() {
         const tbody = document.querySelector("#mainTable tbody"); tbody.innerHTML = "";
-        
-        // 1. 统计当前所有的实际录入数量和库位
-        let realTotals = {};
-        let realLocs = {};
-        let hasInputSet = new Set(); // 记录哪些 SKU 产生了实收记录
+        let realTotals = {}; let realLocs = {}; let hasInputSet = new Set();
 
         data.forEach(d => {
             realTotals[d._originSKU] = (realTotals[d._originSKU] || 0) + d.Quantity;
-            realLocs[d._originSKU] = d.Location; // 用最新的录入库位来作为显示库位
+            realLocs[d._originSKU] = d.Location; 
             hasInputSet.add(d._originSKU);
         });
 
-        // 2. 构造所有的“合并行视图”对象
         let allItems = [];
-
-        // 第一步：将 Daily 里的条目全部按物理顺序生成出来
         let processedDailyKeys = new Set();
+        
         dailyOrder.forEach(k => {
-            if (processedDailyKeys.has(k)) return; // 去重
+            if (processedDailyKeys.has(k)) return;
             processedDailyKeys.add(k);
             
             let plan = dbDaily[k];
             let total = realTotals[k] || 0;
             let hasInput = hasInputSet.has(k);
-            
-            let diffText = "OK";
-            let isException = false;
-            let rowClass = "";
+            let diffText = "OK"; let isException = false; let rowClass = "";
 
             if (total > plan) { diffText = "+" + (total - plan); isException = true; rowClass = "row-over"; }
             else if (total < plan) { diffText = (total - plan).toString(); isException = true; rowClass = "row-under"; }
 
-            // 转换要显示的简短 SKU
             let masterSKU = dbMaster[k] ? dbMaster[k].b : k;
             let displaySKU = masterSKU;
             if (displaySKU.includes('~')) displaySKU = displaySKU.split('~').pop();
 
             allItems.push({
-                _originSKU: k,
-                displaySKU: displaySKU,
-                location: realLocs[k] || "—",
-                quantity: total,
-                diffText: diffText,
-                isException: isException,
-                rowClass: rowClass,
-                hasInput: hasInput,
-                source: 'daily' // 标记属于清单内部
+                _originSKU: k, displaySKU: displaySKU, location: realLocs[k] || "—",
+                quantity: total, diffText: diffText, isException: isException,
+                rowClass: rowClass, hasInput: hasInput, source: 'daily'
             });
         });
 
-        // 第二步：处理那些不在 Daily 清单内，强行保存进来的 EXT (紫色异常)
         hasInputSet.forEach(k => {
             if (dbDaily[k] === undefined) {
                 let total = realTotals[k] || 0;
@@ -300,50 +286,30 @@
                 if (displaySKU.includes('~')) displaySKU = displaySKU.split('~').pop();
 
                 allItems.push({
-                    _originSKU: k,
-                    displaySKU: displaySKU,
-                    location: realLocs[k] || "—",
-                    quantity: total,
-                    diffText: "EXT",
-                    isException: true,
-                    rowClass: "row-extra",
-                    hasInput: true,
-                    source: 'extra'
+                    _originSKU: k, displaySKU: displaySKU, location: realLocs[k] || "—",
+                    quantity: total, diffText: "EXT", isException: true,
+                    rowClass: "row-extra", hasInput: true, source: 'extra'
                 });
             }
         });
 
-        // 3. 核心排序策略：有异常的（包括未录入完的负数、多收、清单外）置顶，正常的沉底
         allItems.sort((a, b) => {
-            // 如果 dailyActive 没开启，就不启动复杂的置顶逻辑，按原始来
             if (!dailyActive) return 0;
-
-            // 1. 优先比对是否异常（isException）
             if (a.isException && !b.isException) return -1;
             if (!a.isException && b.isException) return 1;
-
-            // 2. 如果同为异常，或者同为正常，则保持物理 1-9 的先后排列顺序（通过在原数组中的索引对比）
             return 0; 
         });
 
-        // 4. 渲染到前端 HTML 表格中
         allItems.forEach(item => {
             let tr = document.createElement('tr');
             tr.className = item.rowClass;
-            
-            // 字体显色切换：没有录入过数据的显示 status-pending（暗色调），录入过的显示 status-active（深黑色）
             let fontStyleClass = item.hasInput ? "status-active" : "status-pending";
             tr.classList.add(fontStyleClass);
 
-            // 构造数量编辑框的 HTML
-            let qtyCellHtml = "";
-            if (item.hasInput) {
-                qtyCellHtml = `<input type="number" class="edit-input" value="${item.quantity}" onchange="updateGlobalQty('${item._originSKU}', this.value)">`;
-            } else {
-                qtyCellHtml = `<span style="font-size:13px;">0</span> <span style="font-size:10px;color:#aaa;">(待收:${dbDaily[item._originSKU]})</span>`;
-            }
+            let qtyCellHtml = item.hasInput 
+                ? `<input type="number" class="edit-input" value="${item.quantity}" onchange="updateGlobalQty('${item._originSKU}', this.value)">`
+                : `<span style="font-size:13px;">0</span> <span style="font-size:10px;color:#aaa;">(待收:${dbDaily[item._originSKU]})</span>`;
 
-            // 构造删除按钮：没有实收的行不允许删（因为它是任务预显）
             let delCellHtml = item.hasInput ? `<button class="del-btn" onclick="deleteGlobalSKU('${item._originSKU}')">×</button>` : "—";
 
             tr.innerHTML = `
@@ -357,35 +323,27 @@
         });
     }
 
-    // 由于数据结构改为了“任务合并视图”，修改和删除逻辑也需要升级为“按SKU全局联动”
     function updateGlobalQty(originSKU, newQtyStr) {
         let n = parseFloat(newQtyStr);
         if (n >= 0) {
-            // 清空旧的这个 SKU 记录，合并成一条新记录注入，以保证总数被平准修改
             data = data.filter(x => x._originSKU !== originSKU);
             if (n > 0) {
                 const dateStr = new Date().toISOString().slice(0,10).replace(/-/g, "");
                 data.push({
-                    id: Date.now(),
-                    _originSKU: originSKU,
+                    id: Date.now(), _originSKU: originSKU,
                     SKU: dbMaster[originSKU] ? dbMaster[originSKU].b : originSKU,
                     Name: dbMaster[originSKU] ? dbMaster[originSKU].c : "N/A",
-                    Quantity: n,
-                    Location: "EDITED",
-                    FullLocation: "Patiki Warehouse: EDITED",
-                    Date: dateStr
+                    Quantity: n, Location: "EDITED", FullLocation: "Patiki Warehouse: EDITED", Date: dateStr
                 });
             }
-            render();
-            saveLocal();
+            render(); saveLocal();
         }
     }
 
     function deleteGlobalSKU(originSKU) {
         if (confirm(`确定要清空 SKU [${originSKU}] 的所有实收数据吗？`)) {
             data = data.filter(x => x._originSKU !== originSKU);
-            render();
-            saveLocal();
+            render(); saveLocal();
         }
     }
 
