@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Warehouse V8.20.32 Professional</title>
+    <title>Warehouse V8.20.33 Professional</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
     <style>
         :root { --primary: #1890ff; --success: #52c41a; --danger: #ff4d4f; --extra: #b37feb; --bg: #f5f7fa; }
@@ -75,18 +75,18 @@
     <div class="panel-right">
         <div class="card">
             <div class="file-grid">
-                <div class="file-btn"><span>SKU库</span><input type="file" accept=".csv" onchange="processFile('sku', this.files[0])"><span id="skuStat" class="status-tag">EMPTY</span></div>
-                <div class="file-btn"><span>DAILY清单</span><input type="file" accept=".csv" onchange="processFile('check', this.files[0])"><span id="checkStat" class="status-tag">OPTIONAL</span></div>
-                <div class="file-btn"><span>库位表</span><input type="file" accept=".csv" onchange="loadLocFile(this.files[0])"><span id="locStat" class="status-tag">EMPTY</span></div>
+                <div class="file-btn"><span>SKU</span><input type="file" accept=".csv" onchange="processFile('sku', this.files[0])"><span id="skuStat" class="status-tag">EMPTY</span></div>
+                <div class="file-btn"><span>DAILY</span><input type="file" accept=".csv" onchange="processFile('check', this.files[0])"><span id="checkStat" class="status-tag">OPTIONAL</span></div>
+                <div class="file-btn"><span>LOC</span><input type="file" accept=".csv" onchange="loadLocFile(this.files[0])"><span id="locStat" class="status-tag">EMPTY</span></div>
             </div>
             <div style="display: flex; justify-content: space-between; margin-top: 8px;">
-                <button onclick="clearCache()" style="font-size:10px; color:red; border:none; background:none; padding:5px;">[清空缓存]</button>
-                <button onclick="recoverBackup()" style="font-size:10px; color:blue; border:none; background:none; padding:5px;">[恢复数据]</button>
+                <button onclick="clearCache()" style="font-size:10px; color:red; border:none; background:none; padding:5px; font-weight:bold;">[CLEAR CACHE]</button>
+                <button onclick="recoverBackup()" style="font-size:10px; color:blue; border:none; background:none; padding:5px; font-weight:bold;">[RECOVER BACKUP]</button>
             </div>
         </div>
 
         <div class="card">
-            <input type="text" id="opName" placeholder="操作员姓名" onchange="saveLocal()">
+            <input type="text" id="opName" placeholder="Operator Name" onchange="saveLocal()">
             <div id="batchContainer">
                 <div class="sku-row"><input type="text" id="s1" placeholder="SKU 1" inputmode="decimal"><input type="tel" id="q1" placeholder="Qty"></div>
                 <div class="sku-row"><input type="text" id="s2" placeholder="SKU 2" inputmode="decimal"><input type="tel" id="q2" placeholder="Qty"></div>
@@ -95,16 +95,16 @@
                 <div class="sku-row"><input type="text" id="s5" placeholder="SKU 5" inputmode="decimal"><input type="tel" id="q5" placeholder="Qty"></div>
                 <div class="sku-row"><input type="text" id="s6" placeholder="SKU 6" inputmode="decimal"><input type="tel" id="q6" placeholder="Qty"></div>
             </div>
-            <input type="text" id="locIn" list="locList" class="loc-input" placeholder="扫入库位 (LOC)">
+            <input type="text" id="locIn" list="locList" class="loc-input" placeholder="SCAN LOCATION (LOC)">
             <datalist id="locList"></datalist>
-            <button class="btn btn-save" id="saveBtn" onclick="addBatch()">SAVE ALL (保存并备份)</button>
+            <button class="btn btn-save" id="saveBtn" onclick="addBatch()">SAVE ALL</button>
         </div>
     </div>
 
     <div class="watermark-container">
         <div class="bg-watermark">
             敬畏耶和华是智慧的开端；认识至圣者便是聪明。<br>
-            The fear of the LORD is the beginning of wisdom...
+            The fear of the LORD is the beginning of wisdom, and knowledge of the Holy One is understanding.
         </div>
     </div>
 
@@ -116,8 +116,8 @@
                         <th style="width: 30%;">SKU</th>
                         <th style="width: 25%;">Location</th>
                         <th style="width: 18%;">Qty</th>
-                        <th style="width: 15%;">状态</th>
-                        <th style="width: 12%;">删</th>
+                        <th style="width: 15%;">STATUS</th>
+                        <th style="width: 12%;">DEL</th>
                     </tr>
                 </thead>
                 <tbody></tbody>
@@ -145,7 +145,7 @@
         if(cC) { parseCheck(cC); updateStat('checkStat', true); }
         if(cL) { parseLoc(cL); updateStat('locStat', true); }
         setupEnterKey();
-        setTimeout(render, 300); // 延迟缓冲确保异步数据渲染完整
+        setTimeout(render, 300);
     };
 
     function processFile(t, f) {
@@ -159,7 +159,6 @@
     function loadLocFile(f) { if(!f) return; const r = new FileReader(); r.onload=(e)=>{parseLoc(e.target.result); localStorage.setItem('csv_loc',e.target.result); updateStat('locStat',true); render();}; r.readAsText(f); }
     function parseSKU(txt) { Papa.parse(txt, { complete: (res) => { dbMaster = {}; res.data.forEach((r, i) => { if(i>0 && r[0]) dbMaster[r[0].trim().toUpperCase()] = {b:r[1]||"", c:r[2]||""}; }); }}); }
     
-    // --- 核心修正：导入 Daily 时对重复 SKU 自动进行累加合并 ---
     function parseCheck(txt) { 
         Papa.parse(txt, { complete: (res) => { 
             dbDaily = {}; dailyOrder = []; dailyActive = false; 
@@ -168,10 +167,10 @@
                     let k = r[0].trim().toUpperCase();
                     let q = parseFloat(r[1]) || 0;
                     if (dbDaily[k] !== undefined) {
-                        dbDaily[k] += q; // 核心：如果清单内部有重复SKU，直接累加数量合并
+                        dbDaily[k] += q; 
                     } else {
                         dbDaily[k] = q; 
-                        dailyOrder.push(k); // 只有在第一次出现时记录 1-9 的原始位置，防止看板行重复
+                        dailyOrder.push(k); 
                     }
                     dailyActive = true; 
                 } 
@@ -182,8 +181,8 @@
 
     function parseLoc(txt) { Papa.parse(txt, { complete: (res) => { setLoc.clear(); const dl = document.getElementById('locList'); dl.innerHTML = ""; res.data.forEach(r => r.forEach(c => { if(c && c.toString().trim()) { let v = c.toString().trim().toUpperCase(); setLoc.add(v); let o = document.createElement('option'); o.value = v; dl.appendChild(o); } })); }}); }
     function updateStat(id, r) { const s = document.getElementById(id); s.innerText = r ? "READY" : "EMPTY"; s.className = r ? "status-tag ready" : "status-tag"; }
-    function clearCache() { if(confirm("确定清空数据？")) { localStorage.clear(); location.reload(); } }
-    function recoverBackup() { const b = localStorage.getItem('wh_v820_backup'); if(b) { data = JSON.parse(b); render(); alert("数据已恢复"); } }
+    function clearCache() { if(confirm("Are you sure you want to clear all data and cached lists?")) { localStorage.clear(); location.reload(); } }
+    function recoverBackup() { const b = localStorage.getItem('wh_v820_backup'); if(b) { data = JSON.parse(b); render(); alert("Data successfully recovered!"); } }
 
     function playSound(type) {
         if(!audioCtx) return;
@@ -225,8 +224,8 @@
         }
 
         if(mismatch) {
-            playSound('error'); const b = document.getElementById('saveBtn'); b.innerText = "不在清单，再点一次保存"; b.style.background = "orange";
-            setTimeout(() => { b.innerText = "SAVE ALL (保存并备份)"; b.style.background = ""; forceSKU = null; }, 3000);
+            playSound('error'); const b = document.getElementById('saveBtn'); b.innerText = "SKU NOT IN LIST! TAP AGAIN TO FORCE SAVE"; b.style.background = "orange";
+            setTimeout(() => { b.innerText = "SAVE ALL"; b.style.background = ""; forceSKU = null; }, 3000);
             return;
         }
         if(!any) return;
@@ -308,7 +307,7 @@
 
             let qtyCellHtml = item.hasInput 
                 ? `<input type="number" class="edit-input" value="${item.quantity}" onchange="updateGlobalQty('${item._originSKU}', this.value)">`
-                : `<span style="font-size:13px;">0</span> <span style="font-size:10px;color:#aaa;">(待收:${dbDaily[item._originSKU]})</span>`;
+                : `<span style="font-size:13px;">0</span> <span style="font-size:10px;color:#aaa;">(Plan:${dbDaily[item._originSKU]})</span>`;
 
             let delCellHtml = item.hasInput ? `<button class="del-btn" onclick="deleteGlobalSKU('${item._originSKU}')">×</button>` : "—";
 
@@ -341,7 +340,7 @@
     }
 
     function deleteGlobalSKU(originSKU) {
-        if (confirm(`确定要清空 SKU [${originSKU}] 的所有实收数据吗？`)) {
+        if (confirm(`Are you sure you want to delete all scans for SKU [${originSKU}]?`)) {
             data = data.filter(x => x._originSKU !== originSKU);
             render(); saveLocal();
         }
