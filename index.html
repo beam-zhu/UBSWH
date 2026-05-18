@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Warehouse V8.20.37 Professional</title>
+    <title>Warehouse V8.20.38 Professional</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
     <style>
         :root { --primary: #1890ff; --success: #52c41a; --danger: #ff4d4f; --extra: #b37feb; --bg: #f5f7fa; }
@@ -66,7 +66,7 @@
         .status-active { color: #222222 !important; }   
         
         .edit-input { width: 100%; padding: 4px; border: 1px solid var(--primary); border-radius: 4px; text-align: center; font-size: 13px; background: transparent; }
-        .del-btn { background: #ff7875; color: white; border: none; border-radius: 4px; padding: 4px 8px; font-weight: bold; }
+        .del-btn { background: #ff7875; color: white; border: none; border-radius: 4px; padding: 4px 8px; font-weight: bold; cursor: pointer; }
     </style>
 </head>
 <body onclick="unlockAudio()">
@@ -215,7 +215,6 @@
             if(!qv || qv <= 0) { playSound('error'); return; }
             any = true;
 
-            // 核心修正 1：每一笔录入都打上唯一的时间戳作为行专属自增 ID (Row Unique ID)
             batch.push({ 
                 id: Date.now() + "_" + i + "_" + Math.random().toString(36).substr(2, 5), 
                 _originSKU: sv, 
@@ -242,21 +241,16 @@
         forceSKU = null;
     }
 
-    // --- 核心大脑：多库位智能分离排版与精准状态引擎 ---
     function render() {
         const tbody = document.querySelector("#mainTable tbody"); tbody.innerHTML = "";
-        
-        // 1. 全局统计每个 SKU 的纯数量总数，用来判定状态
         let realSkuTotals = {};
         data.forEach(d => { realSkuTotals[d._originSKU] = (realSkuTotals[d._originSKU] || 0) + d.Quantity; });
 
-        // 2. 将实际录入的数据，按照【SKU + 库位】进行本地合并归类（库位一样才合并）
         let localMergedScans = {};
         data.forEach(d => {
             let comboKey = d._originSKU + "##" + d.Location;
             if (localMergedScans[comboKey]) {
                 localMergedScans[comboKey].quantity += d.Quantity;
-                // 联合记录这一组里所有的原始 row ID，删除时可以全部清理干净
                 localMergedScans[comboKey].rawIds.push(d.id);
             } else {
                 localMergedScans[comboKey] = {
@@ -266,22 +260,20 @@
             }
         });
 
-        // 3. 构建显示队列
         let allDisplayRows = [];
-        let trackedDailyKeysWithInput = new Set(); // 记录哪些 Daily 里的 SKU 已经被扫描过了
+        let trackedDailyKeysWithInput = new Set();
 
-        // 第一步：将已扫描的条目，按照【库位独立分开】注入到队列中
         Object.keys(localMergedScans).forEach(key => {
             let scanItem = localMergedScans[key];
             let k = scanItem._originSKU;
             let plan = dbDaily[k];
-            let skuTotal = realSkuTotals[k] || 0; // 该SKU所有的库位数量大汇总
+            let skuTotal = realSkuTotals[k] || 0;
 
             let diffText = "OK"; let isException = false; let rowClass = "";
             
             if (plan === undefined) { diffText = "EXT"; isException = true; rowClass = "row-extra"; } 
             else {
-                trackedDailyKeysWithInput.add(k); // 标记此清单条目有实收
+                trackedDailyKeysWithInput.add(k);
                 if (skuTotal > plan) { diffText = "+" + (skuTotal - plan); isException = true; rowClass = "row-over"; } 
                 else if (skuTotal < plan) { diffText = (skuTotal - plan).toString(); isException = true; rowClass = "row-under"; }
             }
@@ -296,11 +288,9 @@
             });
         });
 
-        // 第二步：对于 Daily 清单中【完全还没有扫描过】的任务行，进行灰色预显（任务看板）
         if (dailyActive) {
             dailyOrder.forEach(k => {
-                if (trackedDailyKeysWithInput.has(k)) return; // 如果已经扫过（已经处理），跳过
-                
+                if (trackedDailyKeysWithInput.has(k)) return;
                 let plan = dbDaily[k];
                 let displaySKU = dbMaster[k] ? dbMaster[k].b : k;
                 if (displaySKU.includes('~')) displaySKU = displaySKU.split('~').pop();
@@ -313,32 +303,28 @@
             });
         }
 
-        // 4. 双层正序算法：异常（包括待收负数）始终置顶，内部强制 1-9 自然数字正序
         allDisplayRows.sort((a, b) => {
             if (!dailyActive) return 0;
             if (a.isException && !b.isException) return -1;
             if (!a.isException && b.isException) return 1;
-            
             let numA = parseFloat(a.displaySKU), numB = parseFloat(b.displaySKU);
             if (!isNaN(numA) && !isNaN(numB)) return numA - numB;
             return a.displaySKU.localeCompare(b.displaySKU);
         });
 
-        // 5. 渲染表格 HTML
         allDisplayRows.forEach(item => {
             let tr = document.createElement('tr');
             tr.className = item.rowClass;
             let fontStyleClass = item.hasInput ? "status-active" : "status-pending";
             tr.classList.add(fontStyleClass);
 
-            // 构造修改数量输入框：给当前库位下的行传递特定的原始记录 ID 集合
             let qtyCellHtml = item.hasInput 
                 ? `<input type="number" class="edit-input" value="${item.quantity}" onchange="updateLocationGroupQty('${item._originSKU}', '${item.location}', this.value)">`
                 : `<span style="font-size:13px;">0</span> <span style="font-size:10px;color:#aaa;">(Plan:${dbDaily[item._originSKU]})</span>`;
 
-            // 构造删除按钮：传递该行所包裹的独有联合 ID 数组
+            // --- 核心修复：增加 event 参数并在 onclick 中强制执行 e.stopPropagation() 以阻断点击冒泡 ---
             let delCellHtml = item.hasInput 
-                ? `<button class="del-btn" onclick="deleteLocationGroup('${JSON.stringify(item.rawIds)}')">×</button>` 
+                ? `<button class="del-btn" onclick="deleteLocationGroup(event, '${JSON.stringify(item.rawIds)}')">×</button>` 
                 : "—";
 
             tr.innerHTML = `
@@ -352,11 +338,9 @@
         });
     }
 
-    // 独立库位数量修正：只清理当前 SKU 当前库位下的历史，平准替换
     function updateLocationGroupQty(originSKU, location, newQtyStr) {
         let n = parseFloat(newQtyStr);
         if (n >= 0) {
-            // 只过滤清除这个 SKU 在这个特定库位下的历史数据，其他库位完全不动
             data = data.filter(x => !(x._originSKU === originSKU && x.Location === location));
             if (n > 0) {
                 const dateStr = new Date().toISOString().slice(0,10).replace(/-/g, "");
@@ -372,11 +356,14 @@
         }
     }
 
-    // 精准删除：依据独有的 rowId 数组进行精确过滤，彻底解决 OK 状态无法删除的致命 Bug
-    function deleteLocationGroup(rawIdsJsonStr) {
+    // --- 核心修复：接收 event 对象并进行拦截 ---
+    function deleteLocationGroup(e, rawIdsJsonStr) {
+        if (e) {
+            e.stopPropagation(); // 关键！在电脑端强行切断点击事件冒泡，防止页面误触发重刷
+            e.preventDefault();
+        }
         let idsToRemove = JSON.parse(rawIdsJsonStr);
         if (confirm("Are you sure you want to delete this specific location record?")) {
-            // 严格通过这行数据特有的专属全局唯一 ID 进行过滤清除，绝不误伤
             data = data.filter(x => !idsToRemove.includes(x.id));
             render(); saveLocal();
         }
