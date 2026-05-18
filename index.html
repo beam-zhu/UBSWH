@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Warehouse V8.20.40 Professional</title>
+    <title>Warehouse V8.20.41 Final</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
     <style>
         :root { --primary: #1890ff; --success: #52c41a; --danger: #ff4d4f; --extra: #b37feb; --bg: #f5f7fa; }
@@ -185,7 +185,7 @@
 
     function parseLoc(txt) { Papa.parse(txt, { complete: (res) => { setLoc.clear(); const dl = document.getElementById('locList'); dl.innerHTML = ""; res.data.forEach(r => r.forEach(c => { if(c && c.toString().trim()) { let v = c.toString().trim().toUpperCase(); setLoc.add(v); let o = document.createElement('option'); o.value = v; dl.appendChild(o); } })); }}); }
     function updateStat(id, r) { const s = document.getElementById(id); s.innerText = r ? "READY" : "EMPTY"; s.className = r ? "status-tag ready" : "status-tag"; }
-    function clearCache() { if(confirm("Are you sure you want to clear all data and cached lists?")) { localStorage.clear(); location.reload(); } }
+    function clearCache() { if(confirm("Are you sure you want to clear all data?")) { localStorage.clear(); location.reload(); } }
     function recoverBackup() { const b = localStorage.getItem('wh_v820_backup'); if(b) { data = JSON.parse(b); render(); alert("Data successfully recovered!"); } }
 
     function playSound(type) {
@@ -216,7 +216,6 @@
             any = true;
 
             batch.push({ 
-                id: Date.now() + "_" + i + "_" + Math.random().toString(36).substr(2, 5), 
                 _originSKU: sv, 
                 SKU: dbMaster[sv]?dbMaster[sv].b:sv, Name: dbMaster[sv]?dbMaster[sv].c:"N/A", 
                 Quantity: qv, Location: lv, FullLocation: "Patiki Warehouse: " + lv, Date: dateStr 
@@ -241,21 +240,24 @@
         forceSKU = null;
     }
 
+    // --- 极简稳固的归类合并与分行渲染引擎 ---
     function render() {
         const tbody = document.querySelector("#mainTable tbody"); tbody.innerHTML = "";
+        
+        // 1. 全局大数汇总判定状态
         let realSkuTotals = {};
         data.forEach(d => { realSkuTotals[d._originSKU] = (realSkuTotals[d._originSKU] || 0) + d.Quantity; });
 
+        // 2. 核心轻量化：按 SKU + 库位进行前端合并展示
         let localMergedScans = {};
         data.forEach(d => {
-            let comboKey = d._originSKU + "##" + d.Location;
+            let comboKey = d._originSKU + "##" + d.Location; // 唯一组合键
             if (localMergedScans[comboKey]) {
                 localMergedScans[comboKey].quantity += d.Quantity;
-                localMergedScans[comboKey].rawIds.push(d.id);
             } else {
                 localMergedScans[comboKey] = {
                     _originSKU: d._originSKU, SKU: d.SKU, location: d.Location,
-                    quantity: d.Quantity, rawIds: [d.id], hasInput: true
+                    quantity: d.Quantity, hasInput: true
                 };
             }
         });
@@ -263,8 +265,9 @@
         let allDisplayRows = [];
         let trackedDailyKeysWithInput = new Set();
 
-        Object.keys(localMergedScans).forEach(key => {
-            let scanItem = localMergedScans[key];
+        // 注入已经扫描有实收的数据（多库位独立分行展现）
+        Object.keys(localMergedScans).forEach(comboKey => {
+            let scanItem = localMergedScans[comboKey];
             let k = scanItem._originSKU;
             let plan = dbDaily[k];
             let skuTotal = realSkuTotals[k] || 0;
@@ -275,7 +278,6 @@
             else {
                 trackedDailyKeysWithInput.add(k);
                 if (skuTotal > plan) { diffText = "+" + (skuTotal - plan); isException = true; rowClass = "row-over"; } 
-                // 核心修复点：将致命的匿名错误函数重构为标准数学算式，彻底修复瘫痪Bug
                 else if (skuTotal < plan) { diffText = (skuTotal - plan).toString(); isException = true; rowClass = "row-under"; }
             }
 
@@ -284,11 +286,13 @@
 
             allDisplayRows.push({
                 _originSKU: k, displaySKU: displaySKU, location: scanItem.location,
+                comboKey: comboKey, // 携带这个绝对精准的清除唯一Key
                 quantity: scanItem.quantity, diffText: diffText, isException: isException,
-                rowClass: rowClass, hasInput: true, rawIds: scanItem.rawIds
+                rowClass: rowClass, hasInput: true
             });
         });
 
+        // 注入还未收货的任务看板
         if (dailyActive) {
             dailyOrder.forEach(k => {
                 if (trackedDailyKeysWithInput.has(k)) return;
@@ -297,13 +301,14 @@
                 if (displaySKU.includes('~')) displaySKU = displaySKU.split('~').pop();
 
                 allDisplayRows.push({
-                    _originSKU: k, displaySKU: displaySKU, location: "—",
+                    _originSKU: k, displaySKU: displaySKU, location: "—", comboKey: "",
                     quantity: 0, diffText: (-plan).toString(), isException: true,
-                    rowClass: "row-under", hasInput: false, rawIds: []
+                    rowClass: "row-under", hasInput: false
                 });
             });
         }
 
+        // 双层正序自然排序
         allDisplayRows.sort((a, b) => {
             if (!dailyActive) return 0;
             if (a.isException && !b.isException) return -1;
@@ -313,6 +318,7 @@
             return a.displaySKU.localeCompare(b.displaySKU);
         });
 
+        // 输出到 HTML
         allDisplayRows.forEach(item => {
             let tr = document.createElement('tr');
             tr.className = item.rowClass;
@@ -323,9 +329,9 @@
                 ? `<input type="number" class="edit-input" value="${item.quantity}" onchange="updateLocationGroupQty('${item._originSKU}', '${item.location}', this.value)">`
                 : `<span style="font-size:13px;">0</span> <span style="font-size:10px;color:#aaa;">(Plan:${dbDaily[item._originSKU]})</span>`;
 
-            // 使用点击穿透阻断的高级 click 逻辑（恢复最轻量安全的标准点击）
+            // 终极修复点：采用最纯净、最高安全级别的标准原生 click 传参清除法，绕开一切花哨拦截
             let delCellHtml = item.hasInput 
-                ? `<button class="del-btn" onclick="deleteLocationGroup(event, '${JSON.stringify(item.rawIds)}')">×</button>` 
+                ? `<button class="del-btn" onclick="deleteLocationGroup('${item._originSKU}', '${item.location}')">×</button>` 
                 : "—";
 
             tr.innerHTML = `
@@ -339,14 +345,14 @@
         });
     }
 
+    // 修改数量：清理该 SKU 对应库位下的分流历史，原地平准注入
     function updateLocationGroupQty(originSKU, location, newQtyStr) {
         let n = parseFloat(newQtyStr);
         if (n >= 0) {
-            data = data.filter(x => !(x._originSKU === originSKU && x.Location === location));
+            data = data.filter(x => !(x._originSKU.trim().toUpperCase() === originSKU.trim().toUpperCase() && x.Location.trim().toUpperCase() === location.trim().toUpperCase()));
             if (n > 0) {
                 const dateStr = new Date().toISOString().slice(0,10).replace(/-/g, "");
                 data.push({
-                    id: Date.now() + "_" + Math.random().toString(36).substr(2, 5),
                     _originSKU: originSKU,
                     SKU: dbMaster[originSKU] ? dbMaster[originSKU].b : originSKU,
                     Name: dbMaster[originSKU] ? dbMaster[originSKU].c : "N/A",
@@ -357,14 +363,15 @@
         }
     }
 
-    function deleteLocationGroup(e, rawIdsJsonStr) {
-        if (e) {
-            e.stopPropagation(); 
-            e.preventDefault();  
-        }
-        let idsToRemove = JSON.parse(rawIdsJsonStr);
+    // 终极修复：两手抓的超强力过滤数据清理法
+    function deleteLocationGroup(originSKU, location) {
         if (confirm("Are you sure you want to delete this specific location record?")) {
-            data = data.filter(x => !idsToRemove.includes(x.id));
+            // 对比条件全部增加强制去空格和强转大写，100% 确保过滤成功，绝对能删！
+            data = data.filter(x => {
+                let matchSKU = x._originSKU.trim().toUpperCase() === originSKU.trim().toUpperCase();
+                let matchLoc = x.Location.trim().toUpperCase() === location.trim().toUpperCase();
+                return !(matchSKU && matchLoc); // 只要SKU和库位同时对上，就从数组里彻底剔除
+            });
             render(); saveLocal();
         }
     }
