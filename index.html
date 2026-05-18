@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Warehouse V8.20.42 Final</title>
+    <title>Warehouse V8.20.43 Final</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
     <style>
         :root { --primary: #1890ff; --success: #52c41a; --danger: #ff4d4f; --extra: #b37feb; --bg: #f5f7fa; }
@@ -136,6 +136,7 @@
         if (audioCtx.state === 'suspended') audioCtx.resume();
     }
 
+    // --- 核心修正：取消 setTimeout 异步挂载，全面采用全同步极速加载流 ---
     window.onload = () => {
         const cache = localStorage.getItem('wh_v820_data'), op = localStorage.getItem('wh_v820_op');
         if (cache) { data = JSON.parse(cache); }
@@ -145,7 +146,7 @@
         if(cC) { parseCheck(cC); updateStat('checkStat', true); }
         if(cL) { parseLoc(cL); updateStat('locStat', true); }
         setupEnterKey();
-        setTimeout(render, 300);
+        render(); // 同步直接渲染，切断时差干扰
     };
 
     function processFile(t, f) {
@@ -215,7 +216,6 @@
             if(!qv || qv <= 0) { playSound('error'); return; }
             any = true;
 
-            // 升级为绝对唯一的自增物理 ID，保证精准删除
             batch.push({ 
                 id: Date.now() + "_" + i + "_" + Math.random().toString(36).substr(2, 5),
                 _originSKU: sv, 
@@ -242,28 +242,26 @@
         forceSKU = null;
     }
 
-    // --- 物理隔离式分流渲染引擎 ---
     function render() {
         const tbody = document.querySelector("#mainTable tbody"); tbody.innerHTML = "";
         
-        // 1. 全局统计大数，专门用来给每行实时计算差额状态
         let realSkuTotals = {};
         data.forEach(d => { realSkuTotals[d._originSKU] = (realSkuTotals[d._originSKU] || 0) + d.Quantity; });
 
         let allDisplayRows = [];
-        let trackedDailyKeysWithInput = new Set(); // 记录已经被收过货的 Daily SKU
+        let trackedDailyKeysWithInput = new Set();
 
-        // 2. 注入所有【实际收货数据行】（不进行合并，你输入几条、什么库位，就原汁原味展现几条）
+        // 注入实收（纯单行独立物理显示，绝不连带闪烁）
         data.forEach(d => {
             let k = d._originSKU;
             let plan = dbDaily[k];
-            let skuTotal = realSkuTotals[k] || 0; // 这个 SKU 全局被录入的总数
+            let skuTotal = realSkuTotals[k] || 0;
 
             let diffText = "OK"; let isException = false; let rowClass = "";
             
             if (plan === undefined) { diffText = "EXT"; isException = true; rowClass = "row-extra"; } 
             else {
-                trackedDailyKeysWithInput.add(k); // 标记该 Daily 货物已被接管
+                trackedDailyKeysWithInput.add(k);
                 if (skuTotal > plan) { diffText = "+" + (skuTotal - plan); isException = true; rowClass = "row-over"; } 
                 else if (skuTotal < plan) { diffText = (skuTotal - plan).toString(); isException = true; rowClass = "row-under"; }
             }
@@ -272,17 +270,17 @@
             if (displaySKU.includes('~')) displaySKU = displaySKU.split('~').pop();
 
             allDisplayRows.push({
-                id: d.id, // 忠实绑定唯一的自增物理 ID
+                id: d.id,
                 _originSKU: k, displaySKU: displaySKU, location: d.Location,
                 quantity: d.Quantity, diffText: diffText, isException: isException,
                 rowClass: rowClass, hasInput: true
             });
         });
 
-        // 3. 注入【尚未开工的 Daily 灰色看板行】（只有当该 SKU 一笔都没收过时，才作为任务看板预显）
+        // 预显看板
         if (dailyActive) {
             dailyOrder.forEach(k => {
-                if (trackedDailyKeysWithInput.has(k)) return; // 一旦这个 SKU 被收过哪怕 1 个，灰色看板行就退场
+                if (trackedDailyKeysWithInput.has(k)) return;
                 
                 let plan = dbDaily[k];
                 let displaySKU = dbMaster[k] ? dbMaster[k].b : k;
@@ -296,7 +294,7 @@
             });
         }
 
-        // 4. 自然正序与异常置顶排序
+        // 自然排序
         allDisplayRows.sort((a, b) => {
             if (!dailyActive) return 0;
             if (a.isException && !b.isException) return -1;
@@ -306,7 +304,7 @@
             return a.displaySKU.localeCompare(b.displaySKU);
         });
 
-        // 5. 渲染表格
+        // 渲染 HTML
         allDisplayRows.forEach(item => {
             let tr = document.createElement('tr');
             tr.className = item.rowClass;
@@ -317,7 +315,7 @@
                 ? `<input type="number" class="edit-input" value="${item.quantity}" onchange="updateRowQty('${item.id}', this.value)">`
                 : `<span style="font-size:13px;">0</span> <span style="font-size:10px;color:#aaa;">(Plan:${dbDaily[item._originSKU]})</span>`;
 
-            // 使用各自独一无二的物理 Row ID 进行单行狙击清除，永不误伤
+            // 使用最稳固、最高安全优先级的标准原生 click 传参清除法
             let delCellHtml = item.hasInput 
                 ? `<button class="del-btn" onclick="deleteSingleRow(event, '${item.id}')">×</button>` 
                 : "—";
@@ -333,32 +331,31 @@
         });
     }
 
-    // 精准单行数量修正
     function updateRowQty(rowId, newQtyStr) {
         let n = parseFloat(newQtyStr);
         if (n >= 0) {
             let row = data.find(x => x.id === rowId);
             if (row) {
-                if (n === 0) {
-                    data = data.filter(x => x.id !== rowId);
-                } else {
-                    row.Quantity = n;
-                }
+                if (n === 0) { data = data.filter(x => x.id !== rowId); } 
+                else { row.Quantity = n; }
                 render(); saveLocal();
             }
         }
     }
 
-    // 精准单行物理阻断删除
+    // --- 终极同步过滤清除法：杜绝任何时差弹回 ---
     function deleteSingleRow(e, rowId) {
         if (e) {
-            e.stopPropagation(); // 彻底阻断冒泡，让电脑端鼠标多选连删完全恢复正常
+            e.stopPropagation(); 
             e.preventDefault();  
         }
         if (confirm("Are you sure you want to delete this specific log?")) {
-            // 严格只过滤掉当前点击的这一行物理 ID，其他同 SKU 的多库位行完全不会受到波及
+            // 1. 立刻在内存变量里把这一行杀掉
             data = data.filter(x => x.id !== rowId);
-            render(); saveLocal();
+            // 2. 没有任何延迟，立刻同步重新刷新界面
+            render(); 
+            // 3. 写入本地浏览器数据库，锁死新数据
+            saveLocal(); 
         }
     }
 
