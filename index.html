@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Warehouse V8.20.34 Professional</title>
+    <title>Warehouse V8.20.35 Professional</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
     <style>
         :root { --primary: #1890ff; --success: #52c41a; --danger: #ff4d4f; --extra: #b37feb; --bg: #f5f7fa; }
@@ -159,12 +159,11 @@
     function loadLocFile(f) { if(!f) return; const r = new FileReader(); r.onload=(e)=>{parseLoc(e.target.result); localStorage.setItem('csv_loc',e.target.result); updateStat('locStat',true); render();}; r.readAsText(f); }
     function parseSKU(txt) { Papa.parse(txt, { complete: (res) => { dbMaster = {}; res.data.forEach((r, i) => { if(i>0 && r[0]) dbMaster[r[0].trim().toUpperCase()] = {b:r[1]||"", c:r[2]||""}; }); }}); }
     
-    // --- 核心修正：增加索引判断 (i > 0)，完美过滤掉第一行的文本表头 ---
     function parseCheck(txt) { 
         Papa.parse(txt, { complete: (res) => { 
             dbDaily = {}; dailyOrder = []; dailyActive = false; 
             res.data.forEach((r, i) => { 
-                if(i > 0 && r[0]) { // i > 0 确保跳过第一行(i=0)的表头文字
+                if(i > 0 && r[0]) { 
                     let k = r[0].trim().toUpperCase();
                     let q = parseFloat(r[1]) || 0;
                     if (dbDaily[k] !== undefined) {
@@ -176,6 +175,21 @@
                     dailyActive = true; 
                 } 
             }); 
+            
+            // --- 核心进化点 1：导入时对基础队列按 SKU 纯数字/字母正向强行重组排序 ---
+            dailyOrder.sort((a, b) => {
+                // 优先抽取可能存在的 masterSKU 转换后的显示数值进行对比
+                let skuA = dbMaster[a] ? dbMaster[a].b : a;
+                let skuB = dbMaster[b] ? dbMaster[b].b : b;
+                if (skuA.includes('~')) skuA = skuA.split('~').pop();
+                if (skuB.includes('~')) skuB = skuB.split('~').pop();
+                
+                // 尝试用数字进行自然正序对比
+                let numA = parseFloat(skuA), numB = parseFloat(skuB);
+                if (!isNaN(numA) && !isNaN(numB)) return numA - numB;
+                return skuA.localeCompare(skuB); // 包含非数字时按常规字符正序排
+            });
+
             render();
         }}); 
     }
@@ -213,14 +227,9 @@
             if(!qv || qv <= 0) { playSound('error'); return; }
             any = true;
             batch.push({ 
-                id: Date.now()+i, 
-                _originSKU: sv, 
-                SKU: dbMaster[sv]?dbMaster[sv].b:sv, 
-                Name: dbMaster[sv]?dbMaster[sv].c:"N/A", 
-                Quantity: qv, 
-                Location: lv, 
-                FullLocation: "Patiki Warehouse: " + lv,
-                Date: dateStr 
+                id: Date.now()+i, _originSKU: sv, 
+                SKU: dbMaster[sv]?dbMaster[sv].b:sv, Name: dbMaster[sv]?dbMaster[sv].c:"N/A", 
+                Quantity: qv, Location: lv, FullLocation: "Patiki Warehouse: " + lv, Date: dateStr 
             });
         }
 
@@ -242,6 +251,7 @@
         forceSKU = null;
     }
 
+    // --- 核心大脑：全自动重整、双层正序排序引擎 ---
     function render() {
         const tbody = document.querySelector("#mainTable tbody"); tbody.innerHTML = "";
         let realTotals = {}; let realLocs = {}; let hasInputSet = new Set();
@@ -293,11 +303,18 @@
             }
         });
 
+        // --- 核心进化点 2：双层正序高阶排序算法 ---
         allItems.sort((a, b) => {
             if (!dailyActive) return 0;
+            
+            // 策略1：异常（待收货的负数、溢出的正数、清单外）行始终整体置顶
             if (a.isException && !b.isException) return -1;
             if (!a.isException && b.isException) return 1;
-            return 0; 
+
+            // 策略2：如果同为异常区域，或者同为完工下沉区域，它们内部也必须按照 1-9 的纯数字正向排序！
+            let numA = parseFloat(a.displaySKU), numB = parseFloat(b.displaySKU);
+            if (!isNaN(numA) && !isNaN(numB)) return numA - numB;
+            return a.displaySKU.localeCompare(b.displaySKU);
         });
 
         allItems.forEach(item => {
