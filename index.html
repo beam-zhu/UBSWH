@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Warehouse V8.20.36 Professional</title>
+    <title>Warehouse V8.20.37 Professional</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
     <style>
         :root { --primary: #1890ff; --success: #52c41a; --danger: #ff4d4f; --extra: #b37feb; --bg: #f5f7fa; }
@@ -166,21 +166,15 @@
                 if(i > 0 && r[0]) { 
                     let k = r[0].trim().toUpperCase();
                     let q = parseFloat(r[1]) || 0;
-                    if (dbDaily[k] !== undefined) {
-                        dbDaily[k] += q; 
-                    } else {
-                        dbDaily[k] = q; 
-                        dailyOrder.push(k); 
-                    }
+                    if (dbDaily[k] !== undefined) { dbDaily[k] += q; } 
+                    else { dbDaily[k] = q; dailyOrder.push(k); }
                     dailyActive = true; 
                 } 
             }); 
             
             dailyOrder.sort((a, b) => {
-                let skuA = dbMaster[a] ? dbMaster[a].b : a;
-                let skuB = dbMaster[b] ? dbMaster[b].b : b;
-                if (skuA.includes('~')) skuA = skuA.split('~').pop();
-                if (skuB.includes('~')) skuB = skuB.split('~').pop();
+                let skuA = dbMaster[a] ? dbMaster[a].b : a; let skuB = dbMaster[b] ? dbMaster[b].b : b;
+                if (skuA.includes('~')) skuA = skuA.split('~').pop(); if (skuB.includes('~')) skuB = skuB.split('~').pop();
                 let numA = parseFloat(skuA), numB = parseFloat(skuB);
                 if (!isNaN(numA) && !isNaN(numB)) return numA - numB;
                 return skuA.localeCompare(skuB);
@@ -196,8 +190,7 @@
 
     function playSound(type) {
         if(!audioCtx) return;
-        const g = audioCtx.createGain(); g.gain.setValueAtTime(0.1, audioCtx.currentTime);
-        g.connect(audioCtx.destination);
+        const g = audioCtx.createGain(); g.gain.setValueAtTime(0.1, audioCtx.currentTime); g.connect(audioCtx.destination);
         const o = audioCtx.createOscillator();
         if(type === 'success') { o.type='sine'; o.frequency.setValueAtTime(1000, audioCtx.currentTime); o.start(); o.stop(audioCtx.currentTime + 0.1); }
         else if(type === 'warn') { o.type='square'; o.frequency.setValueAtTime(440, audioCtx.currentTime); o.start(); o.stop(audioCtx.currentTime + 0.3); }
@@ -221,8 +214,11 @@
             if(dailyActive && dbDaily[sv] === undefined && forceSKU !== sv) { mismatch = true; forceSKU = sv; break; }
             if(!qv || qv <= 0) { playSound('error'); return; }
             any = true;
+
+            // 核心修正 1：每一笔录入都打上唯一的时间戳作为行专属自增 ID (Row Unique ID)
             batch.push({ 
-                id: Date.now()+i, _originSKU: sv, 
+                id: Date.now() + "_" + i + "_" + Math.random().toString(36).substr(2, 5), 
+                _originSKU: sv, 
                 SKU: dbMaster[sv]?dbMaster[sv].b:sv, Name: dbMaster[sv]?dbMaster[sv].c:"N/A", 
                 Quantity: qv, Location: lv, FullLocation: "Patiki Warehouse: " + lv, Date: dateStr 
             });
@@ -246,79 +242,104 @@
         forceSKU = null;
     }
 
+    // --- 核心大脑：多库位智能分离排版与精准状态引擎 ---
     function render() {
         const tbody = document.querySelector("#mainTable tbody"); tbody.innerHTML = "";
-        let realTotals = {}; let realLocs = {}; let hasInputSet = new Set();
-
-        data.forEach(d => {
-            realTotals[d._originSKU] = (realTotals[d._originSKU] || 0) + d.Quantity;
-            realLocs[d._originSKU] = d.Location; 
-            hasInputSet.add(d._originSKU);
-        });
-
-        let allItems = [];
-        let processedDailyKeys = new Set();
         
-        dailyOrder.forEach(k => {
-            if (processedDailyKeys.has(k)) return;
-            processedDailyKeys.add(k);
-            
-            let plan = dbDaily[k];
-            let total = realTotals[k] || 0;
-            let hasInput = hasInputSet.has(k);
-            let diffText = "OK"; let isException = false; let rowClass = "";
+        // 1. 全局统计每个 SKU 的纯数量总数，用来判定状态
+        let realSkuTotals = {};
+        data.forEach(d => { realSkuTotals[d._originSKU] = (realSkuTotals[d._originSKU] || 0) + d.Quantity; });
 
-            if (total > plan) { diffText = "+" + (total - plan); isException = true; rowClass = "row-over"; }
-            else if (total < plan) { diffText = (total - plan).toString(); isException = true; rowClass = "row-under"; }
-
-            let masterSKU = dbMaster[k] ? dbMaster[k].b : k;
-            let displaySKU = masterSKU;
-            if (displaySKU.includes('~')) displaySKU = displaySKU.split('~').pop();
-
-            allItems.push({
-                _originSKU: k, displaySKU: displaySKU, location: realLocs[k] || "—",
-                quantity: total, diffText: diffText, isException: isException,
-                rowClass: rowClass, hasInput: hasInput, source: 'daily'
-            });
-        });
-
-        hasInputSet.forEach(k => {
-            if (dbDaily[k] === undefined) {
-                let total = realTotals[k] || 0;
-                let masterSKU = dbMaster[k] ? dbMaster[k].b : k;
-                let displaySKU = masterSKU;
-                if (displaySKU.includes('~')) displaySKU = displaySKU.split('~').pop();
-
-                allItems.push({
-                    _originSKU: k, displaySKU: displaySKU, location: realLocs[k] || "—",
-                    quantity: total, diffText: "EXT", isException: true,
-                    rowClass: "row-extra", hasInput: true, source: 'extra'
-                });
+        // 2. 将实际录入的数据，按照【SKU + 库位】进行本地合并归类（库位一样才合并）
+        let localMergedScans = {};
+        data.forEach(d => {
+            let comboKey = d._originSKU + "##" + d.Location;
+            if (localMergedScans[comboKey]) {
+                localMergedScans[comboKey].quantity += d.Quantity;
+                // 联合记录这一组里所有的原始 row ID，删除时可以全部清理干净
+                localMergedScans[comboKey].rawIds.push(d.id);
+            } else {
+                localMergedScans[comboKey] = {
+                    _originSKU: d._originSKU, SKU: d.SKU, location: d.Location,
+                    quantity: d.Quantity, rawIds: [d.id], hasInput: true
+                };
             }
         });
 
-        allItems.sort((a, b) => {
+        // 3. 构建显示队列
+        let allDisplayRows = [];
+        let trackedDailyKeysWithInput = new Set(); // 记录哪些 Daily 里的 SKU 已经被扫描过了
+
+        // 第一步：将已扫描的条目，按照【库位独立分开】注入到队列中
+        Object.keys(localMergedScans).forEach(key => {
+            let scanItem = localMergedScans[key];
+            let k = scanItem._originSKU;
+            let plan = dbDaily[k];
+            let skuTotal = realSkuTotals[k] || 0; // 该SKU所有的库位数量大汇总
+
+            let diffText = "OK"; let isException = false; let rowClass = "";
+            
+            if (plan === undefined) { diffText = "EXT"; isException = true; rowClass = "row-extra"; } 
+            else {
+                trackedDailyKeysWithInput.add(k); // 标记此清单条目有实收
+                if (skuTotal > plan) { diffText = "+" + (skuTotal - plan); isException = true; rowClass = "row-over"; } 
+                else if (skuTotal < plan) { diffText = (skuTotal - plan).toString(); isException = true; rowClass = "row-under"; }
+            }
+
+            let displaySKU = scanItem.SKU;
+            if (displaySKU.includes('~')) displaySKU = displaySKU.split('~').pop();
+
+            allDisplayRows.push({
+                _originSKU: k, displaySKU: displaySKU, location: scanItem.location,
+                quantity: scanItem.quantity, diffText: diffText, isException: isException,
+                rowClass: rowClass, hasInput: true, rawIds: scanItem.rawIds
+            });
+        });
+
+        // 第二步：对于 Daily 清单中【完全还没有扫描过】的任务行，进行灰色预显（任务看板）
+        if (dailyActive) {
+            dailyOrder.forEach(k => {
+                if (trackedDailyKeysWithInput.has(k)) return; // 如果已经扫过（已经处理），跳过
+                
+                let plan = dbDaily[k];
+                let displaySKU = dbMaster[k] ? dbMaster[k].b : k;
+                if (displaySKU.includes('~')) displaySKU = displaySKU.split('~').pop();
+
+                allDisplayRows.push({
+                    _originSKU: k, displaySKU: displaySKU, location: "—",
+                    quantity: 0, diffText: (-plan).toString(), isException: true,
+                    rowClass: "row-under", hasInput: false, rawIds: []
+                });
+            });
+        }
+
+        // 4. 双层正序算法：异常（包括待收负数）始终置顶，内部强制 1-9 自然数字正序
+        allDisplayRows.sort((a, b) => {
             if (!dailyActive) return 0;
             if (a.isException && !b.isException) return -1;
             if (!a.isException && b.isException) return 1;
+            
             let numA = parseFloat(a.displaySKU), numB = parseFloat(b.displaySKU);
             if (!isNaN(numA) && !isNaN(numB)) return numA - numB;
             return a.displaySKU.localeCompare(b.displaySKU);
         });
 
-        allItems.forEach(item => {
+        // 5. 渲染表格 HTML
+        allDisplayRows.forEach(item => {
             let tr = document.createElement('tr');
             tr.className = item.rowClass;
             let fontStyleClass = item.hasInput ? "status-active" : "status-pending";
             tr.classList.add(fontStyleClass);
 
-            // 核心修复：修改框传入的是真实后台数据建名 _originSKU
+            // 构造修改数量输入框：给当前库位下的行传递特定的原始记录 ID 集合
             let qtyCellHtml = item.hasInput 
-                ? `<input type="number" class="edit-input" value="${item.quantity}" onchange="updateGlobalQty('${item._originSKU}', this.value)">`
+                ? `<input type="number" class="edit-input" value="${item.quantity}" onchange="updateLocationGroupQty('${item._originSKU}', '${item.location}', this.value)">`
                 : `<span style="font-size:13px;">0</span> <span style="font-size:10px;color:#aaa;">(Plan:${dbDaily[item._originSKU]})</span>`;
 
-            // 核心修复：删除方法传入的是真正的数据基础索引键名 _originSKU，全覆盖删除
-            let delCellHtml = item.hasInput ? `<button class="del-btn" onclick="deleteGlobalSKU('${item._originSKU}')">×</button>` : "—";
+            // 构造删除按钮：传递该行所包裹的独有联合 ID 数组
+            let delCellHtml = item.hasInput 
+                ? `<button class="del-btn" onclick="deleteLocationGroup('${JSON.stringify(item.rawIds)}')">×</button>` 
+                : "—";
 
             tr.innerHTML = `
                 <td class="td-sku">${item.displaySKU}</td>
@@ -331,30 +352,32 @@
         });
     }
 
-    // 全局联动更新：用精准过滤器清空旧历史，彻底重建目标SKU行
-    function updateGlobalQty(originSKU, newQtyStr) {
+    // 独立库位数量修正：只清理当前 SKU 当前库位下的历史，平准替换
+    function updateLocationGroupQty(originSKU, location, newQtyStr) {
         let n = parseFloat(newQtyStr);
         if (n >= 0) {
-            // 用强力标志字段 _originSKU 全局清理
-            data = data.filter(x => x._originSKU !== originSKU);
+            // 只过滤清除这个 SKU 在这个特定库位下的历史数据，其他库位完全不动
+            data = data.filter(x => !(x._originSKU === originSKU && x.Location === location));
             if (n > 0) {
                 const dateStr = new Date().toISOString().slice(0,10).replace(/-/g, "");
                 data.push({
-                    id: Date.now(), _originSKU: originSKU,
+                    id: Date.now() + "_" + Math.random().toString(36).substr(2, 5),
+                    _originSKU: originSKU,
                     SKU: dbMaster[originSKU] ? dbMaster[originSKU].b : originSKU,
                     Name: dbMaster[originSKU] ? dbMaster[originSKU].c : "N/A",
-                    Quantity: n, Location: "EDITED", FullLocation: "Patiki Warehouse: EDITED", Date: dateStr
+                    Quantity: n, Location: location, FullLocation: "Patiki Warehouse: " + location, Date: dateStr
                 });
             }
             render(); saveLocal();
         }
     }
 
-    // 全局强力删除：通过过滤底层数组，完美清除该条码下的所有关联分批扫描历史
-    function deleteGlobalSKU(originSKU) {
-        if (confirm(`Are you sure you want to delete all scans for SKU [${originSKU}]?`)) {
-            // 使用严格唯一的核心键名进行全面过滤，保证全部可删
-            data = data.filter(x => x._originSKU !== originSKU);
+    // 精准删除：依据独有的 rowId 数组进行精确过滤，彻底解决 OK 状态无法删除的致命 Bug
+    function deleteLocationGroup(rawIdsJsonStr) {
+        let idsToRemove = JSON.parse(rawIdsJsonStr);
+        if (confirm("Are you sure you want to delete this specific location record?")) {
+            // 严格通过这行数据特有的专属全局唯一 ID 进行过滤清除，绝不误伤
+            data = data.filter(x => !idsToRemove.includes(x.id));
             render(); saveLocal();
         }
     }
