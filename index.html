@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Warehouse V8.20.45 Professional</title>
+    <title>Warehouse V8.20.47 DEAR_PI</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
     <style>
         :root { --primary: #1890ff; --success: #52c41a; --danger: #ff4d4f; --extra: #b37feb; --bg: #f5f7fa; }
@@ -41,7 +41,7 @@
         input { height: 44px; padding: 10px; border: 1px solid #d9d9d9; border-radius: 8px; font-size: 16px; width: 100%; background: #fafafa; margin-bottom: 8px; }
         .loc-input { height: 54px; font-size: 22px; border: 2px solid var(--primary); background: #fffbe6; color: #d46b08; }
         .sku-row { display: grid; grid-template-columns: 3fr 1.2fr; gap: 8px; margin-bottom: 4px; }
-        .file-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
+        .file-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
         .file-btn { border: 1px dashed #ccc; padding: 4px; border-radius: 8px; text-align: center; background: #fff; font-size: 10px; position: relative; min-height: 40px; display: flex; flex-direction: column; justify-content: center; align-items: center; }
         .file-btn input { position: absolute; top:0; left:0; width:100%; height:100%; opacity:0; }
         .status-tag { font-size: 10px; font-weight: bold; color: #bfbfbf; margin-top: 2px; }
@@ -67,17 +67,19 @@
         
         .edit-input { width: 100%; padding: 4px; border: 1px solid var(--primary); border-radius: 4px; text-align: center; font-size: 13px; background: transparent; }
         .del-btn { background: #ff7875; color: white; border: none; border-radius: 4px; padding: 4px 8px; font-weight: bold; cursor: pointer; }
+        .cloud-banner { background: #e6f7ff; border: 1px solid #91d5ff; color: #0050b3; padding: 6px; border-radius: 8px; font-size: 11px; text-align: center; margin-bottom: 8px; font-weight: bold; }
     </style>
 </head>
 <body onclick="unlockAudio()">
 
 <div class="main-wrapper">
     <div class="panel-right">
+        <div class="cloud-banner" id="cloudStat">☁️ 云端SKU库 (DEAR_PI) 正在连接...</div>
+
         <div class="card">
             <div class="file-grid">
-                <div class="file-btn"><span>SKU</span><input type="file" accept=".csv" onchange="processFile('sku', this.files[0])"><span id="skuStat" class="status-tag">EMPTY</span></div>
-                <div class="file-btn"><span>DAILY</span><input type="file" accept=".csv" onchange="processFile('check', this.files[0])"><span id="checkStat" class="status-tag">OPTIONAL</span></div>
-                <div class="file-btn"><span>LOC</span><input type="file" accept=".csv" onchange="loadLocFile(this.files[0])"><span id="locStat" class="status-tag">EMPTY</span></div>
+                <div class="file-btn"><span>DAILY清单</span><input type="file" accept=".csv" onchange="processFile('check', this.files[0])"><span id="checkStat" class="status-tag">OPTIONAL</span></div>
+                <div class="file-btn"><span>库位表</span><input type="file" accept=".csv" onchange="loadLocFile(this.files[0])"><span id="locStat" class="status-tag">EMPTY</span></div>
             </div>
             <div style="display: flex; justify-content: space-between; margin-top: 8px;">
                 <button onclick="clearCache()" style="font-size:10px; color:red; border:none; background:none; padding:5px; font-weight:bold;">[CLEAR CACHE]</button>
@@ -128,6 +130,9 @@
 </div>
 
 <script>
+    // 固定的隐藏云端地址
+    const FIXED_CLOUD_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQBh1fAm0-5pIJyHCRVDTt_n3vYILct87elf6_dJ9KvtZ126d-LYsgVkEaGKaZmti9lvFByG5LIc1dR/pub?gid=326617304&single=true&output=csv";
+    
     let dbMaster = {}, dbDaily = {}, setLoc = new Set(), data = [], dailyOrder = [];
     let dailyActive = false, audioCtx = null, forceSKU = null;
 
@@ -140,24 +145,64 @@
         const cache = localStorage.getItem('wh_v820_data'), op = localStorage.getItem('wh_v820_op');
         if (cache) { data = JSON.parse(cache); }
         if (op) document.getElementById('opName').value = op;
-        const cM = localStorage.getItem('csv_master'), cC = localStorage.getItem('csv_check'), cL = localStorage.getItem('csv_loc');
-        if(cM) { parseSKU(cM); updateStat('skuStat', true); }
+        
+        // 自动拉取硬编码的谷歌云端表格
+        fetchCloudMaster();
+        
+        const cC = localStorage.getItem('csv_check'), cL = localStorage.getItem('csv_loc');
         if(cC) { parseCheck(cC); updateStat('checkStat', true); }
         if(cL) { parseLoc(cL); updateStat('locStat', true); }
         setupEnterKey();
         render();
     };
 
+    function fetchCloudMaster() {
+        const banner = document.getElementById('cloudStat');
+        fetch(FIXED_CLOUD_URL)
+        .then(response => response.text())
+        .then(txt => { 
+            parseSKU(txt); 
+            banner.innerText = "⚡ 云端SKU库 (DEAR_PI) 同步成功！";
+            banner.style.background = "#f6ffed";
+            banner.style.borderColor = "#b7eb8f";
+            banner.style.color = "#52c41a";
+            render(); 
+        })
+        .catch(err => { 
+            banner.innerText = "❌ 云端同步失败，正在使用本地缓存旧数据。";
+            banner.style.background = "#fff1f0";
+            banner.style.borderColor = "#ffa39e";
+            banner.style.color = "#cf1322";
+        });
+    }
+
     function processFile(t, f) {
         if(!f) return; const r = new FileReader();
         r.onload = (e) => {
             const txt = e.target.result;
-            if(t==='sku') { parseSKU(txt); localStorage.setItem('csv_master', txt); updateStat('skuStat', true); render(); }
             if(t==='check') { parseCheck(txt); localStorage.setItem('csv_check', txt); updateStat('checkStat', true); }
         }; r.readAsText(f);
     }
     function loadLocFile(f) { if(!f) return; const r = new FileReader(); r.onload=(e)=>{parseLoc(e.target.result); localStorage.setItem('csv_loc',e.target.result); updateStat('locStat',true); render();}; r.readAsText(f); }
-    function parseSKU(txt) { Papa.parse(txt, { complete: (res) => { dbMaster = {}; res.data.forEach((r, i) => { if(i>0 && r[0]) dbMaster[r[0].trim().toUpperCase()] = {b:r[1]||"", c:r[2]||""}; }); }}); }
+    
+    // --- 核心改动 1：根据您的要求重新定义解析机制（抓取F列符号~后的内容） ---
+    function parseSKU(txt) { 
+        Papa.parse(txt, { complete: (res) => { 
+            dbMaster = {}; 
+            res.data.forEach((r, i) => { 
+                // r[5] 代表 F 列 (索引从0开始：A=0, B=1, C=2, D=3, E=4, F=5)
+                if(i > 0 && r[5]) { 
+                    let fullSku = r[5].trim().toUpperCase(); 
+                    let shortSku = fullSku;
+                    if(fullSku.includes('~')) {
+                        shortSku = fullSku.split('~').pop().trim(); // 抓取符号 “~” 后面的部分
+                    }
+                    // 以短码做钥匙，存储【完整长SKU】作为大B，存储【商品描述信息（假设在G列）】作为C
+                    dbMaster[shortSku] = { b: fullSku, c: r[6] || "N/A" }; 
+                } 
+            }); 
+        }}); 
+    }
     
     function parseCheck(txt) { 
         Papa.parse(txt, { complete: (res) => { 
@@ -199,6 +244,9 @@
 
     function addBatch() {
         unlockAudio();
+        // 增益：每次敲SAVE ALL，顺便静默冲刷拉取最新的谷歌 Sheets 更改
+        fetchCloudMaster();
+
         const lv = document.getElementById('locIn').value.trim().toUpperCase();
         const op = document.getElementById('opName').value.trim();
         if(!lv || !op) { playSound('error'); return; }
@@ -215,10 +263,12 @@
             if(!qv || qv <= 0) { playSound('error'); return; }
             any = true;
 
+            // --- 核心改动 2：储存时，将【短码】存为视觉识别，将翻译出来的F列【完整长SKU】存入底层用于导出 ---
             batch.push({ 
                 id: Date.now() + "_" + i + "_" + Math.random().toString(36).substr(2, 5),
-                _originSKU: sv, 
-                SKU: dbMaster[sv]?dbMaster[sv].b:sv, Name: dbMaster[sv]?dbMaster[sv].c:"N/A", 
+                _originSKU: sv,  // 对应输入的 1234 短码
+                SKU: dbMaster[sv] ? dbMaster[sv].b : sv, // 如果有对应的F列总SKU就存总SKU，没有就原样保存
+                Name: dbMaster[sv] ? dbMaster[sv].c : "N/A", 
                 Quantity: qv, Location: lv, FullLocation: "Patiki Warehouse: " + lv, Date: dateStr 
             });
         }
@@ -241,18 +291,14 @@
         forceSKU = null;
     }
 
-    // --- 彻底修复多行独立渲染与分流逻辑 ---
     function render() {
         const tbody = document.querySelector("#mainTable tbody"); tbody.innerHTML = "";
-        
-        // 1. 大数大池大汇总（仅用于实时计算每一行应该显示的差额状态）
         let realSkuTotals = {};
         data.forEach(d => { realSkuTotals[d._originSKU] = (realSkuTotals[d._originSKU] || 0) + d.Quantity; });
 
         let allDisplayRows = [];
-        let trackedDailyKeysWithInput = new Set(); // 核心：记录哪些 Daily SKU 目前在底层有真实历史
+        let trackedDailyKeysWithInput = new Set();
 
-        // 2. 注入实收行（每行绝对独立物理隔离，带唯一 Row ID）
         data.forEach(d => {
             let k = d._originSKU;
             let plan = dbDaily[k];
@@ -262,30 +308,26 @@
             
             if (plan === undefined) { diffText = "EXT"; isException = true; rowClass = "row-extra"; } 
             else {
-                trackedDailyKeysWithInput.add(k); // 标记此 SKU 有实收历史，不显示灰色看板行
+                trackedDailyKeysWithInput.add(k);
                 if (skuTotal > plan) { diffText = "+" + (skuTotal - plan); isException = true; rowClass = "row-over"; } 
                 else if (skuTotal < plan) { diffText = (skuTotal - plan).toString(); isException = true; rowClass = "row-under"; }
             }
 
-            let displaySKU = d.SKU;
-            if (displaySKU.includes('~')) displaySKU = displaySKU.split('~').pop();
+            // --- 核心改动 3：无论底层存得有多长，手机网页前端列表永远用“~”切割，干净利落地只显示短码 1234 ---
+            let displaySKU = d._originSKU; 
 
             allDisplayRows.push({
-                id: d.id,
-                _originSKU: k, displaySKU: displaySKU, location: d.Location,
+                id: d.id, _originSKU: k, displaySKU: displaySKU, location: d.Location,
                 quantity: d.Quantity, diffText: diffText, isException: isException,
                 rowClass: rowClass, hasInput: true
             });
         });
 
-        // 3. 注入灰色看板预显行（核心修正：只要底层有该 SKU 历史，看板行绝对闭嘴不出来抓人）
         if (dailyActive) {
             dailyOrder.forEach(k => {
-                if (trackedDailyKeysWithInput.has(k)) return; // 只要它在 data 里有 1 条记录，看板行就直接阻断跳过
-                
+                if (trackedDailyKeysWithInput.has(k)) return;
                 let plan = dbDaily[k];
-                let displaySKU = dbMaster[k] ? dbMaster[k].b : k;
-                if (displaySKU.includes('~')) displaySKU = displaySKU.split('~').pop();
+                let displaySKU = k; 
 
                 allDisplayRows.push({
                     id: "pending_" + k, _originSKU: k, displaySKU: displaySKU, location: "—",
@@ -295,7 +337,6 @@
             });
         }
 
-        // 4. 自然正序与异常置顶排序
         allDisplayRows.sort((a, b) => {
             if (!dailyActive) return 0;
             if (a.isException && !b.isException) return -1;
@@ -305,7 +346,6 @@
             return a.displaySKU.localeCompare(b.displaySKU);
         });
 
-        // 5. 渲染输出
         allDisplayRows.forEach(item => {
             let tr = document.createElement('tr');
             tr.className = item.rowClass;
@@ -343,7 +383,6 @@
         }
     }
 
-    // 核心修正：绝对干净利落地从底层抹掉指定行，两行同 SKU 数据各自独立不再错乱隐藏
     function deleteSingleRow(rowId) {
         if (confirm("Are you sure you want to delete this log?")) {
             data = data.filter(x => x.id !== rowId);
@@ -351,12 +390,14 @@
         }
     }
 
+    // 本地长效缓存
     function saveLocal() { 
         localStorage.setItem('wh_v820_data', JSON.stringify(data)); 
         localStorage.setItem('wh_v820_op', document.getElementById('opName').value); 
         localStorage.setItem('wh_v820_backup', JSON.stringify(data));
     }
     
+    // --- 核心改动 4：点击导出 CSV 时，完美还原存储的完整 F 列 SKU 编码（含波浪号和前缀） ---
     function exportCsv() {
         if(!data.length) return;
         let ts = {}; data.forEach(d => ts[d._originSKU] = (ts[d._originSKU] || 0) + d.Quantity);
@@ -371,6 +412,7 @@
                     else if (t > p) note = "+" + (t - p);
                     else if (t < p) note = (t - p);
                 }
+                // 导出的 d.SKU 会直接完美吐出：SSC-LIN-MIR-1743/0101~1234
                 return [d.SKU, d.Name, "", "", "", d.Quantity, d.FullLocation, d.Date, "TRUE", note];
             })
         ]);
