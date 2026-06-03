@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Warehouse V8.25.00 Cloud LOC Dual-Sync</title>
+    <title>Warehouse V8.25.01 Cloud LOC Sync</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
     <style>
         :root { --primary: #1890ff; --success: #52c41a; --danger: #ff4d4f; --extra: #b37feb; --bg: #f5f7fa; }
@@ -63,4 +63,404 @@
         .row-extra { background-color: #f9f0ff !important; color: #531dab !important; }
         
         .status-pending { color: #aaaaaa !important; } 
-        .status-active { color: #222222 !important; }
+        .status-active { color: #222222 !important; }   
+        
+        .edit-input { width: 100%; padding: 4px; border: 1px solid var(--primary); border-radius: 4px; text-align: center; font-size: 13px; background: transparent; }
+        .del-btn { background: #ff7875; color: white; border: none; border-radius: 4px; padding: 4px 8px; font-weight: bold; cursor: pointer; }
+        .cloud-banner { padding: 6px; border-radius: 8px; font-size: 11px; text-align: center; margin-bottom: 4px; font-weight: bold; }
+        .cb-sku { background: #e6f7ff; border: 1px solid #91d5ff; color: #0050b3; }
+        .cb-loc { background: #feffe6; border: 1px solid #fffb8f; color: #614700; }
+    </style>
+</head>
+<body onclick="unlockAudio()">
+
+<div class="main-wrapper">
+    <div class="panel-right">
+        <div class="cloud-banner cb-sku" id="cloudStat">☁️ 云端SKU库 (DEAR_PI) 正在连接...</div>
+        <div class="cloud-banner cb-loc" id="locCloudStat">☁️ 云端库位表 (A-U列) 正在连接...</div>
+
+        <div class="card">
+            <div class="file-grid">
+                <div class="file-btn"><span>DAILY清单 (按需上传)</span><input type="file" accept=".csv" onchange="processFile('check', this.files[0])"><span id="checkStat" class="status-tag">OPTIONAL</span></div>
+            </div>
+            <div style="display: flex; justify-content: space-between; margin-top: 8px;">
+                <button onclick="clearCache()" style="font-size:10px; color:red; border:none; background:none; padding:5px; font-weight:bold;">[CLEAR CACHE]</button>
+                <button onclick="recoverBackup()" style="font-size:10px; color:blue; border:none; background:none; padding:5px; font-weight:bold;">[RECOVER BACKUP]</button>
+            </div>
+        </div>
+
+        <div class="card">
+            <input type="text" id="opName" placeholder="Operator Name" onchange="saveLocal()">
+            <div id="batchContainer">
+                <div class="sku-row"><input type="text" id="s1" placeholder="SKU 1" inputmode="decimal"><input type="tel" id="q1" placeholder="Qty"></div>
+                <div class="sku-row"><input type="text" id="s2" placeholder="SKU 2" inputmode="decimal"><input type="tel" id="q2" placeholder="Qty"></div>
+                <div class="sku-row"><input type="text" id="s3" placeholder="SKU 3" inputmode="decimal"><input type="tel" id="q3" placeholder="Qty"></div>
+                <div class="sku-row"><input type="text" id="s4" placeholder="SKU 4" inputmode="decimal"><input type="tel" id="q4" placeholder="Qty"></div>
+                <div class="sku-row"><input type="text" id="s5" placeholder="SKU 5" inputmode="decimal"><input type="tel" id="q5" placeholder="Qty"></div>
+                <div class="sku-row"><input type="text" id="s6" placeholder="SKU 6" inputmode="decimal"><input type="tel" id="q6" placeholder="Qty"></div>
+            </div>
+            <input type="text" id="locIn" list="locList" class="loc-input" placeholder="SCAN LOCATION (LOC)">
+            <datalist id="locList"></datalist>
+            <button class="btn btn-save" id="saveBtn" onclick="addBatch()">SAVE ALL</button>
+        </div>
+    </div>
+
+    <div class="watermark-container">
+        <div class="bg-watermark">
+            敬畏耶和华是智慧的开端；认识至圣者便是聪明。<br>
+            The fear of the LORD is the beginning of wisdom, and knowledge of the Holy One is understanding.
+        </div>
+    </div>
+
+    <div class="panel-left">
+        <div class="table-wrap">
+            <table id="mainTable">
+                <thead>
+                    <tr>
+                        <th style="width: 30%;">SKU</th>
+                        <th style="width: 25%;">Location</th>
+                        <th style="width: 18%;">Qty</th>
+                        <th style="width: 15%;">STATUS</th>
+                        <th style="width: 12%;">DEL</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
+        <button class="btn btn-export" onclick="exportCsv()">EXPORT CSV</button>
+    </div>
+</div>
+
+<script>
+    // 锁定云端源链接
+    const FIXED_CLOUD_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQBh1fAm0-5pIJyHCRVDTt_n3vYILct87elf6_dJ9KvtZ126d-LYsgVkEaGKaZmti9lvFByG5LIc1dR/pub?gid=326617304&single=true&output=csv";
+    const FIXED_LOC_CLOUD_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vStLtLccpDSfrf_yU_T9WrNcZufN29BqkDsVS2r9ql1INK_61uA8UetkiW4DZ4_dv63o-DHzFz0tOAq/pub?gid=1276542862&single=true&output=csv";
+    
+    let dbMaster = {}, dbDaily = {}, setLoc = new Set(), data = [], dailyOrder = [];
+    let dailyActive = false, audioCtx = null, forceSKU = null;
+
+    function unlockAudio() {
+        if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+    }
+
+    window.onload = () => {
+        const cache = localStorage.getItem('wh_v820_data'), op = localStorage.getItem('wh_v820_op'), cachedLocsText = localStorage.getItem('wh_v825_cached_locs');
+        if (cache) { data = JSON.parse(cache); }
+        if (op) document.getElementById('opName').value = op;
+        
+        if (cachedLocsText) {
+            buildLocationsEngine(cachedLocsText, true);
+        }
+        
+        fetchCloudMaster();
+        fetchCloudLocations();
+        
+        const cC = localStorage.getItem('csv_check');
+        if(cC) { parseCheck(cC); updateStat('checkStat', true); }
+        setupEnterKey();
+        render();
+    };
+
+    function fetchCloudLocations() {
+        const banner = document.getElementById('locCloudStat');
+        fetch(FIXED_LOC_CLOUD_URL)
+        .then(response => response.text())
+        .then(txt => {
+            if (txt && txt.trim().length > 10) {
+                localStorage.setItem('wh_v825_cached_locs', txt);
+                buildLocationsEngine(txt, false);
+            }
+        })
+        .catch(err => {
+            console.error("库位同步错误:", err);
+            banner.innerText = "⚠️ 库位离线中 (正在使用本地历史内置数据大池)";
+            banner.style.background = "#fffbe6"; banner.style.borderColor = "#ffe58f"; banner.style.color = "#d46b08";
+        });
+    }
+
+    function buildLocationsEngine(text, isOfflineCache) {
+        setLoc.clear();
+        const dl = document.getElementById('locList');
+        dl.innerHTML = "";
+        
+        let items = text.split(/[\n\r\t\s,;]+/); 
+        let validCount = 0;
+        const blackList = ["LOCATION", "库位", "SKU", "QUANTITY", "数量", "NAME", "名称", "表头", "A", "B", "C", "U"];
+        
+        items.forEach(item => {
+            let v = item.trim().toUpperCase();
+            if (v && v.length >= 2 && !blackList.includes(v)) { 
+                if(!setLoc.has(v)) {
+                    setLoc.add(v);
+                    let o = document.createElement('option');
+                    o.value = v;
+                    dl.appendChild(o);
+                    validCount++;
+                }
+            }
+        });
+
+        const banner = document.getElementById('locCloudStat');
+        if (isOfflineCache) {
+            banner.innerText = `📦 本地内置库位就绪 (已锁死: ${validCount} 个库位联想)`;
+        } else {
+            banner.innerText = `⚡ 云端库位表 (A-U列) 同步成功！(已刷新内置: ${validCount} 个)`;
+            banner.style.background = "#f6ffed"; banner.style.borderColor = "#b7eb8f"; banner.style.color = "#52c41a";
+        }
+    }
+
+    function fetchCloudMaster() {
+        const banner = document.getElementById('cloudStat');
+        fetch(FIXED_CLOUD_URL)
+        .then(response => response.text())
+        .then(txt => { 
+            parseSKU(txt); 
+            banner.innerText = "⚡ 云端SKU库 (DEAR_PI) 同步成功！";
+            banner.style.background = "#f6ffed"; banner.style.borderColor = "#b7eb8f"; banner.style.color = "#52c41a";
+            render(); 
+        })
+        .catch(err => { 
+            banner.innerText = "❌ 云端同步失败，正在使用本地缓存旧数据。";
+            banner.style.background = "#fff1f0"; banner.style.borderColor = "#ffa39e"; banner.style.color = "#cf1322";
+        });
+    }
+
+    function processFile(t, f) {
+        if(!f) return; const r = new FileReader();
+        r.onload = (e) => {
+            const txt = e.target.result;
+            if(t==='check') { parseCheck(txt); localStorage.setItem('csv_check', txt); updateStat('checkStat', true); }
+        }; r.readAsText(f);
+    }
+    
+    function parseSKU(txt) { 
+        Papa.parse(txt, { complete: (res) => { 
+            dbMaster = {}; 
+            res.data.forEach((r, i) => { 
+                if(i > 0 && r[5]) { 
+                    let fullSku = r[5].trim().toUpperCase(); 
+                    let shortSku = fullSku;
+                    if(fullSku.includes('~')) { shortSku = fullSku.split('~').pop().trim(); }
+                    dbMaster[shortSku] = { b: fullSku, c: r[6] || "N/A" }; 
+                } 
+            }); 
+        }}); 
+    }
+    
+    function parseCheck(txt) { 
+        Papa.parse(txt, { complete: (res) => { 
+            dbDaily = {}; dailyOrder = []; dailyActive = false; 
+            res.data.forEach((r, i) => { 
+                if(i > 0 && r[0]) { 
+                    let k = r[0].trim().toUpperCase();
+                    let q = parseFloat(r[1]) || 0;
+                    if (dbDaily[k] !== undefined) { dbDaily[k] += q; } 
+                    else { dbDaily[k] = q; dailyOrder.push(k); }
+                    dailyActive = true; 
+                } 
+            }); 
+            
+            dailyOrder.sort((a, b) => {
+                let skuA = dbMaster[a] ? dbMaster[a].b : a; let skuB = dbMaster[b] ? dbMaster[b].b : b;
+                if (skuA.includes('~')) skuA = skuA.split('~').pop(); if (skuB.includes('~')) skuB = skuB.split('~').pop();
+                let numA = parseFloat(skuA), numB = parseFloat(skuB);
+                if (!isNaN(numA) && !isNaN(numB)) return numA - numB;
+                return skuA.localeCompare(skuB);
+            });
+            render();
+        }}); 
+    }
+
+    function updateStat(id, r) { const s = document.getElementById(id); s.innerText = r ? "READY" : "EMPTY"; s.className = r ? "status-tag ready" : "status-tag"; }
+    function clearCache() { if(confirm("Are you sure you want to clear all data?")) { localStorage.clear(); location.reload(); } }
+    function recoverBackup() { const b = localStorage.getItem('wh_v820_backup'); if(b) { data = JSON.parse(b); render(); alert("Data successfully recovered!"); } }
+
+    function playSound(type) {
+        if(!audioCtx) return;
+        const g = audioCtx.createGain(); g.gain.setValueAtTime(0.1, audioCtx.currentTime); g.connect(audioCtx.destination);
+        const o = audioCtx.createOscillator();
+        if(type === 'success') { o.type='sine'; o.frequency.setValueAtTime(1000, audioCtx.currentTime); o.start(); o.stop(audioCtx.currentTime + 0.1); }
+        else if(type === 'warn') { o.type='square'; o.frequency.setValueAtTime(440, audioCtx.currentTime); o.start(); o.stop(audioCtx.currentTime + 0.3); }
+        else { o.type='sawtooth'; o.frequency.setValueAtTime(150, audioCtx.currentTime); o.start(); o.stop(audioCtx.currentTime + 0.4); }
+    }
+
+    function addBatch() {
+        unlockAudio();
+        fetchCloudMaster();
+
+        const lv = document.getElementById('locIn').value.trim().toUpperCase();
+        const op = document.getElementById('opName').value.trim();
+        if(!lv || !op) { playSound('error'); return; }
+        
+        if (setLoc.size > 0 && !setLoc.has(lv)) { playSound('error'); alert(`库位无效！[${lv}] 不是合法的云端内置库位。`); return; }
+
+        let batch = [], any = false, mismatch = false;
+        const dateStr = new Date().toISOString().slice(0,10).replace(/-/g, "");
+
+        for(let i=1; i<=6; i++) {
+            const sv = document.getElementById('s'+i).value.trim().toUpperCase();
+            const qv = parseFloat(document.getElementById('q'+i).value);
+            if(!sv) continue;
+            if(dailyActive && dbDaily[sv] === undefined && forceSKU !== sv) { mismatch = true; forceSKU = sv; break; }
+            if(!qv || qv <= 0) { playSound('error'); return; }
+            any = true;
+
+            batch.push({ 
+                id: Date.now() + "_" + i + "_" + Math.random().toString(36).substr(2, 5),
+                _originSKU: sv,  
+                SKU: dbMaster[sv] ? dbMaster[sv].b : sv, 
+                Name: dbMaster[sv] ? dbMaster[sv].c : "N/A", 
+                Quantity: qv, Location: lv, FullLocation: "Patiki Warehouse: " + lv, Date: dateStr 
+            });
+        }
+
+        if(mismatch) {
+            playSound('error'); const b = document.getElementById('saveBtn'); b.innerText = "SKU NOT IN LIST! TAP AGAIN TO FORCE SAVE"; b.style.background = "orange";
+            setTimeout(() => { b.innerText = "SAVE ALL"; b.style.background = ""; forceSKU = null; }, 3000);
+            return;
+        }
+        if(!any) return;
+        data = [...data, ...batch]; render(); saveLocal(); 
+        
+        let hasOver = false;
+        let totals = {}; data.forEach(d => totals[d._originSKU] = (totals[d._originSKU] || 0) + d.Quantity);
+        batch.forEach(b => { if(dailyActive && dbDaily[b._originSKU] && totals[b._originSKU] > dbDaily[b._originSKU]) hasOver = true; });
+        playSound(hasOver ? 'warn' : 'success');
+
+        for(let i=1; i<=6; i++) { document.getElementById('s'+i).value = ""; document.getElementById('q'+i).value = ""; }
+        document.getElementById('locIn').value = ""; document.getElementById('s1').focus();
+        forceSKU = null;
+    }
+
+    function render() {
+        const tbody = document.querySelector("#mainTable tbody"); tbody.innerHTML = "";
+        let realSkuTotals = {};
+        data.forEach(d => { realSkuTotals[d._originSKU] = (realSkuTotals[d._originSKU] || 0) + d.Quantity; });
+
+        let allDisplayRows = [];
+        let trackedDailyKeysWithInput = new Set();
+
+        data.forEach(d => {
+            let k = d._originSKU;
+            let plan = dbDaily[k];
+            let skuTotal = realSkuTotals[k] || 0;
+
+            let diffText = "OK"; let isException = false; let rowClass = "";
+            
+            if (plan === undefined) { diffText = "EXT"; isException = true; rowClass = "row-extra"; } 
+            else {
+                trackedDailyKeysWithInput.add(k);
+                if (skuTotal > plan) { diffText = "+" + (skuTotal - plan); isException = true; rowClass = "row-over"; } 
+                // 🛠️ 终极修正：彻底删除了之前写错的复杂匿名匿名函数，恢复最稳固的常规算式
+                else if (skuTotal < plan) { diffText = (skuTotal - plan).toString(); isException = true; rowClass = "row-under"; }
+            }
+
+            let displaySKU = d._originSKU; 
+
+            allDisplayRows.push({
+                id: d.id, _originSKU: k, displaySKU: displaySKU, location: d.Location,
+                quantity: d.Quantity, diffText: diffText, isException: isException,
+                rowClass: rowClass, hasInput: true
+            });
+        });
+
+        if (dailyActive) {
+            dailyOrder.forEach(k => {
+                if (trackedDailyKeysWithInput.has(k)) return;
+                let plan = dbDaily[k];
+                allDisplayRows.push({
+                    id: "pending_" + k, _originSKU: k, displaySKU: k, location: "—",
+                    quantity: 0, diffText: (-plan).toString(), isException: true,
+                    rowClass: "row-under", hasInput: false
+                });
+            });
+        }
+
+        allDisplayRows.sort((a, b) => {
+            if (!dailyActive) return 0;
+            if (a.isException && !b.isException) return -1;
+            if (!a.isException && b.isException) return 1;
+            let numA = parseFloat(a.displaySKU), numB = parseFloat(b.displaySKU);
+            if (!isNaN(numA) && !isNaN(numB)) return numA - numB;
+            return a.displaySKU.localeCompare(b.displaySKU);
+        });
+
+        allDisplayRows.forEach(item => {
+            let tr = document.createElement('tr');
+            tr.className = item.rowClass;
+            tr.classList.add(item.hasInput ? "status-active" : "status-pending");
+
+            let qtyCellHtml = item.hasInput 
+                ? `<input type="number" class="edit-input" value="${item.quantity}" onchange="updateRowQty('${item.id}', this.value)">`
+                : `<span style="font-size:13px;">0</span> <span style="font-size:10px;color:#aaa;">(Plan:${dbDaily[item._originSKU]})</span>`;
+
+            let delCellHtml = item.hasInput 
+                ? `<button class="del-btn" onclick="deleteSingleRow(event, '${item.id}')">×</button>` 
+                : "—";
+
+            tr.innerHTML = `
+                <td class="td-sku">${item.displaySKU}</td>
+                <td class="td-loc">${item.location}</td>
+                <td>${qtyCellHtml}</td>
+                <td style="font-weight:bold; font-size:11px;">${item.diffText}</td>
+                <td>${delCellHtml}</td>
+            `;
+            tbody.appendChild(tr);
+        });
+    }
+
+    function updateRowQty(rowId, newQtyStr) {
+        let n = parseFloat(newQtyStr);
+        if (n >= 0) {
+            let row = data.find(x => x.id === rowId);
+            if (row) {
+                if (n === 0) { data = data.filter(x => x.id !== rowId); } 
+                else { row.Quantity = n; }
+                render(); saveLocal();
+            }
+        }
+    }
+
+    function deleteSingleRow(e, rowId) {
+        if (e) { e.stopPropagation(); e.preventDefault(); }
+        if (confirm("Are you sure you want to delete this log?")) {
+            data = data.filter(x => x.id !== rowId);
+            render(); saveLocal(); 
+        }
+    }
+
+    function saveLocal() { 
+        localStorage.setItem('wh_v820_data', JSON.stringify(data)); 
+        localStorage.setItem('wh_v820_op', document.getElementById('opName').value); 
+        localStorage.setItem('wh_v820_backup', JSON.stringify(data));
+    }
+    
+    function exportCsv() {
+        if(!data.length) return;
+        let ts = {}; data.forEach(d => ts[d._originSKU] = (ts[d._originSKU] || 0) + d.Quantity);
+        const op = document.getElementById('opName').value.trim() || "User", dateNow = new Date().toISOString().slice(0,10).replace(/-/g, "");
+        const csv = Papa.unparse([
+            ["SKU","Name","BatchSerialNumber","SupplierSKU","ExpiryDate_YYYYMMDD","Quantity","Location","DateReceived_YYYYMMDD","Received","Exception_Note"], 
+            ...data.map(d => {
+                const p = dbDaily[d._originSKU], t = ts[d._originSKU];
+                let note = "";
+                if (dailyActive) {
+                    if (p === undefined) note = "NOT IN LIST";
+                    else if (t > p) note = "+" + (t - p);
+                    else if (t < p) note = (t - p);
+                }
+                return [d.SKU, d.Name, "", "", "", d.Quantity, d.FullLocation, d.Date, "TRUE", note];
+            })
+        ]);
+        const b = new Blob(["\ufeff"+csv], { type: 'text/csv;charset=utf-8;' });
+        const a = document.createElement("a"); a.href = URL.createObjectURL(b); a.download = `Putway_${op}_${dateNow}.csv`; a.click();
+    }
+    
+    function setupEnterKey() {
+        const ins = Array.from(document.querySelectorAll('.panel-right input'));
+        ins.forEach((input, index) => { input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); (ins[index + 1] || ins[0]).focus(); if(input.id === 'locIn') addBatch(); } }); });
+    }
+</script>
+</body>
+</html>
