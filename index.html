@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Warehouse V8.25.04 Data Refresh</title>
+    <title>Warehouse V8.25.05 Cloud LOC Sync</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
     <style>
         :root { --primary: #1890ff; --success: #52c41a; --danger: #ff4d4f; --extra: #b37feb; --bg: #f5f7fa; }
@@ -135,7 +135,8 @@
     const FIXED_CLOUD_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQBh1fAm0-5pIJyHCRVDTt_n3vYILct87elf6_dJ9KvtZ126d-LYsgVkEaGKaZmti9lvFByG5LIc1dR/pub?gid=326617304&single=true&output=csv";
     const FIXED_LOC_CLOUD_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vStLtLccpDSfrf_yU_T9WrNcZufN29BqkDsVS2r9ql1INK_61uA8UetkiW4DZ4_dv63o-DHzFz0tOAq/pub?gid=1276542862&single=true&output=csv";
     
-    let dbMaster = {}, dbDaily = {}, setLoc = new Set(), data = [], dailyOrder = [];
+    // dbLocMap 用来存放【全大写库位】到【云端原生大小写库位】的映射字典，实现智能高精度对齐
+    let dbMaster = {}, dbDaily = {}, setLoc = new Set(), dbLocMap = {}, data = [], dailyOrder = [];
     let dailyActive = false, audioCtx = null, forceSKU = null;
 
     function unlockAudio() {
@@ -178,8 +179,10 @@
         });
     }
 
+    // --- 🛠️ 核心修正 1：重构库位内置引擎，百分之百保护原生大小写格式 ---
     function buildLocationsEngine(text, isOfflineCache) {
         setLoc.clear();
+        dbLocMap = {}; // 清空映射大库
         const dl = document.getElementById('locList');
         dl.innerHTML = "";
         
@@ -188,12 +191,16 @@
         const blackList = ["LOCATION", "库位", "SKU", "QUANTITY", "数量", "NAME", "名称", "表头", "A", "B", "C", "U"];
         
         items.forEach(item => {
-            let v = item.trim().toUpperCase();
-            if (v && v.length >= 2 && !blackList.includes(v)) { 
-                if(!setLoc.has(v)) {
-                    setLoc.add(v);
+            let rawV = item.trim(); // 抓取绝对原汁原味的原生大小写，例如 $Receiving Issues
+            let upperV = rawV.toUpperCase(); // 转大写专门用于在后台进行宽容校验
+            
+            if (rawV && rawV.length >= 2 && !blackList.includes(upperV)) { 
+                if(!setLoc.has(upperV)) {
+                    setLoc.add(upperV); // 校验池存放全大写，保证工人不管怎么输都能通过拦截
+                    dbLocMap[upperV] = rawV; // 核心字典：让全大写能够 100% 精准反向还原为原生大小写！
+                    
                     let o = document.createElement('option');
-                    o.value = v;
+                    o.value = rawV; // 联想菜单中优雅显示原生大小写格式
                     dl.appendChild(o);
                     validCount++;
                 }
@@ -217,10 +224,7 @@
             parseSKU(txt); 
             banner.innerText = "⚡ 云端SKU库 (DEAR_PI) 同步成功！";
             banner.style.background = "#f6ffed"; banner.style.borderColor = "#b7eb8f"; banner.style.color = "#52c41a";
-            
-            // 💡【核心升级：云端连接成功后，强行反向唤醒、清洗并纠正所有的本地历史脏数据】
             refreshHistoricalDataNames();
-            
             render(); 
         })
         .catch(err => { 
@@ -229,28 +233,20 @@
         });
     }
 
-    // --- 🛠️ 历史数据深度清洗引擎：对已经记录的老数据进行全量反向纠偏 ---
     function refreshHistoricalDataNames() {
         if (!data || data.length === 0) return;
         let isChanged = false;
-        
         data.forEach(d => {
-            let k = d._originSKU; // 抓取老数据里的短码钥匙
+            let k = d._originSKU;
             if (dbMaster[k]) {
-                // 如果云端大库里的真实Name跟老数据里封存的不一致，直接降维打击强行覆盖
                 if (d.Name !== dbMaster[k].c) {
-                    d.Name = dbMaster[k].c; // 注入正确的 Q 列商品描述
-                    d.SKU = dbMaster[k].b;  // 注入正确的 F 列完整长 SKU
+                    d.Name = dbMaster[k].c;
+                    d.SKU = dbMaster[k].b;
                     isChanged = true;
                 }
             }
         });
-        
-        // 如果数据发生过变更，立刻重新写入浏览器本地数据库锁死，一劳永逸
-        if (isChanged) {
-            saveLocal();
-            console.log("⚡ 历史老数据已完美完成 Q 列商品名称清洗和强制对齐！");
-        }
+        if (isChanged) { saveLocal(); }
     }
 
     function processFile(t, f) {
@@ -269,7 +265,6 @@
                     let fullSku = r[5].trim().toUpperCase(); 
                     let shortSku = fullSku;
                     if(fullSku.includes('~')) { shortSku = fullSku.split('~').pop().trim(); }
-                    // r[16] 精准对应云端 Sheets 中的 Q 列商品名称字段
                     dbMaster[shortSku] = { b: fullSku, c: r[16] ? r[16].trim() : "N/A" }; 
                 } 
             }); 
@@ -317,11 +312,17 @@
         unlockAudio();
         fetchCloudMaster();
 
-        const lv = document.getElementById('locIn').value.trim().toUpperCase();
+        let inputLv = document.getElementById('locIn').value.trim();
+        let upperLv = inputLv.toUpperCase(); // 宽容对比键
         const op = document.getElementById('opName').value.trim();
-        if(!lv || !op) { playSound('error'); return; }
         
-        if (setLoc.size > 0 && !setLoc.has(lv)) { playSound('error'); alert(`库位无效！[${lv}] 不是合法的云端内置库位。`); return; }
+        if(!inputLv || !op) { playSound('error'); return; }
+        
+        // 使用宽容键进行有效性拦截
+        if (setLoc.size > 0 && !setLoc.has(upperLv)) { playSound('error'); alert(`库位无效！[${inputLv}] 不是合法的云端内置库位。`); return; }
+
+        // --- 🛠️ 核心修正 2：如果校验通过，通过字典强行校准还原为云端最标准的大小写格式！ ---
+        let finalCorrectLocation = dbLocMap[upperLv] ? dbLocMap[upperLv] : inputLv;
 
         let batch = [], any = false, mismatch = false;
         const dateStr = new Date().toISOString().slice(0,10).replace(/-/g, "");
@@ -339,7 +340,10 @@
                 _originSKU: sv,  
                 SKU: dbMaster[sv] ? dbMaster[sv].b : sv, 
                 Name: dbMaster[sv] ? dbMaster[sv].c : "N/A", 
-                Quantity: qv, Location: lv, FullLocation: "Patiki Warehouse: " + lv, Date: dateStr 
+                Quantity: qv, 
+                Location: finalCorrectLocation, // 封存纯净的原生大小写（例如 $Receiving Issues）
+                FullLocation: "Patiki Warehouse: " + finalCorrectLocation, 
+                Date: dateStr 
             });
         }
 
@@ -383,10 +387,8 @@
                 else if (skuTotal < plan) { diffText = (skuTotal - plan).toString(); isException = true; rowClass = "row-under"; }
             }
 
-            let displaySKU = d._originSKU; 
-
             allDisplayRows.push({
-                id: d.id, _originSKU: k, displaySKU: displaySKU, location: d.Location,
+                id: d.id, _originSKU: k, displaySKU: d._originSKU, location: d.Location,
                 quantity: d.Quantity, diffText: diffText, isException: isException,
                 rowClass: rowClass, hasInput: true
             });
@@ -449,7 +451,6 @@
         }
     }
 
-    // 高效全端安全删除
     function deleteSingleRow(e, rowId) {
         if (e) { e.stopPropagation(); e.preventDefault(); }
         if (confirm("Are you sure you want to delete this log?")) {
