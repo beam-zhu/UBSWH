@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Warehouse V8.25.01 Cloud LOC Sync</title>
+    <title>Warehouse V8.25.02 Cloud LOC Sync</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
     <style>
         :root { --primary: #1890ff; --success: #52c41a; --danger: #ff4d4f; --extra: #b37feb; --bg: #f5f7fa; }
@@ -179,6 +179,7 @@
         });
     }
 
+    // A-U列多列库位清洗引擎
     function buildLocationsEngine(text, isOfflineCache) {
         setLoc.clear();
         const dl = document.getElementById('locList');
@@ -234,6 +235,7 @@
         }; r.readAsText(f);
     }
     
+    // --- 🛠️ 核心修正点：将商品名称抓取源精准调整为第 16 索引列 (即云端表格中的 Q 列) ---
     function parseSKU(txt) { 
         Papa.parse(txt, { complete: (res) => { 
             dbMaster = {}; 
@@ -242,7 +244,8 @@
                     let fullSku = r[5].trim().toUpperCase(); 
                     let shortSku = fullSku;
                     if(fullSku.includes('~')) { shortSku = fullSku.split('~').pop().trim(); }
-                    dbMaster[shortSku] = { b: fullSku, c: r[6] || "N/A" }; 
+                    // r[16] 精准对应云端 Sheets 中的 Q 列商品名称字段
+                    dbMaster[shortSku] = { b: fullSku, c: r[16] ? r[16].trim() : "N/A" }; 
                 } 
             }); 
         }}); 
@@ -352,7 +355,6 @@
             else {
                 trackedDailyKeysWithInput.add(k);
                 if (skuTotal > plan) { diffText = "+" + (skuTotal - plan); isException = true; rowClass = "row-over"; } 
-                // 🛠️ 终极修正：彻底删除了之前写错的复杂匿名匿名函数，恢复最稳固的常规算式
                 else if (skuTotal < plan) { diffText = (skuTotal - plan).toString(); isException = true; rowClass = "row-under"; }
             }
 
