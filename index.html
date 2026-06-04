@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Warehouse V8.25.02 Cloud LOC Sync</title>
+    <title>Warehouse V8.25.03 Cloud LOC Sync</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
     <style>
         :root { --primary: #1890ff; --success: #52c41a; --danger: #ff4d4f; --extra: #b37feb; --bg: #f5f7fa; }
@@ -179,13 +179,14 @@
         });
     }
 
-    // A-U列多列库位清洗引擎
+    // --- 🛠️ 终极修正：重构矩阵清洗引擎，只按单元格外部符号切割，完美保护库位内部的特殊符号与空格 ---
     function buildLocationsEngine(text, isOfflineCache) {
         setLoc.clear();
         const dl = document.getElementById('locList');
         dl.innerHTML = "";
         
-        let items = text.split(/[\n\r\t\s,;]+/); 
+        // 核心改动：不再贪婪匹配所有空格(\s)，而是以换行符、制表符、逗号、分号作为单元格边界，允许库位内部包含单空格
+        let items = text.split(/[ \t]*[\n\r,;]+[ \t]*/); 
         let validCount = 0;
         const blackList = ["LOCATION", "库位", "SKU", "QUANTITY", "数量", "NAME", "名称", "表头", "A", "B", "C", "U"];
         
@@ -235,7 +236,6 @@
         }; r.readAsText(f);
     }
     
-    // --- 🛠️ 核心修正点：将商品名称抓取源精准调整为第 16 索引列 (即云端表格中的 Q 列) ---
     function parseSKU(txt) { 
         Papa.parse(txt, { complete: (res) => { 
             dbMaster = {}; 
@@ -244,7 +244,6 @@
                     let fullSku = r[5].trim().toUpperCase(); 
                     let shortSku = fullSku;
                     if(fullSku.includes('~')) { shortSku = fullSku.split('~').pop().trim(); }
-                    // r[16] 精准对应云端 Sheets 中的 Q 列商品名称字段
                     dbMaster[shortSku] = { b: fullSku, c: r[16] ? r[16].trim() : "N/A" }; 
                 } 
             }); 
