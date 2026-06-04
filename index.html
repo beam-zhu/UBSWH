@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Warehouse V8.25.03 Cloud LOC Sync</title>
+    <title>Warehouse V8.25.04 Data Refresh</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
     <style>
         :root { --primary: #1890ff; --success: #52c41a; --danger: #ff4d4f; --extra: #b37feb; --bg: #f5f7fa; }
@@ -132,7 +132,6 @@
 </div>
 
 <script>
-    // 锁定云端源链接
     const FIXED_CLOUD_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQBh1fAm0-5pIJyHCRVDTt_n3vYILct87elf6_dJ9KvtZ126d-LYsgVkEaGKaZmti9lvFByG5LIc1dR/pub?gid=326617304&single=true&output=csv";
     const FIXED_LOC_CLOUD_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vStLtLccpDSfrf_yU_T9WrNcZufN29BqkDsVS2r9ql1INK_61uA8UetkiW4DZ4_dv63o-DHzFz0tOAq/pub?gid=1276542862&single=true&output=csv";
     
@@ -179,13 +178,11 @@
         });
     }
 
-    // --- 🛠️ 终极修正：重构矩阵清洗引擎，只按单元格外部符号切割，完美保护库位内部的特殊符号与空格 ---
     function buildLocationsEngine(text, isOfflineCache) {
         setLoc.clear();
         const dl = document.getElementById('locList');
         dl.innerHTML = "";
         
-        // 核心改动：不再贪婪匹配所有空格(\s)，而是以换行符、制表符、逗号、分号作为单元格边界，允许库位内部包含单空格
         let items = text.split(/[ \t]*[\n\r,;]+[ \t]*/); 
         let validCount = 0;
         const blackList = ["LOCATION", "库位", "SKU", "QUANTITY", "数量", "NAME", "名称", "表头", "A", "B", "C", "U"];
@@ -220,12 +217,40 @@
             parseSKU(txt); 
             banner.innerText = "⚡ 云端SKU库 (DEAR_PI) 同步成功！";
             banner.style.background = "#f6ffed"; banner.style.borderColor = "#b7eb8f"; banner.style.color = "#52c41a";
+            
+            // 💡【核心升级：云端连接成功后，强行反向唤醒、清洗并纠正所有的本地历史脏数据】
+            refreshHistoricalDataNames();
+            
             render(); 
         })
         .catch(err => { 
             banner.innerText = "❌ 云端同步失败，正在使用本地缓存旧数据。";
             banner.style.background = "#fff1f0"; banner.style.borderColor = "#ffa39e"; banner.style.color = "#cf1322";
         });
+    }
+
+    // --- 🛠️ 历史数据深度清洗引擎：对已经记录的老数据进行全量反向纠偏 ---
+    function refreshHistoricalDataNames() {
+        if (!data || data.length === 0) return;
+        let isChanged = false;
+        
+        data.forEach(d => {
+            let k = d._originSKU; // 抓取老数据里的短码钥匙
+            if (dbMaster[k]) {
+                // 如果云端大库里的真实Name跟老数据里封存的不一致，直接降维打击强行覆盖
+                if (d.Name !== dbMaster[k].c) {
+                    d.Name = dbMaster[k].c; // 注入正确的 Q 列商品描述
+                    d.SKU = dbMaster[k].b;  // 注入正确的 F 列完整长 SKU
+                    isChanged = true;
+                }
+            }
+        });
+        
+        // 如果数据发生过变更，立刻重新写入浏览器本地数据库锁死，一劳永逸
+        if (isChanged) {
+            saveLocal();
+            console.log("⚡ 历史老数据已完美完成 Q 列商品名称清洗和强制对齐！");
+        }
     }
 
     function processFile(t, f) {
@@ -244,6 +269,7 @@
                     let fullSku = r[5].trim().toUpperCase(); 
                     let shortSku = fullSku;
                     if(fullSku.includes('~')) { shortSku = fullSku.split('~').pop().trim(); }
+                    // r[16] 精准对应云端 Sheets 中的 Q 列商品名称字段
                     dbMaster[shortSku] = { b: fullSku, c: r[16] ? r[16].trim() : "N/A" }; 
                 } 
             }); 
@@ -423,6 +449,7 @@
         }
     }
 
+    // 高效全端安全删除
     function deleteSingleRow(e, rowId) {
         if (e) { e.stopPropagation(); e.preventDefault(); }
         if (confirm("Are you sure you want to delete this log?")) {
