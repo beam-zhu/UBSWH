@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Warehouse V8.26.00 Multi-PO Cloud Sync</title>
+    <title>Warehouse V8.26.01 Multi-PO Cloud Sync</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
     <style>
         :root { --primary: #1890ff; --success: #52c41a; --danger: #ff4d4f; --extra: #b37feb; --bg: #f5f7fa; }
@@ -135,7 +135,6 @@
     const FIXED_CLOUD_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQBh1fAm0-5pIJyHCRVDTt_n3vYILct87elf6_dJ9KvtZ126d-LYsgVkEaGKaZmti9lvFByG5LIc1dR/pub?gid=326617304&single=true&output=csv";
     const FIXED_LOC_CLOUD_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vStLtLccpDSfrf_yU_T9WrNcZufN29BqkDsVS2r9ql1INK_61uA8UetkiW4DZ4_dv63o-DHzFz0tOAq/pub?gid=1276542862&single=true&output=csv";
     
-    // dbDaily 变更为存储原始未合并 PO 清单数组：[{po, sku, plan, idx}]
     let dbMaster = {}, dbDailyList = [], setLoc = new Set(), dbLocMap = {}, data = [];
     let dailyActive = false, audioCtx = null, forceSKU = null;
 
@@ -249,12 +248,11 @@
         }}); 
     }
     
-    // --- 🛠️ 核心升级：导入 DAILY 时接受 PO 并在底层维护平铺不合并状态 ---
     function parseCheck(txt) { 
         Papa.parse(txt, { complete: (res) => { 
             dbDailyList = []; dailyActive = false; 
             res.data.forEach((r, i) => { 
-                if(i > 0 && r[1]) { // r[0]=PO, r[1]=SKU, r[2]=QTY
+                if(i > 0 && r[1]) { 
                     let p = r[0] ? r[0].toString().trim() : "N/A";
                     let k = r[1].trim().toUpperCase();
                     let q = parseFloat(r[2]) || 0;
@@ -297,7 +295,6 @@
             const qv = parseFloat(document.getElementById('q'+i).value);
             if(!sv) continue;
             
-            // 校验是否在 DAILY 清单中（多PO状态下只要任何一个PO里存在这个SKU即通过）
             let inDaily = dbDailyList.some(d => d.sku === sv);
             if(dailyActive && !inDaily && forceSKU !== sv) { mismatch = true; forceSKU = sv; break; }
             if(!qv || qv <= 0) { playSound('error'); return; }
@@ -317,7 +314,6 @@
         if(!any) return;
         data = [...data, ...batch]; render(); saveLocal(); 
         
-        // 计算全局总额报警音
         let hasOver = false;
         let totals = {}; data.forEach(d => totals[d._originSKU] = (totals[d._originSKU] || 0) + d.Quantity);
         let dailyTotals = {}; dbDailyList.forEach(d => dailyTotals[d.sku] = (dailyTotals[d.sku] || 0) + d.plan);
@@ -328,22 +324,17 @@
         document.getElementById('locIn').value = ""; document.getElementById('s1').focus(); forceSKU = null;
     }
 
-    // --- 🛠️ 核心引擎：多PO看板渲染机制（实收和计划隔离显示，不合并计划行） ---
     function render() {
         const tbody = document.querySelector("#mainTable tbody"); tbody.innerHTML = "";
-        
-        // 1. 汇总实收大池（按SKU求绝对总和）
         let realSkuTotals = {};
         data.forEach(d => { realSkuTotals[d._originSKU] = (realSkuTotals[d._originSKU] || 0) + d.Quantity; });
 
-        // 2. 汇总计划总额
         let dailyTotals = {};
         dbDailyList.forEach(d => dailyTotals[d.sku] = (dailyTotals[d.sku] || 0) + d.plan);
 
         let allDisplayRows = [];
         let trackedDailyKeysWithInput = new Set();
 
-        // 3. 展现全部【实收记录行】（每一行原汁原味高亮，差额对比全局总额状态）
         data.forEach(d => {
             let k = d._originSKU;
             let totalPlanForThisSku = dailyTotals[k];
@@ -365,11 +356,9 @@
             });
         });
 
-        // 4. 展现还【未开工的每一笔原始多PO计划看板行】（不显示PO编码，保持平铺灰色）
         if (dailyActive) {
             dbDailyList.forEach(d => {
-                if (trackedDailyKeysWithInput.has(d.sku)) return; // 一旦被收过货，由实收接管，灰色行隐退
-                
+                if (trackedDailyKeysWithInput.has(d.sku)) return;
                 allDisplayRows.push({
                     id: "pending_" + d.idx, _originSKU: d.sku, displaySKU: d.sku, location: "—",
                     quantity: 0, diffText: (-d.plan).toString(), isException: true,
@@ -378,11 +367,10 @@
             });
         }
 
-        // 自然排序：优先将异常实收、新扫描置顶，随后按未开工索引自然正序
         allDisplayRows.sort((a, b) => {
-            if (a.hasInput !== b.hasInput) return b.hasInput - a.hasInput; // 实收永远在上方
+            if (a.hasInput !== b.hasInput) return b.hasInput - a.hasInput;
             if (a.isException !== b.isException) return b.isException - a.isException;
-            if (!a.hasInput) return a.orderWeight - b.orderWeight; // 未开工按PO导入顺序
+            if (!a.hasInput) return a.orderWeight - b.orderWeight;
             return a.displaySKU.localeCompare(b.displaySKU);
         });
 
@@ -432,14 +420,11 @@
         localStorage.setItem('wh_v820_backup', JSON.stringify(data));
     }
     
-    // --- 🛠️ 核心黑科技：EXPORT CSV 时触发的【多库位对多PO账单】全自动整数分配对齐算法 ---
+    // --- 🛠️ 核心修正点：不论是全部塞满还是拆分流转，只要成功分流到PO计划上，Exception_Note通通锁定显示为 "OK" ---
     function exportCsv() {
         const op = document.getElementById('opName').value.trim() || "User", dateNow = new Date().toISOString().slice(0,10).replace(/-/g, "");
-        
-        // 表头声明（A列让渡给PO字段）
         let csvRows = [["PO","SKU","Name","BatchSerialNumber","SupplierSKU","ExpiryDate_YYYYMMDD","Quantity","Location","DateReceived_YYYYMMDD","Received","Exception_Note"]];
         
-        // 按SKU对所有实际扫描到的【库位流水账】进行高密度归类提取
         let scannedGroupsBySku = {};
         data.forEach(d => {
             if (!scannedGroupsBySku[d._originSKU]) scannedGroupsBySku[d._originSKU] = [];
@@ -448,21 +433,18 @@
             });
         });
 
-        // 按SKU对 DAILY 清单里所有拆分的多PO账单进行归类提取
         let dailyGroupsBySku = {};
         dbDailyList.forEach(d => {
             if (!dailyGroupsBySku[d.sku]) dailyGroupsBySku[d.sku] = [];
             dailyGroupsBySku[d.sku].push({ po: d.po, plan: d.plan });
         });
 
-        // 收集所有涉及到的SKU主键并去重
         let allSkus = new Set([...Object.keys(scannedGroupsBySku), ...Object.keys(dailyGroupsBySku)]);
 
         allSkus.forEach(skuKey => {
-            let scannedPool = scannedGroupsBySku[skuKey] || []; // 库位池流
-            let dailyBills = JSON.parse(JSON.stringify(dailyGroupsBySku[skuKey] || [])); // 账单池深拷贝
+            let scannedPool = scannedGroupsBySku[skuKey] || []; 
+            let dailyBills = JSON.parse(JSON.stringify(dailyGroupsBySku[skuKey] || [])); 
 
-            // 情况A：如果根本没上传 DAILY 清单，或者这是个不在清单内的 EXT 临时加货
             if (!dailyActive || dailyBills.length === 0) {
                 scannedPool.forEach(s => {
                     csvRows.push(["EXTRA", s.fullSku, s.name, "", "", "", s.qty, s.loc, s.date, "TRUE", "NOT IN LIST"]);
@@ -470,42 +452,35 @@
                 return;
             }
 
-            // 情况B：深度多对多精细分配流（最硬核的数学消减算法）
             let billIdx = 0;
-            
             for (let sIdx = 0; sIdx < scannedPool.length; sIdx++) {
                 let scanRow = scannedPool[sIdx];
-                let remScanQty = scanRow.qty; // 当前库位格子里剩余可扣除的资金
+                let remScanQty = scanRow.qty; 
 
-                // 当这个库位格子里还有剩余数，且还有未报销的PO账单时，疯狂循环消减它
                 while (remScanQty > 0 && billIdx < dailyBills.length) {
                     let currentBill = dailyBills[billIdx];
-                    let remBillPlan = currentBill.plan; // 这个PO账单还缺多少数
+                    let remBillPlan = currentBill.plan; 
 
-                    if (remBillPlan <= 0) { billIdx++; continue; } // 这个PO吃饱了，踢去下一张PO
+                    if (remBillPlan <= 0) { billIdx++; continue; } 
 
-                    // 核心随机相遇博弈
                     if (remScanQty >= remBillPlan) {
-                        // 库位里的货比这笔PO要多，直接一口气把这笔PO塞满报销
                         csvRows.push([currentBill.po, scanRow.fullSku, scanRow.name, "", "", "", remBillPlan, scanRow.loc, scanRow.date, "TRUE", "OK"]);
-                        remScanQty -= remBillPlan; // 库位流钱包扣除
-                        currentBill.plan = 0; // 这笔PO彻底搞定
-                        billIdx++; // 跳去下一个PO账单
+                        remScanQty -= remBillPlan; 
+                        currentBill.plan = 0; 
+                        billIdx++; 
                     } else {
-                        // 库位里的货不够这笔PO吃，有多少直接给它多少
-                        csvRows.push([currentBill.po, scanRow.fullSku, scanRow.name, "", "", "", remScanQty, scanRow.loc, scanRow.date, "TRUE", (remScanQty - remBillPlan).toString()]);
-                        currentBill.plan -= remScanQty; // 这个PO账单缩水，等待下一个库位来补
-                        remScanQty = 0; // 这个库位格子彻底掏空，结束当前实收行
+                        // 🛠️ 深度优化：此处的中间欠货进度计算 (remScanQty - remBillPlan) 被彻底砍掉，强制对齐为 "OK"
+                        csvRows.push([currentBill.po, scanRow.fullSku, scanRow.name, "", "", "", remScanQty, scanRow.loc, scanRow.date, "TRUE", "OK"]);
+                        currentBill.plan -= remScanQty; 
+                        remScanQty = 0; 
                     }
                 }
 
-                // 特殊尾数补录：如果所有PO账单都全部吃饱填满了（billIdx到头了），工人多收的货（爆单部分Row Over）单独独立成行
                 if (remScanQty > 0) {
-                    csvRows.push(["OVER_FLOW", scanRow.fullSku, scanRow.name, "", "", "", remScanQty, scanRow.loc, scanRow.date, "TRUE", "+" + remScanQty]);
+                    csvRows.push(["OVER_FLOW", scanRow.fullSku, scanRow.name, "", "", "", remScanQty, scanRow.loc, scanRow.date, "TRUE", "OVERFLOW"]);
                 }
             }
 
-            // 特殊欠货补录（看板追踪）：如果有某个PO账单直到最后依旧没分到一粒货，自动按未开工补齐（数显-X，数量显示0，方便补查PO）
             while (billIdx < dailyBills.length) {
                 let currentBill = dailyBills[billIdx];
                 if (currentBill.plan > 0) {
@@ -516,7 +491,6 @@
             }
         });
 
-        // 导出打包输出
         const csv = Papa.unparse(csvRows);
         const b = new Blob(["\ufeff" + csv], { type: 'text/csv;charset=utf-8;' });
         const a = document.createElement("a"); a.href = URL.createObjectURL(b); a.download = `Putway_PO_Split_${op}_${dateNow}.csv`; a.click();
