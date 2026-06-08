@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Warehouse V8.26.01 Multi-PO Cloud Sync</title>
+    <title>Warehouse V8.26.02 Multi-PO Cloud Sync</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
     <style>
         :root { --primary: #1890ff; --success: #52c41a; --danger: #ff4d4f; --extra: #b37feb; --bg: #f5f7fa; }
@@ -288,7 +288,13 @@
 
         let finalCorrectLocation = dbLocMap[upperLv] ? dbLocMap[upperLv] : inputLv;
         let batch = [], any = false, mismatch = false;
-        const dateStr = new Date().toISOString().slice(0,10).replace(/-/g, "");
+        
+        // --- 🛠️ 核心修正点：利用原生本地时区深度拆解法，彻底杜绝 UTC 时有时无的少一天 Bug ---
+        const today = new Date();
+        const y = today.getFullYear();
+        const m = String(today.getMonth() + 1).padStart(2, '0');
+        const d = String(today.getDate()).padStart(2, '0');
+        const localDateStr = `${y}${m}${d}`; // 完美对齐本地当前时刻
 
         for(let i=1; i<=6; i++) {
             const sv = document.getElementById('s'+i).value.trim().toUpperCase();
@@ -303,7 +309,8 @@
             batch.push({ 
                 id: Date.now() + "_" + i + "_" + Math.random().toString(36).substr(2, 5),
                 _originSKU: sv, SKU: dbMaster[sv] ? dbMaster[sv].b : sv, Name: dbMaster[sv] ? dbMaster[sv].c : "N/A", 
-                Quantity: qv, Location: finalCorrectLocation, FullLocation: "Patiki Warehouse: " + finalCorrectLocation, Date: dateStr 
+                Quantity: qv, Location: finalCorrectLocation, FullLocation: "Patiki Warehouse: " + finalCorrectLocation, 
+                Date: localDateStr // 封存纯正的本地理货日期
             });
         }
 
@@ -420,7 +427,6 @@
         localStorage.setItem('wh_v820_backup', JSON.stringify(data));
     }
     
-    // --- 🛠️ 核心修正点：不论是全部塞满还是拆分流转，只要成功分流到PO计划上，Exception_Note通通锁定显示为 "OK" ---
     function exportCsv() {
         const op = document.getElementById('opName').value.trim() || "User", dateNow = new Date().toISOString().slice(0,10).replace(/-/g, "");
         let csvRows = [["PO","SKU","Name","BatchSerialNumber","SupplierSKU","ExpiryDate_YYYYMMDD","Quantity","Location","DateReceived_YYYYMMDD","Received","Exception_Note"]];
@@ -469,7 +475,6 @@
                         currentBill.plan = 0; 
                         billIdx++; 
                     } else {
-                        // 🛠️ 深度优化：此处的中间欠货进度计算 (remScanQty - remBillPlan) 被彻底砍掉，强制对齐为 "OK"
                         csvRows.push([currentBill.po, scanRow.fullSku, scanRow.name, "", "", "", remScanQty, scanRow.loc, scanRow.date, "TRUE", "OK"]);
                         currentBill.plan -= remScanQty; 
                         remScanQty = 0; 
@@ -485,7 +490,10 @@
                 let currentBill = dailyBills[billIdx];
                 if (currentBill.plan > 0) {
                     let mInfo = dbMaster[skuKey] || { b: skuKey, c: "N/A" };
-                    csvRows.push([currentBill.po, mInfo.b, mInfo.c, "", "", "", 0, "—", dateNow, "FALSE", (-currentBill.plan).toString()]);
+                    // 确保未开工补齐行也完美同步最新的本地纯正日期格式
+                    const t = new Date();
+                    const formattedDate = `${t.getFullYear()}${String(t.getMonth()+1).padStart(2,'0')}${String(t.getDate()).padStart(2,'0')}`;
+                    csvRows.push([currentBill.po, mInfo.b, mInfo.c, "", "", "", 0, "—", formattedDate, "FALSE", (-currentBill.plan).toString()]);
                 }
                 billIdx++;
             }
