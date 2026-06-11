@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Warehouse V8.26.03 Cloud Sync</title>
+    <title>Warehouse V8.26.04 Cloud Sync</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
     <style>
         :root { --primary: #1890ff; --success: #52c41a; --danger: #ff4d4f; --extra: #b37feb; --bg: #f5f7fa; }
@@ -175,6 +175,7 @@
         });
     }
 
+    // A-U大矩阵全格式兼容库位加载
     function buildLocationsEngine(text, isOfflineCache) {
         setLoc.clear(); dbLocMap = {};
         const dl = document.getElementById('locList'); dl.innerHTML = "";
@@ -235,12 +236,10 @@
         }; r.readAsText(f);
     }
     
-    // --- 🛠️ 核心匹配重新编排逻辑：H列（索引7）做SKU，R列（索引17）做Name商品描述 ---
     function parseSKU(txt) { 
         Papa.parse(txt, { complete: (res) => { 
             dbMaster = {}; 
             res.data.forEach((r, i) => { 
-                // r[7] 精准对应云端 Sheets 中的 H 列；r[17] 精准对应 R 列商品名称字段
                 if(i > 0 && r[7]) { 
                     let fullSku = r[7].trim().toUpperCase(); let shortSku = fullSku;
                     if(fullSku.includes('~')) { shortSku = fullSku.split('~').pop().trim(); }
@@ -422,9 +421,12 @@
         localStorage.setItem('wh_v820_backup', JSON.stringify(data));
     }
     
+    // --- 🛠️ 核心升级：增加同 PO、同 SKU、同库位条件下的最终原子全压缩合并处理引擎 ---
     function exportCsv() {
         const op = document.getElementById('opName').value.trim() || "User", dateNow = new Date().toISOString().slice(0,10).replace(/-/g, "");
-        let csvRows = [["PO","SKU","Name","BatchSerialNumber","SupplierSKU","ExpiryDate_YYYYMMDD","Quantity","Location","DateReceived_YYYYMMDD","Received","Exception_Note"]];
+        
+        // 临时平面结果集容器（用于第一阶段的多PO账单原子切分）
+        let rawSplittedRows = [];
         
         let scannedGroupsBySku = {};
         data.forEach(d => {
@@ -448,7 +450,7 @@
 
             if (!dailyActive || dailyBills.length === 0) {
                 scannedPool.forEach(s => {
-                    csvRows.push(["EXTRA", s.fullSku, s.name, "", "", "", s.qty, s.loc, s.date, "TRUE", "NOT IN LIST"]);
+                    rawSplittedRows.push({ po: "EXTRA", sku: s.fullSku, name: s.name, bsn: "", ssk: "", exp: "", qty: s.qty, loc: s.loc, date: s.date, rec: "TRUE", note: "NOT IN LIST" });
                 });
                 return;
             }
@@ -465,16 +467,16 @@
                     if (remBillPlan <= 0) { billIdx++; continue; } 
 
                     if (remScanQty >= remBillPlan) {
-                        csvRows.push([currentBill.po, scanRow.fullSku, scanRow.name, "", "", "", remBillPlan, scanRow.loc, scanRow.date, "TRUE", "OK"]);
+                        rawSplittedRows.push({ po: currentBill.po, sku: scanRow.fullSku, name: scanRow.name, bsn: "", ssk: "", exp: "", qty: remBillPlan, loc: scanRow.loc, date: scanRow.date, rec: "TRUE", note: "OK" });
                         remScanQty -= remBillPlan; currentBill.plan = 0; billIdx++; 
                     } else {
-                        csvRows.push([currentBill.po, scanRow.fullSku, scanRow.name, "", "", "", remScanQty, scanRow.loc, scanRow.date, "TRUE", "OK"]);
+                        rawSplittedRows.push({ po: currentBill.po, sku: scanRow.fullSku, name: scanRow.name, bsn: "", ssk: "", exp: "", qty: remScanQty, loc: scanRow.loc, date: scanRow.date, rec: "TRUE", note: "OK" });
                         currentBill.plan -= remScanQty; remScanQty = 0; 
                     }
                 }
 
                 if (remScanQty > 0) {
-                    csvRows.push(["OVER_FLOW", scanRow.fullSku, scanRow.name, "", "", "", remScanQty, scanRow.loc, scanRow.date, "TRUE", "OVERFLOW"]);
+                    rawSplittedRows.push({ po: "OVER_FLOW", sku: scanRow.fullSku, name: scanRow.name, bsn: "", ssk: "", exp: "", qty: remScanQty, loc: scanRow.loc, date: scanRow.date, rec: "TRUE", note: "OVERFLOW" });
                 }
             }
 
@@ -484,13 +486,40 @@
                     let mInfo = dbMaster[skuKey] || { b: skuKey, c: "N/A" };
                     const t = new Date();
                     const formattedDate = `${t.getFullYear()}${String(t.getMonth()+1).padStart(2,'0')}${String(t.getDate()).padStart(2,'0')}`;
-                    csvRows.push([currentBill.po, mInfo.b, mInfo.c, "", "", "", 0, "—", formattedDate, "FALSE", (-currentBill.plan).toString()]);
+                    rawSplittedRows.push({ po: currentBill.po, sku: mInfo.b, name: mInfo.c, bsn: "", ssk: "", exp: "", qty: 0, loc: "—", date: formattedDate, rec: "FALSE", note: (-currentBill.plan).toString() });
                 }
                 billIdx++;
             }
         });
 
-        const csv = Papa.unparse(csvRows);
+        // 💡【新核心改动：对第一阶段切分完的结果，进行“同PO+同SKU+同库位”的高精度强聚合压缩】
+        let compressedMap = {};
+        let finalRows = [["PO","SKU","Name","BatchSerialNumber","SupplierSKU","ExpiryDate_YYYYMMDD","Quantity","Location","DateReceived_YYYYMMDD","Received","Exception_Note"]];
+
+        rawSplittedRows.forEach(row => {
+            // 用 PO + SKU + 库位 + 备注 编织成全网唯一特征码（如果是没收齐的欠货追踪行数量为0，保留独立不压缩）
+            let uniqueMatrixKey = `${row.po}##${row.sku}##${row.loc}##${row.note}`;
+            
+            if(row.qty > 0 && compressedMap[uniqueMatrixKey]) {
+                // 如果发现矩阵特征码完全一致，库位数量直接暴力累加叠加！
+                compressedMap[uniqueMatrixKey].qty += row.qty;
+            } else if (row.qty > 0) {
+                // 首次建立矩阵特征节点
+                compressedMap[uniqueMatrixKey] = row;
+            } else {
+                // 欠货追踪行 (Quantity 为 0) 忠实保留平铺，方便对账
+                finalRows.push([row.po, row.sku, row.name, row.bsn, row.ssk, row.exp, row.qty, row.loc, row.date, row.rec, row.note]);
+            }
+        });
+
+        // 将合并压缩后的原子行吐入最终的 CSV 输出阵列
+        Object.keys(compressedMap).forEach(key => {
+            let r = compressedMap[key];
+            finalRows.push([r.po, r.sku, r.name, r.bsn, r.ssk, r.exp, r.qty, r.loc, r.date, r.rec, r.note]);
+        });
+
+        // 导出并打包
+        const csv = Papa.unparse(finalRows);
         const b = new Blob(["\ufeff" + csv], { type: 'text/csv;charset=utf-8;' });
         const a = document.createElement("a"); a.href = URL.createObjectURL(b); a.download = `Putway_PO_Split_${op}_${dateNow}.csv`; a.click();
     }
