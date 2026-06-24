@@ -3,27 +3,21 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Warehouse V8.28.02 Multi-Device Sync</title>
+    <title>Warehouse V8.28.03 Multi-Device Sync</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
     <style>
         :root { --primary: #1890ff; --success: #52c41a; --danger: #ff4d4f; --extra: #b37feb; --bg: #f5f7fa; }
         * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
         body { font-family: -apple-system, Roboto, Helvetica, Arial, sans-serif; margin: 0; background: var(--bg); min-height: 100vh; overflow-x: hidden; position: relative; }
         
-        .bg-watermark {
-            width: 90%; margin: 15px auto; text-align: center; color: #555; opacity: 0.12; font-size: 14px; font-style: italic;
-            pointer-events: none; line-height: 1.8; border-top: 1px solid #ccc; border-bottom: 1px solid #ccc; padding: 10px 0;
-        }
         .main-wrapper { display: flex; flex-direction: column; padding: 8px; gap: 8px; }
         .panel-right { order: 1; width: 100%; } 
-        .panel-left { order: 3; width: 100%; display: flex; flex-direction: column; }
-        .watermark-container { order: 2; width: 100%; }
+        .panel-left { order: 2; width: 100%; display: flex; flex-direction: column; }
         
         @media (min-width: 900px) { 
             .main-wrapper { flex-direction: row; height: 100vh; overflow: hidden; }
             .panel-right { flex: 4; height: 100%; overflow-y: auto; }
             .panel-left { flex: 6; height: 100%; }
-            .watermark-container { position: fixed; bottom: 20px; right: 20px; width: 300px; opacity: 0.2; }
         }
         .card { background: white; border-radius: 12px; padding: 12px; border: 1px solid #e8e8e8; box-shadow: 0 2px 8px rgba(0,0,0,0.05); margin-bottom: 8px; }
         input { height: 44px; padding: 10px; border: 1px solid #d9d9d9; border-radius: 8px; font-size: 16px; width: 100%; background: #fafafa; margin-bottom: 8px; }
@@ -92,13 +86,6 @@
         </div>
     </div>
 
-    <div class="watermark-container">
-        <div class="bg-watermark">
-            敬畏耶和华是智慧的开端；认识至圣者便是聪明。<br>
-            The fear of the LORD is the beginning of wisdom, and knowledge of the Holy One is understanding.
-        </div>
-    </div>
-
     <div class="panel-left">
         <div class="table-wrap">
             <table id="mainTable">
@@ -122,8 +109,8 @@
     const FIXED_CLOUD_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQBh1fAm0-5pIJyHCRVDTt_n3vYILct87elf6_dJ9KvtZ126d-LYsgVkEaGKaZmti9lvFByG5LIc1dR/pub?gid=326617304&single=true&output=csv";
     const FIXED_LOC_CLOUD_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vStLtLccpDSfrf_yU_T9WrNcZufN29BqkDsVS2r9ql1INK_61uA8UetkiW4DZ4_dv63o-DHzFz0tOAq/pub?gid=1276542862&single=true&output=csv";
     
-    // 📡 💡【请在此处填入您新建部署生成的全新 Web 应用 URL 链接】
-    const APP_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzCQ_HrBoTBNzV58RxaTjRqAWuLRE9yMOw06s504EOYYCbzl8sfrsmC3eEVmunIMxCw/exec";
+    // 📡 请将下方双引号中的内容替换为您在谷歌 Apps Script 新建部署生成的 Web 应用 URL 链接
+    const APP_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwK2hJzZM_jmVftK4rbT4DEqWHUZVunRmAJIIN6sdMOOcmmhF8S8b8aNyXCkwqe0ETZ/exec";
 
     let auditLogPool = [];
     let dbMaster = {}, dbDailyList = [], setLoc = new Set(), dbLocMap = {}, data = [];
@@ -144,7 +131,7 @@
         fetchCloudLocations();
         
         syncNetworkPool();
-        setInterval(syncNetworkPool, 5000); // 5秒静默高频合流
+        setInterval(syncNetworkPool, 5000);
         
         const cC = localStorage.getItem('csv_check'), savedFileName = localStorage.getItem('wh_v826_check_filename');
         if(cC) { parseCheck(cC); updateCheckStatTag(savedFileName || "READY"); }
@@ -341,11 +328,9 @@
         }
         if(batchRowsForGAS.length === 0) return;
 
-        // 本地前瞻强注入（秒显列表）
         data = [...data, ...temporaryLocalBatch];
         render();
 
-        // 网络穿透发送到个人云表
         fetch(APP_SCRIPT_URL, {
             method: "POST", mode: "no-cors", headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ action: "insert", rows: batchRowsForGAS })
@@ -362,7 +347,6 @@
         for(let i=1; i<=6; i++) { document.getElementById('s'+i).value = ""; document.getElementById('q'+i).value = ""; }
         document.getElementById('locIn').value = ""; document.getElementById('s1').focus(); forceSKU = null;
         
-        // 1.2秒后强制进行分布式全场分布式数据大握手
         setTimeout(syncNetworkPool, 1200);
     }
 
