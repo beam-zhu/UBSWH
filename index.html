@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Warehouse V8.27.00 Multi-Device Sync</title>
+    <title>Warehouse V8.28.00 Audit Log Sync</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
     <style>
         :root { --primary: #1890ff; --success: #52c41a; --danger: #ff4d4f; --extra: #b37feb; --bg: #f5f7fa; }
@@ -119,13 +119,12 @@
 </div>
 
 <script>
-    // 锁定两路公司源链接
     const FIXED_CLOUD_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQBh1fAm0-5pIJyHCRVDTt_n3vYILct87elf6_dJ9KvtZ126d-LYsgVkEaGKaZmti9lvFByG5LIc1dR/pub?gid=326617304&single=true&output=csv";
     const FIXED_LOC_CLOUD_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vStLtLccpDSfrf_yU_T9WrNcZufN29BqkDsVS2r9ql1INK_61uA8UetkiW4DZ4_dv63o-DHzFz0tOAq/pub?gid=1276542862&single=true&output=csv";
-    
-    // 📡【核心：织入您个人全新配置的 Web 联网应用接口 API】
-    const NETWORK_API_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vStLtLccpDSfrf_yU_T9WrNcZufN29BqkDsVS2r9ql1INK_61uA8UetkiW4DZ4_dv63o-DHzFz0tOAq/pub?gid=1276542862&single=true&output=csv";
     const APP_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwK2hJzZM_jmVftK4rbT4DEqWHUZVunRmAJIIN6sdMOOcmmhF8S8b8aNyXCkwqe0ETZ/exec";
+
+    // 🕵️ 本地黑匣子：审计日志记录池
+    let auditLogPool = [];
 
     let dbMaster = {}, dbDailyList = [], setLoc = new Set(), dbLocMap = {}, data = [];
     let dailyActive = false, audioCtx = null, forceSKU = null;
@@ -136,18 +135,14 @@
     }
 
     window.onload = () => {
-        const op = localStorage.getItem('wh_v820_op'), cachedLocsText = localStorage.getItem('wh_v825_cached_locs');
+        const op = localStorage.getItem('wh_v820_op'), cachedLocsText = localStorage.getItem('wh_v825_cached_locs'), localLogs = localStorage.getItem('wh_v828_audit_logs');
         if (op) document.getElementById('opName').value = op;
-        
         if (cachedLocsText) { buildLocationsEngine(cachedLocsText, true); }
+        if (localLogs) { auditLogPool = JSON.parse(localLogs); } // 恢复本地拦截的历史日志
         
         fetchCloudMaster();
         fetchCloudLocations();
-        
-        // 📡 启动多端在线数据全网初次对齐
         syncNetworkPool();
-        
-        // 📡 核心驱动：开启每隔 5 秒钟的无感知心跳高速合流对齐监听
         setInterval(syncNetworkPool, 5000);
         
         const cC = localStorage.getItem('csv_check'), savedFileName = localStorage.getItem('wh_v826_check_filename');
@@ -155,15 +150,19 @@
         setupEnterKey();
     };
 
-    // --- 📡 核心联网拉取引擎：无感知拉取全场合流池并启动反向洗白 ---
+    function fetchLocalTimeFormatted() {
+        const t = new Date();
+        return `[${t.getFullYear()}-${String(t.getMonth()+1).padStart(2,'0')}-${String(t.getDate()).padStart(2,'0')} ${String(t.getHours()).padStart(2,'0')}:${String(t.getMinutes()).padStart(2,'0')}:${String(t.getSeconds()).padStart(2,'0')}]`;
+    }
+
     function syncNetworkPool() {
         const netBanner = document.getElementById('networkStat');
         fetch(APP_SCRIPT_URL)
         .then(res => res.json())
         .then(onlineData => {
             if (Array.isArray(onlineData)) {
-                data = onlineData; // 将云端大池覆盖手机本地平面
-                refreshHistoricalDataNames(); // 静默重刷可能发生的 Q 列错误老描述
+                data = onlineData;
+                refreshHistoricalDataNames();
                 render(); 
                 netBanner.innerText = `📡 多端联网在线中 (全场已聚合流水: ${data.length} 条)`;
                 netBanner.style.background = "#f6ffed"; netBanner.style.borderColor = "#b7eb8f"; netBanner.style.color = "#52c41a";
@@ -280,13 +279,14 @@
     }
 
     function saveLocalNameOnly() { localStorage.setItem('wh_v820_op', document.getElementById('opName').value); }
-    function recoverBackup() { alert("联网版本已全面接管长效云数据，本地备份已隐退。"); }
-
-    // 📡【核心：彻底清洗删除云端数据库上的某行，通知全场同步】
+    
     function clearNetworkCache() {
-        if(confirm("⚠️ 注意：这会彻底清空您个人云表格里存放的全场数据！确定吗？")) {
+        if(confirm("⚠️ 注意：这会彻底清空中央云表格里存放的全场实收数据！确定吗？")) {
             fetch(APP_SCRIPT_URL + "?clear=all")
-            .then(() => { localStorage.clear(); location.reload(); });
+            .then(() => { 
+                auditLogPool = []; localStorage.removeItem('wh_v828_audit_logs');
+                localStorage.clear(); location.reload(); 
+            });
         }
     }
 
@@ -299,7 +299,6 @@
         else { o.type='sawtooth'; o.frequency.setValueAtTime(150, audioCtx.currentTime); o.start(); o.stop(audioCtx.currentTime + 0.4); }
     }
 
-    // --- 📡 联网发射引擎：点击 SAVE ALL 瞬间发射数据包至个人云表格 ---
     function addBatch() {
         unlockAudio(); fetchCloudMaster();
         let inputLv = document.getElementById('locIn').value.trim(); let upperLv = inputLv.toUpperCase();
@@ -327,27 +326,21 @@
             let finalLongSku = dbMaster[sv] ? dbMaster[sv].b : sv;
             let finalGoodsName = dbMaster[sv] ? dbMaster[sv].c : "N/A";
 
-            // 1. 拼装符合 Apps Script 批量二维写入的严苛数组格式
             batchRowsForGAS.push([rowUniqueId, sv, finalLongSku, finalGoodsName, qv, finalCorrectLocation, "Patiki Warehouse: " + finalCorrectLocation, localDateStr]);
-            
             temporaryLocalBatch.push({ _originSKU: sv, Quantity: qv });
         }
 
         if(batchRowsForGAS.length === 0) return;
 
-        // 2. 🚀 强力跨域网络发射，写入您个人的 Google Sheets 中央数据库
         document.getElementById('saveBtn').innerText = "📡 正在同步写入云表格...";
         fetch(APP_SCRIPT_URL, {
-            method: "POST",
-            mode: "no-cors", // 允许无阻碍跨域穿透发送
-            headers: { "Content-Type": "application/json" },
+            method: "POST", mode: "no-cors", headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ action: "insert", rows: batchRowsForGAS })
         }).then(() => {
             document.getElementById('saveBtn').innerText = "SAVE ALL";
-            syncNetworkPool(); // 发射完顺手拉回最新同步包
+            syncNetworkPool(); 
         });
 
-        // 3. 报警音预测
         let hasOver = false;
         let totals = {}; data.forEach(d => totals[d._originSKU] = (totals[d._originSKU] || 0) + d.Quantity);
         let dailyTotals = {}; dbDailyList.forEach(d => dailyTotals[d.sku] = (dailyTotals[d.sku] || 0) + d.plan);
@@ -426,12 +419,21 @@
         });
     }
 
-    // --- 📡 联网数量修改：将改动直接推送到个人云 Sheets 数据库 ---
+    // --- 🕵️ 核心记录点一：员工修改数量，触发动作审计 ---
     function updateNetworkRowQty(rowId, newQtyStr) {
         let n = parseFloat(newQtyStr);
         if (n >= 0) {
             let targetRow = data.find(x => x.id === rowId);
-            if (targetRow) { targetRow.Quantity = n; render(); } // 视觉超前反馈
+            if (targetRow) { 
+                let oldQty = targetRow.Quantity;
+                if(oldQty !== n) {
+                    let op = document.getElementById('opName').value.trim() || "Unknown Operator";
+                    let logStr = `${fetchLocalTimeFormatted()} 操作员 [${op}] 调整了库位 [${targetRow.Location}] 的数据 ➔ SKU: [${targetRow._originSKU}], 数量从 [${oldQty}] 变更为 [${n}]`;
+                    auditLogPool.push(logStr);
+                    localStorage.setItem('wh_v828_audit_logs', JSON.stringify(auditLogPool)); // 写入缓存，防止刷新蒸发
+                }
+                targetRow.Quantity = n; render(); 
+            } 
             
             fetch(APP_SCRIPT_URL, {
                 method: "POST", mode: "no-cors", headers: { "Content-Type": "application/json" },
@@ -440,11 +442,19 @@
         }
     }
 
-    // --- 📡 联网物理整行删除：同步抹除个人云表格中的对应数据行 ---
+    // --- 🕵️ 核心记录点二：员工删除流水，触发整行物理清除审计 ---
     function deleteNetworkRow(e, rowId) {
         if (e) { e.stopPropagation(); e.preventDefault(); }
         if (confirm("确定要删除这笔数据吗？全场所有设备的屏幕都会同步删掉它。")) {
-            data = data.filter(x => x.id !== rowId); render(); // 视觉超前反馈
+            let targetRow = data.find(x => x.id === rowId);
+            if(targetRow) {
+                let op = document.getElementById('opName').value.trim() || "Unknown Operator";
+                let logStr = `${fetchLocalTimeFormatted()} 🔴警报：操作员 [${op}] 删除了整行物理记录 ➔ 移除库位: [${targetRow.Location}], 受影响SKU: [${targetRow._originSKU}], 移除时封存数量: [${targetRow.Quantity}]`;
+                auditLogPool.push(logStr);
+                localStorage.setItem('wh_v828_audit_logs', JSON.stringify(auditLogPool));
+            }
+
+            data = data.filter(x => x.id !== rowId); render(); 
             
             fetch(APP_SCRIPT_URL, {
                 method: "POST", mode: "no-cors", headers: { "Content-Type": "application/json" },
@@ -453,6 +463,7 @@
         }
     }
     
+    // --- 🛠️ 核心升级：导出时不仅执行多PO拆分压实，同时伴随吐出黑匣子TXT审计日志 ---
     function exportCsv() {
         const op = document.getElementById('opName').value.trim() || "User", dateNow = new Date().toISOString().slice(0,10).replace(/-/g, "");
         let rawSplittedRows = [];
@@ -520,6 +531,7 @@
         let compressedMap = {};
         let finalRows = [["PO","SKU","Name","BatchSerialNumber","SupplierSKU","ExpiryDate_YYYYMMDD","Quantity","Location","DateReceived_YYYYMMDD","Received","Exception_Note"]];
 
+        csvRows = [];
         rawSplittedRows.forEach((row) => {
             let uniqueMatrixKey = `${row.po}##${row.sku}##${row.loc}##${row.note}`;
             if(row.qty > 0 && compressedMap[uniqueMatrixKey]) {
@@ -536,9 +548,28 @@
             finalRows.push([r.po, r.sku, r.name, r.bsn, r.ssk, r.exp, r.qty, r.loc, r.date, r.rec, r.note]);
         });
 
-        const csv = Papa.unparse(finalRows);
-        const b = new Blob(["\ufeff" + csv], { type: 'text/csv;charset=utf-8;' });
-        const a = document.createElement("a"); a.href = URL.createObjectURL(b); a.download = `Putway_PO_Split_${op}_${dateNow}.csv`; a.click();
+        // 🚀 1. 触发正常的 CSV 主盘数据文件下载
+        const csvContent = Papa.unparse(finalRows);
+        const csvBlob = new Blob(["\ufeff" + csvContent], { type: 'text/csv;charset=utf-8;' });
+        const csvLink = document.createElement("a"); csvLink.href = URL.createObjectURL(csvBlob); csvLink.download = `Putway_PO_Split_${op}_${dateNow}.csv`; csvLink.click();
+
+        // 🚀 2. 🕵️ 联合触发 TXT 审计日志黑匣子下载
+        let txtTitle = `==================================================\n`;
+        txtTitle += `      Warehouse Operations Audit Log (防误操追责日志) \n`;
+        txtTitle += `      当前执行导出操作员: [${op}]   日期: [${dateNow}] \n`;
+        txtTitle += `==================================================\n\n`;
+        
+        let txtBody = "";
+        if(auditLogPool.length === 0) {
+            txtBody = "✨ 全场协同作业非常纯净，截至目前未发生过任何人工修改或物理删除记录。\n";
+        } else {
+            auditLogPool.forEach((log, index) => {
+                txtBody += `${index + 1}. ${log}\n`;
+            });
+        }
+        
+        const txtBlob = new Blob([txtTitle + txtBody], { type: 'text/plain;charset=utf-8;' });
+        const txtLink = document.createElement("a"); txtLink.href = URL.createObjectURL(txtBlob); txtLink.download = `Audit_Log_${op}_${dateNow}.txt`; txtLink.click();
     }
     
     function setupEnterKey() {
