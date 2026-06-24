@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Warehouse V8.28.03 Multi-Device Sync</title>
+    <title>Warehouse V8.28.06 Multi-Device Sync</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
     <style>
         :root { --primary: #1890ff; --success: #52c41a; --danger: #ff4d4f; --extra: #b37feb; --bg: #f5f7fa; }
@@ -109,7 +109,7 @@
     const FIXED_CLOUD_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQBh1fAm0-5pIJyHCRVDTt_n3vYILct87elf6_dJ9KvtZ126d-LYsgVkEaGKaZmti9lvFByG5LIc1dR/pub?gid=326617304&single=true&output=csv";
     const FIXED_LOC_CLOUD_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vStLtLccpDSfrf_yU_T9WrNcZufN29BqkDsVS2r9ql1INK_61uA8UetkiW4DZ4_dv63o-DHzFz0tOAq/pub?gid=1276542862&single=true&output=csv";
     
-    // 📡 请将下方双引号中的内容替换为您在谷歌 Apps Script 新建部署生成的 Web 应用 URL 链接
+    // 📡 💡【在此处精准填入您刚才在Apps Script新建部署生成的全新 Web 应用 URL 链接】
     const APP_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxTiH5daVlASbB0jl4IjdGf4kUn2dmgyUDiLcUHLhKupEBqh4Spf-6q4xJj6snqXOCAlw/exec";
 
     let auditLogPool = [];
@@ -130,8 +130,9 @@
         fetchCloudMaster();
         fetchCloudLocations();
         
+        // 启动高强度 JSONP 穿透心跳轮询
         syncNetworkPool();
-        setInterval(syncNetworkPool, 5000);
+        setInterval(syncNetworkPool, 5000); 
         
         const cC = localStorage.getItem('csv_check'), savedFileName = localStorage.getItem('wh_v826_check_filename');
         if(cC) { parseCheck(cC); updateCheckStatTag(savedFileName || "READY"); }
@@ -143,23 +144,48 @@
         return `[${t.getFullYear()}-${String(t.getMonth()+1).padStart(2,'0')}-${String(t.getDate()).padStart(2,'0')} ${String(t.getHours()).padStart(2,'0')}:${String(t.getMinutes()).padStart(2,'0')}:${String(t.getSeconds()).padStart(2,'0')}]`;
     }
 
+    // 📡 JSONP 强拉取对齐网络大池
     function syncNetworkPool() {
+        var script = document.createElement("script");
+        script.src = APP_SCRIPT_URL + (APP_SCRIPT_URL.includes("?") ? "&" : "?") + "t=" + Date.now();
+        script.id = "jsonp_sync_script";
+        
+        var oldScript = document.getElementById("jsonp_sync_script");
+        if(oldScript) oldScript.parentNode.removeChild(oldScript);
+        document.getElementsByTagName("head")[0].appendChild(script);
+    }
+
+    // 📡 唯一的中央回调网关（同时接收大池与存盘指令状态）
+    window.jsonpCallback = function(response) {
         const netBanner = document.getElementById('networkStat');
-        fetch(APP_SCRIPT_URL)
-        .then(res => res.json())
-        .then(onlineData => {
-            if (Array.isArray(onlineData)) {
-                data = onlineData;
-                refreshHistoricalDataNames();
-                render(); 
-                netBanner.innerText = `📡 多端联网在线中 (全场已聚合流水: ${data.length} 条)`;
-                netBanner.style.background = "#f6ffed"; netBanner.style.borderColor = "#b7eb8f"; netBanner.style.color = "#52c41a";
-            }
-        })
-        .catch(err => {
-            netBanner.innerText = "⚠️ 多设备网络心跳中断... (正在使用本地缓存数据坚守)";
-            netBanner.style.background = "#fff2e8"; netBanner.style.borderColor = "#ffbb96"; netBanner.style.color = "#fa541c";
-        });
+        
+        if (Array.isArray(response)) {
+            data = response;
+            refreshHistoricalDataNames();
+            render(); 
+            netBanner.innerText = `📡 多端联网在线中 (全场已聚合流水: ${data.length} 条)`;
+            netBanner.style.background = "#f6ffed"; netBanner.style.borderColor = "#b7eb8f"; netBanner.style.color = "#52c41a";
+        } else {
+            console.log("动作已写入云端，全自动重新同步账本...");
+            syncNetworkPool();
+        }
+    };
+
+    // 📡 强穿透单通道行为发送底座
+    function sendJsonpAction(params) {
+        var paramsStr = "";
+        for (var key in params) {
+            paramsStr += "&" + key + "=" + encodeURIComponent(params[key]);
+        }
+        var url = APP_SCRIPT_URL + (APP_SCRIPT_URL.includes("?") ? "" : "?") + paramsStr + "&t=" + Date.now();
+        
+        var script = document.createElement("script");
+        script.src = url;
+        script.id = "jsonp_action_script";
+        
+        var oldScript = document.getElementById("jsonp_action_script");
+        if(oldScript) oldScript.parentNode.removeChild(oldScript);
+        document.getElementsByTagName("head")[0].appendChild(script);
     }
 
     function fetchCloudLocations() {
@@ -240,6 +266,7 @@
     }
     function updateCheckStatTag(name) { const s = document.getElementById('checkStat'); s.innerText = name; s.className = "status-tag ready"; }
     
+    // H列与R列对齐
     function parseSKU(txt) { 
         Papa.parse(txt, { complete: (res) => { 
             dbMaster = {}; 
@@ -267,15 +294,13 @@
     }
 
     function saveLocalNameOnly() { localStorage.setItem('wh_v820_op', document.getElementById('opName').value); }
-    function recoverBackup() { alert("联网版已全面接管数据，本地离线备份退出。"); }
+    function recoverBackup() { alert("联网数据大池运作中。"); }
 
     function clearNetworkCache() {
         if(confirm("⚠️ 确定要彻底清空您个人云端表格里的全部协同数据吗？全场设备将归零。")) {
-            fetch(APP_SCRIPT_URL + "?clear=all")
-            .then(() => { 
-                auditLogPool = []; localStorage.removeItem('wh_v828_audit_logs');
-                localStorage.clear(); location.reload(); 
-            });
+            sendJsonpAction({ action: "clearAll" });
+            auditLogPool = []; localStorage.removeItem('wh_v828_audit_logs');
+            localStorage.clear(); location.reload();
         }
     }
 
@@ -328,12 +353,14 @@
         }
         if(batchRowsForGAS.length === 0) return;
 
+        // 前瞻本地加行秒显
         data = [...data, ...temporaryLocalBatch];
         render();
 
-        fetch(APP_SCRIPT_URL, {
-            method: "POST", mode: "no-cors", headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ action: "insert", rows: batchRowsForGAS })
+        // 发射穿透指令
+        sendJsonpAction({
+            action: "insert",
+            rowsData: JSON.stringify(batchRowsForGAS)
         });
 
         let hasOver = false;
@@ -346,8 +373,6 @@
 
         for(let i=1; i<=6; i++) { document.getElementById('s'+i).value = ""; document.getElementById('q'+i).value = ""; }
         document.getElementById('locIn').value = ""; document.getElementById('s1').focus(); forceSKU = null;
-        
-        setTimeout(syncNetworkPool, 1200);
     }
 
     function render() {
@@ -430,11 +455,7 @@
                 targetRow.Quantity = n; render(); 
             } 
             
-            fetch(APP_SCRIPT_URL, {
-                method: "POST", mode: "no-cors", headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ action: "updateQty", id: rowId, quantity: n })
-            });
-            setTimeout(syncNetworkPool, 1000);
+            sendJsonpAction({ action: "updateQty", id: rowId, quantity: n });
         }
     }
 
@@ -450,12 +471,7 @@
             }
 
             data = data.filter(x => x.id !== rowId); render(); 
-            
-            fetch(APP_SCRIPT_URL, {
-                method: "POST", mode: "no-cors", headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ action: "delete", id: rowId })
-            });
-            setTimeout(syncNetworkPool, 1000);
+            sendJsonpAction({ action: "delete", id: rowId });
         }
     }
     
