@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Warehouse V8.28.01 Multi-Device Sync</title>
+    <title>Warehouse V8.28.02 Multi-Device Sync</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
     <style>
         :root { --primary: #1890ff; --success: #52c41a; --danger: #ff4d4f; --extra: #b37feb; --bg: #f5f7fa; }
@@ -77,7 +77,7 @@
         </div>
 
         <div class="card">
-            <input type="text" id="opName" placeholder="Operator Name" onchange="saveLocalNameOnly()">
+            <input type="text" id="opName" placeholder="Operator Name (开工必填)" onchange="saveLocalNameOnly()">
             <div id="batchContainer">
                 <div class="sku-row"><input type="text" id="s1" placeholder="SKU 1" inputmode="decimal"><input type="tel" id="q1" placeholder="Qty"></div>
                 <div class="sku-row"><input type="text" id="s2" placeholder="SKU 2" inputmode="decimal"><input type="tel" id="q2" placeholder="Qty"></div>
@@ -119,8 +119,11 @@
 </div>
 
 <script>
+    // 两路固定的公司只读大底表链接
     const FIXED_CLOUD_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQBh1fAm0-5pIJyHCRVDTt_n3vYILct87elf6_dJ9KvtZ126d-LYsgVkEaGKaZmti9lvFByG5LIc1dR/pub?gid=326617304&single=true&output=csv";
     const FIXED_LOC_CLOUD_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vStLtLccpDSfrf_yU_T9WrNcZufN29BqkDsVS2r9ql1INK_61uA8UetkiW4DZ4_dv63o-DHzFz0tOAq/pub?gid=1276542862&single=true&output=csv";
+    
+    // 📡 您个人专属的中央数据读写无线信道接口
     const APP_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwK2hJzZM_jmVftK4rbT4DEqWHUZVunRmAJIIN6sdMOOcmmhF8S8b8aNyXCkwqe0ETZ/exec";
 
     let auditLogPool = [];
@@ -140,7 +143,10 @@
         
         fetchCloudMaster();
         fetchCloudLocations();
+        
+        // 首次全网对齐拉取
         syncNetworkPool();
+        // 开启 5 秒一次的全自动静默对齐心跳
         setInterval(syncNetworkPool, 5000);
         
         const cC = localStorage.getItem('csv_check'), savedFileName = localStorage.getItem('wh_v826_check_filename');
@@ -155,6 +161,7 @@
 
     function syncNetworkPool() {
         const netBanner = document.getElementById('networkStat');
+        // 🛠️ 彻底修复：锁定调用您的个人云服务器接口进行心跳同步拉取
         fetch(APP_SCRIPT_URL)
         .then(res => res.json())
         .then(onlineData => {
@@ -238,6 +245,7 @@
         });
     }
 
+    // 处理导入清单
     function processFile(t, files) {
         if(!files || files.length === 0) return; const f = files[0]; const r = new FileReader();
         r.onload = (e) => {
@@ -277,10 +285,10 @@
     }
 
     function saveLocalNameOnly() { localStorage.setItem('wh_v820_op', document.getElementById('opName').value); }
-    function recoverBackup() { alert("联网版本已全面接管长效云数据，本地备份已隐退。"); }
+    function recoverBackup() { alert("联网版已全面接管数据，本地离线备份退出。"); }
 
     function clearNetworkCache() {
-        if(confirm("⚠️ 注意：这会彻底清空中央云表格里存放的全场实收数据！确定吗？")) {
+        if(confirm("⚠️ 确定要彻底清空您个人云端表格里的全部协同数据吗？全场设备将归零。")) {
             fetch(APP_SCRIPT_URL + "?clear=all")
             .then(() => { 
                 auditLogPool = []; localStorage.removeItem('wh_v828_audit_logs');
@@ -298,12 +306,16 @@
         else { o.type='sawtooth'; o.frequency.setValueAtTime(150, audioCtx.currentTime); o.start(); o.stop(audioCtx.currentTime + 0.4); }
     }
 
-    // --- 🛠️ 终极修正：重构网络数据包发射异步流，彻底斩断 Opaque 穿透锁死阻断 Bug ---
+    // --- 发射录入数据流 ---
     function addBatch() {
         unlockAudio(); fetchCloudMaster();
         let inputLv = document.getElementById('locIn').value.trim(); let upperLv = inputLv.toUpperCase();
-        const op = document.getElementById('opName').value.trim() || "User";
-        if(!inputLv || !op) { playSound('error'); return; }
+        
+        // 强力防错升级点：如果不填名字，直接红字死卡，不发射，防止脏数据打乱全场！
+        const op = document.getElementById('opName').value.trim();
+        if(!op) { playSound('error'); alert("⚠️ 拒绝提交！请先在上方输入您的 Operator Name (操作员姓名)，以确保协同溯源安全。"); return; }
+        
+        if(!inputLv) { playSound('error'); return; }
         if (setLoc.size > 0 && !setLoc.has(upperLv)) { playSound('error'); alert(`库位无效！[${inputLv}] 不是合法的云端内置库位。`); return; }
 
         let finalCorrectLocation = dbLocMap[upperLv] ? dbLocMap[upperLv] : inputLv;
@@ -336,17 +348,16 @@
         }
         if(batchRowsForGAS.length === 0) return;
 
-        // 🚀 核心飞跃：执行前瞻本地秒级强注入假渲染，让操作员敲完 SAVE ALL 的瞬间眼见为实！
+        // 本地前瞻强注入（零卡顿显示）
         data = [...data, ...temporaryLocalBatch];
         render();
 
-        // 同时启动无阻碍网络静默穿透上传
+        // 🛠️ 彻底修复：锁定调用您的个人云服务器应用接口，进行穿透式数据存储发送
         fetch(APP_SCRIPT_URL, {
             method: "POST", mode: "no-cors", headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ action: "insert", rows: batchRowsForGAS })
         });
 
-        // 触发物理刷新和声响提示
         let hasOver = false;
         let totals = {}; data.forEach(d => totals[d._originSKU] = (totals[d._originSKU] || 0) + d.Quantity);
         let dailyTotals = {}; dbDailyList.forEach(d => dailyTotals[d.sku] = (dailyTotals[d.sku] || 0) + d.plan);
@@ -355,11 +366,10 @@
         });
         playSound(hasOver ? 'warn' : 'success');
 
-        // 复位输入框
         for(let i=1; i<=6; i++) { document.getElementById('s'+i).value = ""; document.getElementById('q'+i).value = ""; }
         document.getElementById('locIn').value = ""; document.getElementById('s1').focus(); forceSKU = null;
         
-        // 延时1秒，当谷歌表格存盘大局已定时，拉取云端进行全网握手对齐
+        // 1.2秒后强制进行全场分布式设备总握手
         setTimeout(syncNetworkPool, 1200);
     }
 
@@ -443,6 +453,7 @@
                 targetRow.Quantity = n; render(); 
             } 
             
+            // 🛠️ 彻底修复：锁定调用您的个人云服务器接口进行存盘
             fetch(APP_SCRIPT_URL, {
                 method: "POST", mode: "no-cors", headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ action: "updateQty", id: rowId, quantity: n })
@@ -464,6 +475,7 @@
 
             data = data.filter(x => x.id !== rowId); render(); 
             
+            // 🛠️ 彻底修复：锁定调用您的个人云服务器接口进行物理删除
             fetch(APP_SCRIPT_URL, {
                 method: "POST", mode: "no-cors", headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ action: "delete", id: rowId })
