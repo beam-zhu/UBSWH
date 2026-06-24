@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Warehouse V8.26.05 Cloud Sync</title>
+    <title>Warehouse V8.27.00 Multi-Device Sync</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
     <style>
         :root { --primary: #1890ff; --success: #52c41a; --danger: #ff4d4f; --extra: #b37feb; --bg: #f5f7fa; }
@@ -11,20 +11,9 @@
         body { font-family: -apple-system, Roboto, Helvetica, Arial, sans-serif; margin: 0; background: var(--bg); min-height: 100vh; overflow-x: hidden; position: relative; }
         
         .bg-watermark {
-            width: 90%;
-            margin: 15px auto;
-            text-align: center;
-            color: #555;
-            opacity: 0.12;
-            font-size: 14px;
-            font-style: italic;
-            pointer-events: none;
-            line-height: 1.8;
-            border-top: 1px solid #ccc;
-            border-bottom: 1px solid #ccc;
-            padding: 10px 0;
+            width: 90%; margin: 15px auto; text-align: center; color: #555; opacity: 0.12; font-size: 14px; font-style: italic;
+            pointer-events: none; line-height: 1.8; border-top: 1px solid #ccc; border-bottom: 1px solid #ccc; padding: 10px 0;
         }
-
         .main-wrapper { display: flex; flex-direction: column; padding: 8px; gap: 8px; }
         .panel-right { order: 1; width: 100%; } 
         .panel-left { order: 3; width: 100%; display: flex; flex-direction: column; }
@@ -36,7 +25,6 @@
             .panel-left { flex: 6; height: 100%; }
             .watermark-container { position: fixed; bottom: 20px; right: 20px; width: 300px; opacity: 0.2; }
         }
-
         .card { background: white; border-radius: 12px; padding: 12px; border: 1px solid #e8e8e8; box-shadow: 0 2px 8px rgba(0,0,0,0.05); margin-bottom: 8px; }
         input { height: 44px; padding: 10px; border: 1px solid #d9d9d9; border-radius: 8px; font-size: 16px; width: 100%; background: #fafafa; margin-bottom: 8px; }
         .loc-input { height: 54px; font-size: 22px; border: 2px solid var(--primary); background: #fffbe6; color: #d46b08; }
@@ -53,7 +41,6 @@
         .table-wrap { flex: 1; overflow-y: auto; background: white; border-radius: 12px; border: 1px solid #e8e8e8; }
         table { width: 100%; border-collapse: collapse; font-size: 12px; table-layout: fixed; }
         th, td { padding: 8px 2px; border-bottom: 1px solid #f0f0f0; text-align: center; vertical-align: middle; }
-        
         .td-sku { word-break: break-all; white-space: normal; text-align: left; padding-left: 4px; font-weight: bold; font-size: 13px; }
         .td-loc { font-size: 11px; color: #666; word-break: break-all; }
         th { background: #fafafa; position: sticky; top: 0; z-index: 10; font-size: 10px; color: #555; }
@@ -61,36 +48,36 @@
         .row-over { background-color: #fff1f0 !important; color: #cf1322 !important; }
         .row-under { background-color: #e6f7ff !important; color: #096dd9 !important; }
         .row-extra { background-color: #f9f0ff !important; color: #531dab !important; }
-        
         .status-pending { color: #aaaaaa !important; } 
         .status-active { color: #222222 !important; }   
-        
         .edit-input { width: 100%; padding: 4px; border: 1px solid var(--primary); border-radius: 4px; text-align: center; font-size: 13px; background: transparent; }
         .del-btn { background: #ff7875; color: white; border: none; border-radius: 4px; padding: 4px 8px; font-weight: bold; cursor: pointer; }
         .cloud-banner { padding: 6px; border-radius: 8px; font-size: 11px; text-align: center; margin-bottom: 4px; font-weight: bold; }
         .cb-sku { background: #e6f7ff; border: 1px solid #91d5ff; color: #0050b3; }
         .cb-loc { background: #feffe6; border: 1px solid #fffb8f; color: #614700; }
+        .cb-sync { background: #f6ffed; border: 1px solid #b7eb8f; color: #52c41a; }
     </style>
 </head>
 <body onclick="unlockAudio()">
 
 <div class="main-wrapper">
     <div class="panel-right">
-        <div class="cloud-banner cb-sku" id="cloudStat">☁️ 云端SKU库 (DEAR_PI) 正在连接...</div>
-        <div class="cloud-banner cb-loc" id="locCloudStat">☁️ 云端库位表 (A-U列) 正在连接...</div>
+        <div class="cloud-banner cb-sku" id="cloudStat">☁️ 公司SKU库 (DEAR_PI) 正在连接...</div>
+        <div class="cloud-banner cb-loc" id="locCloudStat">☁️ 公司库位表 (A-U列) 正在连接...</div>
+        <div class="cloud-banner cb-sync" id="networkStat">📡 多端联网对齐中...</div>
 
         <div class="card">
             <div class="file-grid">
                 <div class="file-btn"><span>DAILY清单 (第一列必须是PO)</span><input type="file" accept=".csv" onchange="processFile('check', this.files)"><span id="checkStat" class="status-tag">OPTIONAL</span></div>
             </div>
             <div style="display: flex; justify-content: space-between; margin-top: 8px;">
-                <button onclick="clearCache()" style="font-size:10px; color:red; border:none; background:none; padding:5px; font-weight:bold;">[CLEAR CACHE]</button>
+                <button onclick="clearNetworkCache()" style="font-size:10px; color:red; border:none; background:none; padding:5px; font-weight:bold;">[清空全场云数据]</button>
                 <button onclick="recoverBackup()" style="font-size:10px; color:blue; border:none; background:none; padding:5px; font-weight:bold;">[RECOVER BACKUP]</button>
             </div>
         </div>
 
         <div class="card">
-            <input type="text" id="opName" placeholder="Operator Name" onchange="saveLocal()">
+            <input type="text" id="opName" placeholder="Operator Name" onchange="saveLocalNameOnly()">
             <div id="batchContainer">
                 <div class="sku-row"><input type="text" id="s1" placeholder="SKU 1" inputmode="decimal"><input type="tel" id="q1" placeholder="Qty"></div>
                 <div class="sku-row"><input type="text" id="s2" placeholder="SKU 2" inputmode="decimal"><input type="tel" id="q2" placeholder="Qty"></div>
@@ -132,9 +119,14 @@
 </div>
 
 <script>
+    // 锁定两路公司源链接
     const FIXED_CLOUD_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQBh1fAm0-5pIJyHCRVDTt_n3vYILct87elf6_dJ9KvtZ126d-LYsgVkEaGKaZmti9lvFByG5LIc1dR/pub?gid=326617304&single=true&output=csv";
     const FIXED_LOC_CLOUD_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vStLtLccpDSfrf_yU_T9WrNcZufN29BqkDsVS2r9ql1INK_61uA8UetkiW4DZ4_dv63o-DHzFz0tOAq/pub?gid=1276542862&single=true&output=csv";
     
+    // 📡【核心：织入您个人全新配置的 Web 联网应用接口 API】
+    const NETWORK_API_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vStLtLccpDSfrf_yU_T9WrNcZufN29BqkDsVS2r9ql1INK_61uA8UetkiW4DZ4_dv63o-DHzFz0tOAq/pub?gid=1276542862&single=true&output=csv";
+    const APP_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwK2hJzZM_jmVftK4rbT4DEqWHUZVunRmAJIIN6sdMOOcmmhF8S8b8aNyXCkwqe0ETZ/exec";
+
     let dbMaster = {}, dbDailyList = [], setLoc = new Set(), dbLocMap = {}, data = [];
     let dailyActive = false, audioCtx = null, forceSKU = null;
 
@@ -144,8 +136,7 @@
     }
 
     window.onload = () => {
-        const cache = localStorage.getItem('wh_v820_data'), op = localStorage.getItem('wh_v820_op'), cachedLocsText = localStorage.getItem('wh_v825_cached_locs');
-        if (cache) { data = JSON.parse(cache); }
+        const op = localStorage.getItem('wh_v820_op'), cachedLocsText = localStorage.getItem('wh_v825_cached_locs');
         if (op) document.getElementById('opName').value = op;
         
         if (cachedLocsText) { buildLocationsEngine(cachedLocsText, true); }
@@ -153,15 +144,36 @@
         fetchCloudMaster();
         fetchCloudLocations();
         
+        // 📡 启动多端在线数据全网初次对齐
+        syncNetworkPool();
+        
+        // 📡 核心驱动：开启每隔 5 秒钟的无感知心跳高速合流对齐监听
+        setInterval(syncNetworkPool, 5000);
+        
         const cC = localStorage.getItem('csv_check'), savedFileName = localStorage.getItem('wh_v826_check_filename');
-        if(cC) { 
-            parseCheck(cC); 
-            // 恢复上次缓存的文件名显示
-            updateCheckStatTag(savedFileName || "READY");
-        }
+        if(cC) { parseCheck(cC); updateCheckStatTag(savedFileName || "READY"); }
         setupEnterKey();
-        render();
     };
+
+    // --- 📡 核心联网拉取引擎：无感知拉取全场合流池并启动反向洗白 ---
+    function syncNetworkPool() {
+        const netBanner = document.getElementById('networkStat');
+        fetch(APP_SCRIPT_URL)
+        .then(res => res.json())
+        .then(onlineData => {
+            if (Array.isArray(onlineData)) {
+                data = onlineData; // 将云端大池覆盖手机本地平面
+                refreshHistoricalDataNames(); // 静默重刷可能发生的 Q 列错误老描述
+                render(); 
+                netBanner.innerText = `📡 多端联网在线中 (全场已聚合流水: ${data.length} 条)`;
+                netBanner.style.background = "#f6ffed"; netBanner.style.borderColor = "#b7eb8f"; netBanner.style.color = "#52c41a";
+            }
+        })
+        .catch(err => {
+            netBanner.innerText = "⚠️ 多设备网络心跳中断... (正在使用本地缓存数据坚守)";
+            netBanner.style.background = "#fff2e8"; netBanner.style.borderColor = "#ffbb96"; netBanner.style.color = "#fa541c";
+        });
+    }
 
     function fetchCloudLocations() {
         const banner = document.getElementById('locCloudStat');
@@ -198,7 +210,7 @@
         const banner = document.getElementById('locCloudStat');
         if (isOfflineCache) { banner.innerText = `📦 本地内置库位就绪 (已锁死: ${validCount} 个库位联想)`; } 
         else {
-            banner.innerText = `⚡ 云端库位表 (A-U列) 同步成功！(已刷新内置: ${validCount} 个)`;
+            banner.innerText = `⚡ 公司库位表 (A-U列) 同步成功！(已刷新内置: ${validCount} 个)`;
             banner.style.background = "#f6ffed"; banner.style.borderColor = "#b7eb8f"; banner.style.color = "#52c41a";
         }
     }
@@ -209,49 +221,37 @@
         .then(response => response.text())
         .then(txt => { 
             parseSKU(txt); 
-            banner.innerText = "⚡ 云端SKU库 (DEAR_PI) 同步成功！";
+            banner.innerText = "⚡ 公司SKU库 (DEAR_PI) 同步成功！";
             banner.style.background = "#f6ffed"; banner.style.borderColor = "#b7eb8f"; banner.style.color = "#52c41a";
             refreshHistoricalDataNames(); render(); 
         })
         .catch(err => { 
-            banner.innerText = "❌ 云端同步失败，正在使用本地缓存旧数据。";
+            banner.innerText = "❌ 公司云端同步失败，正在使用本地缓存旧数据。";
             banner.style.background = "#fff1f0"; banner.style.borderColor = "#ffa39e"; banner.style.color = "#cf1322";
         });
     }
 
     function refreshHistoricalDataNames() {
         if (!data || data.length === 0) return;
-        let isChanged = false;
         data.forEach(d => {
             let k = d._originSKU;
             if (dbMaster[k]) {
-                if (d.Name !== dbMaster[k].c) { d.Name = dbMaster[k].c; d.SKU = dbMaster[k].b; isChanged = true; }
+                if (d.Name !== dbMaster[k].c) { d.Name = dbMaster[k].c; d.SKU = dbMaster[k].b; }
             }
         });
-        if (isChanged) { saveLocal(); }
     }
 
-    // --- 🛠️ 核心优化点：接收 files 数组，智能提纯文件名并回显 ---
     function processFile(t, files) {
-        if(!files || files.length === 0) return;
-        const f = files[0];
-        const r = new FileReader();
+        if(!files || files.length === 0) return; const f = files[0]; const r = new FileReader();
         r.onload = (e) => {
             const txt = e.target.result;
             if(t==='check') { 
-                parseCheck(txt); 
-                localStorage.setItem('csv_check', txt); 
-                localStorage.setItem('wh_v826_check_filename', f.name); // 永久封存文件名到数据库
+                parseCheck(txt); localStorage.setItem('csv_check', txt); localStorage.setItem('wh_v826_check_filename', f.name);
                 updateCheckStatTag(f.name);
             }
         }; r.readAsText(f);
     }
-    
-    function updateCheckStatTag(name) {
-        const s = document.getElementById('checkStat');
-        s.innerText = name;
-        s.className = "status-tag ready";
-    }
+    function updateCheckStatTag(name) { const s = document.getElementById('checkStat'); s.innerText = name; s.className = "status-tag ready"; }
     
     function parseSKU(txt) { 
         Papa.parse(txt, { complete: (res) => { 
@@ -271,21 +271,24 @@
             dbDailyList = []; dailyActive = false; 
             res.data.forEach((r, i) => { 
                 if(i > 0 && r[1]) { 
-                    let p = r[0] ? r[0].toString().trim() : "N/A";
-                    let k = r[1].trim().toUpperCase();
-                    let q = parseFloat(r[2]) || 0;
-                    if(q > 0) {
-                        dbDailyList.push({ po: p, sku: k, plan: q, idx: i });
-                        dailyActive = true; 
-                    }
+                    let p = r[0] ? r[0].toString().trim() : "N/A"; let k = r[1].trim().toUpperCase(); let q = parseFloat(r[2]) || 0;
+                    if(q > 0) { dbDailyList.push({ po: p, sku: k, plan: q, idx: i }); dailyActive = true; }
                 } 
             }); 
             render();
         }}); 
     }
 
-    function clearCache() { if(confirm("Are you sure you want to clear all data?")) { localStorage.clear(); location.reload(); } }
-    function recoverBackup() { const b = localStorage.getItem('wh_v820_backup'); if(b) { data = JSON.parse(b); render(); alert("Data successfully recovered!"); } }
+    function saveLocalNameOnly() { localStorage.setItem('wh_v820_op', document.getElementById('opName').value); }
+    function recoverBackup() { alert("联网版本已全面接管长效云数据，本地备份已隐退。"); }
+
+    // 📡【核心：彻底清洗删除云端数据库上的某行，通知全场同步】
+    function clearNetworkCache() {
+        if(confirm("⚠️ 注意：这会彻底清空您个人云表格里存放的全场数据！确定吗？")) {
+            fetch(APP_SCRIPT_URL + "?clear=all")
+            .then(() => { localStorage.clear(); location.reload(); });
+        }
+    }
 
     function playSound(type) {
         if(!audioCtx) return;
@@ -296,15 +299,16 @@
         else { o.type='sawtooth'; o.frequency.setValueAtTime(150, audioCtx.currentTime); o.start(); o.stop(audioCtx.currentTime + 0.4); }
     }
 
+    // --- 📡 联网发射引擎：点击 SAVE ALL 瞬间发射数据包至个人云表格 ---
     function addBatch() {
         unlockAudio(); fetchCloudMaster();
         let inputLv = document.getElementById('locIn').value.trim(); let upperLv = inputLv.toUpperCase();
-        const op = document.getElementById('opName').value.trim();
+        const op = document.getElementById('opName').value.trim() || "User";
         if(!inputLv || !op) { playSound('error'); return; }
         if (setLoc.size > 0 && !setLoc.has(upperLv)) { playSound('error'); alert(`库位无效！[${inputLv}] 不是合法的云端内置库位。`); return; }
 
         let finalCorrectLocation = dbLocMap[upperLv] ? dbLocMap[upperLv] : inputLv;
-        let batch = [], any = false, mismatch = false;
+        let batchRowsForGAS = [], temporaryLocalBatch = [];
         
         const today = new Date();
         const y = today.getFullYear(); const m = String(today.getMonth() + 1).padStart(2, '0'); const d = String(today.getDate()).padStart(2, '0');
@@ -318,27 +322,39 @@
             let inDaily = dbDailyList.some(d => d.sku === sv);
             if(dailyActive && !inDaily && forceSKU !== sv) { mismatch = true; forceSKU = sv; break; }
             if(!qv || qv <= 0) { playSound('error'); return; }
-            any = true;
 
-            batch.push({ 
-                id: Date.now() + "_" + i + "_" + Math.random().toString(36).substr(2, 5),
-                _originSKU: sv, SKU: dbMaster[sv] ? dbMaster[sv].b : sv, Name: dbMaster[sv] ? dbMaster[sv].c : "N/A", 
-                Quantity: qv, Location: finalCorrectLocation, FullLocation: "Patiki Warehouse: " + finalCorrectLocation, 
-                Date: localDateStr
-            });
+            let rowUniqueId = "id_" + Date.now() + "_" + i + "_" + Math.random().toString(36).substr(2, 5);
+            let finalLongSku = dbMaster[sv] ? dbMaster[sv].b : sv;
+            let finalGoodsName = dbMaster[sv] ? dbMaster[sv].c : "N/A";
+
+            // 1. 拼装符合 Apps Script 批量二维写入的严苛数组格式
+            batchRowsForGAS.push([rowUniqueId, sv, finalLongSku, finalGoodsName, qv, finalCorrectLocation, "Patiki Warehouse: " + finalCorrectLocation, localDateStr]);
+            
+            temporaryLocalBatch.push({ _originSKU: sv, Quantity: qv });
         }
 
-        if(mismatch) {
-            playSound('error'); let b = document.getElementById('saveBtn'); b.innerText = "SKU NOT IN LIST! TAP AGAIN TO FORCE SAVE"; b.style.background = "orange";
-            setTimeout(() => { b.innerText = "SAVE ALL"; b.style.background = ""; forceSKU = null; }, 3000); return;
-        }
-        if(!any) return;
-        data = [...data, ...batch]; render(); saveLocal(); 
-        
+        if(batchRowsForGAS.length === 0) return;
+
+        // 2. 🚀 强力跨域网络发射，写入您个人的 Google Sheets 中央数据库
+        document.getElementById('saveBtn').innerText = "📡 正在同步写入云表格...";
+        fetch(APP_SCRIPT_URL, {
+            method: "POST",
+            mode: "no-cors", // 允许无阻碍跨域穿透发送
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "insert", rows: batchRowsForGAS })
+        }).then(() => {
+            document.getElementById('saveBtn').innerText = "SAVE ALL";
+            syncNetworkPool(); // 发射完顺手拉回最新同步包
+        });
+
+        // 3. 报警音预测
         let hasOver = false;
         let totals = {}; data.forEach(d => totals[d._originSKU] = (totals[d._originSKU] || 0) + d.Quantity);
         let dailyTotals = {}; dbDailyList.forEach(d => dailyTotals[d.sku] = (dailyTotals[d.sku] || 0) + d.plan);
-        batch.forEach(b => { if(dailyActive && dailyTotals[b._originSKU] && totals[b._originSKU] > dailyTotals[b._originSKU]) hasOver = true; });
+        temporaryLocalBatch.forEach(b => { 
+            let predictedTotal = (totals[b._originSKU] || 0) + b.Quantity;
+            if(dailyActive && dailyTotals[b._originSKU] && predictedTotal > dailyTotals[b._originSKU]) hasOver = true; 
+        });
         playSound(hasOver ? 'warn' : 'success');
 
         for(let i=1; i<=6; i++) { document.getElementById('s'+i).value = ""; document.getElementById('q'+i).value = ""; }
@@ -354,9 +370,7 @@
         let allDisplayRows = []; let trackedDailyKeysWithInput = new Set();
 
         data.forEach(d => {
-            let k = d._originSKU;
-            let totalPlanForThisSku = dailyTotals[k];
-            let skuTotalScanned = realSkuTotals[k] || 0;
+            let k = d._originSKU; let totalPlanForThisSku = dailyTotals[k]; let skuTotalScanned = realSkuTotals[k] || 0;
             let diffText = "OK"; let isException = false; let rowClass = "";
             
             if (totalPlanForThisSku === undefined) { diffText = "EXT"; isException = true; rowClass = "row-extra"; } 
@@ -396,10 +410,10 @@
             tr.className = item.rowClass; tr.classList.add(item.hasInput ? "status-active" : "status-pending");
 
             let qtyCellHtml = item.hasInput 
-                ? `<input type="number" class="edit-input" value="${item.quantity}" onchange="updateRowQty('${item.id}', this.value)">`
+                ? `<input type="number" class="edit-input" value="${item.quantity}" onchange="updateNetworkRowQty('${item.id}', this.value)">`
                 : `<span style="font-size:13px;">0</span> <span style="font-size:10px;color:#aaa;">(Plan:${item.diffText * -1})</span>`;
 
-            let delCellHtml = item.hasInput ? `<button class="del-btn" onclick="deleteSingleRow(event, '${item.id}')">×</button>` : "—";
+            let delCellHtml = item.hasInput ? `<button class="del-btn" onclick="deleteNetworkRow(event, '${item.id}')">×</button>` : "—";
 
             tr.innerHTML = `
                 <td class="td-sku">${item.displaySKU}</td>
@@ -412,42 +426,40 @@
         });
     }
 
-    function updateRowQty(rowId, newQtyStr) {
+    // --- 📡 联网数量修改：将改动直接推送到个人云 Sheets 数据库 ---
+    function updateNetworkRowQty(rowId, newQtyStr) {
         let n = parseFloat(newQtyStr);
         if (n >= 0) {
-            let row = data.find(x => x.id === rowId);
-            if (row) {
-                if (n === 0) { data = data.filter(x => x.id !== rowId); } 
-                else { row.Quantity = n; }
-                render(); saveLocal();
-            }
+            let targetRow = data.find(x => x.id === rowId);
+            if (targetRow) { targetRow.Quantity = n; render(); } // 视觉超前反馈
+            
+            fetch(APP_SCRIPT_URL, {
+                method: "POST", mode: "no-cors", headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ action: "updateQty", id: rowId, quantity: n })
+            }).then(() => syncNetworkPool());
         }
     }
 
-    // 单行物理删除引擎
-    function deleteSingleRow(e, rowId) {
+    // --- 📡 联网物理整行删除：同步抹除个人云表格中的对应数据行 ---
+    function deleteNetworkRow(e, rowId) {
         if (e) { e.stopPropagation(); e.preventDefault(); }
-        if (confirm("Are you sure you want to delete this log?")) {
-            data = data.filter(x => x.id !== rowId); render(); saveLocal(); 
+        if (confirm("确定要删除这笔数据吗？全场所有设备的屏幕都会同步删掉它。")) {
+            data = data.filter(x => x.id !== rowId); render(); // 视觉超前反馈
+            
+            fetch(APP_SCRIPT_URL, {
+                method: "POST", mode: "no-cors", headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ action: "delete", id: rowId })
+            }).then(() => syncNetworkPool());
         }
-    }
-
-    function saveLocal() { 
-        localStorage.setItem('wh_v820_data', JSON.stringify(data)); 
-        localStorage.setItem('wh_v820_op', document.getElementById('opName').value); 
-        localStorage.setItem('wh_v820_backup', JSON.stringify(data));
     }
     
     function exportCsv() {
         const op = document.getElementById('opName').value.trim() || "User", dateNow = new Date().toISOString().slice(0,10).replace(/-/g, "");
-        let csvRows = [["PO","SKU","Name","BatchSerialNumber","SupplierSKU","ExpiryDate_YYYYMMDD","Quantity","Location","DateReceived_YYYYMMDD","Received","Exception_Note"]];
-        
+        let rawSplittedRows = [];
         let scannedGroupsBySku = {};
         data.forEach(d => {
             if (!scannedGroupsBySku[d._originSKU]) scannedGroupsBySku[d._originSKU] = [];
-            scannedGroupsBySku[d._originSKU].push({
-                fullSku: d.SKU, name: d.Name, loc: d.FullLocation, date: d.Date, qty: d.Quantity
-            });
+            scannedGroupsBySku[d._originSKU].push({ fullSku: d.SKU, name: d.Name, loc: d.FullLocation, date: d.Date, qty: d.Quantity });
         });
 
         let dailyGroupsBySku = {};
@@ -464,7 +476,7 @@
 
             if (!dailyActive || dailyBills.length === 0) {
                 scannedPool.forEach(s => {
-                    csvRows.push(["EXTRA", s.fullSku, s.name, "", "", "", s.qty, s.loc, s.date, "TRUE", "NOT IN LIST"]);
+                    rawSplittedRows.push({ po: "EXTRA", sku: s.fullSku, name: s.name, bsn: "", ssk: "", exp: "", qty: s.qty, loc: s.loc, date: s.date, rec: "TRUE", note: "NOT IN LIST" });
                 });
                 return;
             }
@@ -481,16 +493,16 @@
                     if (remBillPlan <= 0) { billIdx++; continue; } 
 
                     if (remScanQty >= remBillPlan) {
-                        csvRows.push([currentBill.po, scanRow.fullSku, scanRow.name, "", "", "", remBillPlan, scanRow.loc, scanRow.date, "TRUE", "OK"]);
+                        rawSplittedRows.push({ po: currentBill.po, sku: scanRow.fullSku, name: scanRow.name, bsn: "", ssk: "", exp: "", qty: remBillPlan, loc: scanRow.loc, date: scanRow.date, rec: "TRUE", note: "OK" });
                         remScanQty -= remBillPlan; currentBill.plan = 0; billIdx++; 
                     } else {
-                        csvRows.push([currentBill.po, scanRow.fullSku, scanRow.name, "", "", "", remScanQty, scanRow.loc, scanRow.date, "TRUE", "OK"]);
+                        rawSplittedRows.push({ po: currentBill.po, sku: scanRow.fullSku, name: scanRow.name, bsn: "", ssk: "", exp: "", qty: remScanQty, loc: scanRow.loc, date: scanRow.date, rec: "TRUE", note: "OK" });
                         currentBill.plan -= remScanQty; remScanQty = 0; 
                     }
                 }
 
                 if (remScanQty > 0) {
-                    csvRows.push(["OVER_FLOW", scanRow.fullSku, scanRow.name, "", "", "", remScanQty, scanRow.loc, scanRow.date, "TRUE", "OVERFLOW"]);
+                    rawSplittedRows.push({ po: "OVER_FLOW", sku: scanRow.fullSku, name: scanRow.name, bsn: "", ssk: "", exp: "", qty: remScanQty, loc: scanRow.loc, date: scanRow.date, rec: "TRUE", note: "OVERFLOW" });
                 }
             }
 
@@ -498,29 +510,24 @@
                 let currentBill = dailyBills[billIdx];
                 if (currentBill.plan > 0) {
                     let mInfo = dbMaster[skuKey] || { b: skuKey, c: "N/A" };
-                    const t = new Date();
-                    const formattedDate = `${t.getFullYear()}${String(t.getMonth()+1).padStart(2,'0')}${String(t.getDate()).padStart(2,'0')}`;
-                    csvRows.push([currentBill.po, mInfo.b, mInfo.c, "", "", "", 0, "—", formattedDate, "FALSE", (-currentBill.plan).toString()]);
+                    const t = new Date(); const formattedDate = `${t.getFullYear()}${String(t.getMonth()+1).padStart(2,'0')}${String(t.getDate()).padStart(2,'0')}`;
+                    rawSplittedRows.push({ po: currentBill.po, sku: mInfo.b, name: mInfo.c, bsn: "", ssk: "", exp: "", qty: 0, loc: "—", date: formattedDate, rec: "FALSE", note: (-currentBill.plan).toString() });
                 }
                 billIdx++;
             }
         });
 
-        // 最终执行“同PO+同SKU+同库位”超高精度的二次压缩合并
         let compressedMap = {};
         let finalRows = [["PO","SKU","Name","BatchSerialNumber","SupplierSKU","ExpiryDate_YYYYMMDD","Quantity","Location","DateReceived_YYYYMMDD","Received","Exception_Note"]];
 
-        csvRows.forEach((row, rIdx) => {
-            if (rIdx === 0) return; // 跳过临时数组中的重复头
-            let [po, sku, name, bsn, ssk, exp, qty, loc, date, rec, note] = row;
-            let uniqueMatrixKey = `${po}##${sku}##${loc}##${note}`;
-            
-            if(qty > 0 && compressedMap[uniqueMatrixKey]) {
-                compressedMap[uniqueMatrixKey].qty += qty;
-            } else if (qty > 0) {
-                compressedMap[uniqueMatrixKey] = { po, sku, name, bsn, ssk, exp, qty, loc, date, rec, note };
+        rawSplittedRows.forEach((row) => {
+            let uniqueMatrixKey = `${row.po}##${row.sku}##${row.loc}##${row.note}`;
+            if(row.qty > 0 && compressedMap[uniqueMatrixKey]) {
+                compressedMap[uniqueMatrixKey].qty += row.qty;
+            } else if (row.qty > 0) {
+                compressedMap[uniqueMatrixKey] = row;
             } else {
-                finalRows.push([po, sku, name, bsn, ssk, exp, qty, loc, date, rec, note]);
+                finalRows.push([row.po, row.sku, row.name, row.bsn, row.ssk, row.exp, row.qty, row.loc, row.date, row.rec, row.note]);
             }
         });
 
