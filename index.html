@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Warehouse V8.29.00 Multi-Device Sync</title>
+    <title>Warehouse V8.29.02 Perfect Precision Match</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
     <style>
         :root { --primary: #1890ff; --success: #52c41a; --danger: #ff4d4f; --extra: #b37feb; --bg: #f5f7fa; }
@@ -50,13 +50,34 @@
         .cb-sku { background: #e6f7ff; border: 1px solid #91d5ff; color: #0050b3; }
         .cb-loc { background: #feffe6; border: 1px solid #fffb8f; color: #614700; }
         .cb-sync { background: #f6ffed; border: 1px solid #b7eb8f; color: #52c41a; }
+
+        .lock-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
+            background: rgba(0,0,0,0.85); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+            z-index: 99999; display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 20px;
+        }
+        .lock-box { background: white; border-radius: 16px; padding: 24px; width: 100%; max-width: 360px; text-align: center; box-shadow: 0 10px 30px rgba(0,0,0,0.3); }
+        .lock-box h3 { margin: 0 0 8px 0; color: #222; font-size: 20px; }
+        .lock-box p { margin: 0 0 20px 0; color: #666; font-size: 13px; line-height: 1.5; }
+        .lock-box input { text-align: center; font-size: 24px; letter-spacing: 4px; height: 50px; border: 2px solid #d9d9d9; margin-bottom: 16px; background: #fff; }
+        .lock-box input:focus { border-color: var(--primary); outline: none; }
+        .lock-box button { background: var(--primary); color: white; border: none; border-radius: 8px; height: 46px; width: 100%; font-size: 16px; font-weight: bold; cursor: pointer; }
     </style>
 </head>
 <body onclick="unlockAudio()">
 
+<div id="pageLock" class="lock-overlay">
+    <div class="lock-box">
+        <h3>🔒 仓储系统安全防线</h3>
+        <p>页面已被管理员远程锁死。<br>请向 Weibin 获取最新的每日作业密码以解锁。</p>
+        <input type="password" id="passInput" placeholder="••••" inputmode="numeric">
+        <button onclick="checkGatePassword()">解 锁 系 统</button>
+    </div>
+</div>
+
 <div class="main-wrapper">
     <div class="panel-right">
-        <div class="cloud-banner cb-sku" id="cloudStat">☁️ 公司SKU库 (DEAR_PI) 正在连接...</div>
+        <div class="cloud-banner cb-sku" id="cloudStat">☁️ 公司SKU库 (新链接源) 正在连接...</div>
         <div class="cloud-banner cb-loc" id="locCloudStat">☁️ 公司库位表 (A-U列) 正在连接...</div>
         <div class="cloud-banner cb-sync" id="networkStat">📡 多端联网对齐中...</div>
 
@@ -106,15 +127,17 @@
 </div>
 
 <script>
-    const FIXED_CLOUD_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQBh1fAm0-5pIJyHCRVDTt_n3vYILct87elf6_dJ9KvtZ126d-LYsgVkEaGKaZmti9lvFByG5LIc1dR/pub?gid=326617304&single=true&output=csv";
+    // ⚡️ 1. 成功更换为您提供的全新 SKU 匹配源文件发布链接
+    const FIXED_CLOUD_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTtD04RPlIHGdAlhwM6z8GEihKdKBaQttMIaZbJndvW1EoZBjbUEJrWzLvKMCc9uTzBaBip0FpUSFTn/pub?output=csv";
     const FIXED_LOC_CLOUD_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vStLtLccpDSfrf_yU_T9WrNcZufN29BqkDsVS2r9ql1INK_61uA8UetkiW4DZ4_dv63o-DHzFz0tOAq/pub?gid=1276542862&single=true&output=csv";
     
-    // 📡 💡【在此处精准填入您最新的 Web 应用 URL 链接】
-    const APP_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxqjvdeEun4Art10a8lDbtbv0IafeKDL-413u_0tuWxptIkCrcXNrxYtGDQXV6N8PKifA/exec";
+    // 📡 💡【请在此处精确填入您个人生成的部署 Web 应用 URL 链接】
+    const APP_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwK2hJzZM_jmVftK4rbT4DEqWHUZVunRmAJIIN6sdMOOcmmhF8S8b8aNyXCkwqe0ETZ/exec";
 
     let auditLogPool = [];
     let dbMaster = {}, dbDailyList = [], setLoc = new Set(), dbLocMap = {}, data = [];
     let dailyActive = false, audioCtx = null, forceSKU = null;
+    let cloudGatePassword = "🛑LOCKED", isUnlocked = false;
 
     function unlockAudio() {
         if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -136,6 +159,8 @@
         const cC = localStorage.getItem('csv_check'), savedFileName = localStorage.getItem('wh_v826_check_filename');
         if(cC) { parseCheck(cC); updateCheckStatTag(savedFileName || "READY"); }
         setupEnterKey();
+        
+        document.getElementById('passInput').addEventListener('keydown', (e) => { if(e.key === 'Enter') checkGatePassword(); });
     };
 
     function fetchLocalTimeFormatted() {
@@ -154,10 +179,19 @@
 
     window.jsonpCallback = function(response) {
         const netBanner = document.getElementById('networkStat');
-        if (Array.isArray(response)) {
-            data = response;
+        if (response && response.password !== undefined) {
+            cloudGatePassword = response.password.toString().trim();
+            data = response.pool;
+            
+            if (isUnlocked && document.getElementById('passInput').value !== cloudGatePassword) {
+                isUnlocked = false;
+                document.getElementById('pageLock').style.display = "flex";
+                alert("⚠️ 管理员已远程更改了作业口令，请重新输入新密码解锁！");
+            }
+            
             refreshHistoricalDataNames();
-            render(); 
+            if (isUnlocked) render(); 
+            
             netBanner.innerText = `📡 多端联网在线中 (全场已聚合流水: ${data.length} 条)`;
             netBanner.style.background = "#f6ffed"; netBanner.style.borderColor = "#b7eb8f"; netBanner.style.color = "#52c41a";
         } else {
@@ -165,7 +199,25 @@
         }
     };
 
+    function checkGatePassword() {
+        const inputVal = document.getElementById('passInput').value.trim();
+        if (!cloudGatePassword || cloudGatePassword === "🛑LOCKED") {
+            alert("📡 正在全网握手连接密码锁芯，请稍候2秒再试...");
+            return;
+        }
+        if (inputVal === cloudGatePassword) {
+            isUnlocked = true;
+            document.getElementById('pageLock').style.display = "none"; 
+            render(); 
+        } else {
+            alert("❌ 口令错误！请向主管理员 Weibin 获取最新验证密码。");
+            document.getElementById('passInput').value = "";
+            document.getElementById('passInput').focus();
+        }
+    }
+
     function sendJsonpAction(params) {
+        if (!isUnlocked) return; 
         var paramsStr = "";
         for (var key in params) { paramsStr += "&" + key + "=" + encodeURIComponent(params[key]); }
         var url = APP_SCRIPT_URL + (APP_SCRIPT_URL.includes("?") ? "" : "?") + paramsStr + "&t=" + Date.now();
@@ -194,14 +246,14 @@
         });
         const banner = document.getElementById('locCloudStat');
         if (isOfflineCache) { banner.innerText = `📦 本地内置库位就绪 (已锁死: ${validCount} 个库位联想)`; } 
-        else { banner.innerText = `⚡ 公司库位表 (A-U列) 同步成功！(已刷新内置: ${validCount} 个)`; banner.style.background = "#f6ffed"; banner.style.borderColor = "#b7eb8f"; banner.style.color = "#52c41a"; }
+        else { banner.innerText = `⚡ 公司库位表 (A-U列) 同步成功！`; banner.style.background = "#f6ffed"; banner.style.borderColor = "#b7eb8f"; banner.style.color = "#52c41a"; }
     }
 
     function fetchCloudMaster() {
         const banner = document.getElementById('cloudStat');
         fetch(FIXED_CLOUD_URL).then(res => res.text()).then(txt => { 
-            parseSKU(txt); banner.innerText = "⚡ 公司SKU库 (DEAR_PI) 同步成功！"; banner.style.background = "#f6ffed"; banner.style.borderColor = "#b7eb8f"; banner.style.color = "#52c41a";
-            refreshHistoricalDataNames(); render(); 
+            parseSKU(txt); banner.innerText = "⚡ 公司SKU库 (A列/B列) 完美匹配中！"; banner.style.background = "#f6ffed"; banner.style.borderColor = "#b7eb8f"; banner.style.color = "#52c41a";
+            refreshHistoricalDataNames(); if(isUnlocked) render(); 
         }).catch(err => { banner.innerText = "❌ 公司云端同步失败"; });
     }
 
@@ -211,7 +263,7 @@
     }
 
     function processFile(t, files) {
-        if(!files || files.length === 0) return; const f = files[0]; const r = new FileReader();
+        if(!isUnlocked || !files || files.length === 0) return; const f = files[0]; const r = new FileReader();
         r.onload = (e) => {
             const txt = e.target.result;
             if(t==='check') { parseCheck(txt); localStorage.setItem('csv_check', txt); localStorage.setItem('wh_v826_check_filename', f.name); updateCheckStatTag(f.name); }
@@ -219,13 +271,20 @@
     }
     function updateCheckStatTag(name) { const s = document.getElementById('checkStat'); s.innerText = name; s.className = "status-tag ready"; }
     
+    // ⚡️ 2. 核心算法重构：适配 A列 SKU 和 B列 Name，实现“~”符号数字段独立全字匹配
     function parseSKU(txt) { 
         Papa.parse(txt, { complete: (res) => { 
             dbMaster = {}; 
             res.data.forEach((r, i) => { 
-                if(i > 0 && r[7]) { 
-                    let fullSku = r[7].trim().toUpperCase(); let shortSku = fullSku; if(fullSku.includes('~')) { shortSku = fullSku.split('~').pop().trim(); }
-                    dbMaster[shortSku] = { b: fullSku, c: r[17] ? r[17].trim() : "N/A" }; 
+                if(i > 0 && r[0]) { 
+                    let fullSku = r[0].trim().toUpperCase(); 
+                    let shortSku = fullSku; 
+                    // 如果存在“~”符号，精准切割剥离出最后一段纯数字，建立强全量字符串索引，绝不发生子字符错乱
+                    if(fullSku.includes('~')) { 
+                        shortSku = fullSku.split('~').pop().trim(); 
+                    }
+                    let goodsName = r[1] ? r[1].trim() : "N/A"; 
+                    dbMaster[shortSku] = { b: fullSku, c: goodsName }; 
                 } 
             }); 
         }}); 
@@ -240,28 +299,21 @@
                     if(q > 0) { dbDailyList.push({ po: p, sku: k, plan: q, idx: i }); dailyActive = true; }
                 } 
             }); 
-            render();
+            if(isUnlocked) render();
         }}); 
     }
 
     function saveLocalNameOnly() { localStorage.setItem('wh_v820_op', document.getElementById('opName').value); }
     function clearNetworkCache() { if(confirm("⚠️ 确定要彻底清空您个人云端表格里的全部协同数据吗？")) { sendJsonpAction({ action: "clearAll" }); auditLogPool = []; localStorage.removeItem('wh_v828_audit_logs'); localStorage.clear(); location.reload(); } }
 
-    function playSound(type) {
-        if(!audioCtx) return; const g = audioCtx.createGain(); g.gain.setValueAtTime(0.1, audioCtx.currentTime); g.connect(audioCtx.destination); const o = audioCtx.createOscillator();
-        if(type === 'success') { o.type='sine'; o.frequency.setValueAtTime(1000, audioCtx.currentTime); o.start(); o.stop(audioCtx.currentTime + 0.1); }
-        else if(type === 'warn') { o.type='square'; o.frequency.setValueAtTime(440, audioCtx.currentTime); o.start(); o.stop(audioCtx.currentTime + 0.3); }
-        else { o.type='sawtooth'; o.frequency.setValueAtTime(150, audioCtx.currentTime); o.start(); o.stop(audioCtx.currentTime + 0.4); }
-    }
-
-    // --- 📡 核心升级点一：发射存盘包时，强行在第9列中压入当前的姓名信息 ---
     function addBatch() {
+        if (!isUnlocked) return;
         unlockAudio(); fetchCloudMaster();
         let inputLv = document.getElementById('locIn').value.trim(); let upperLv = inputLv.toUpperCase();
         const op = document.getElementById('opName').value.trim();
-        if(!op) { playSound('error'); alert("⚠️ 拒绝提交！请先在上方输入您的 Operator Name (操作员姓名)，以确保协同溯源安全。"); return; }
-        if(!inputLv) { playSound('error'); return; }
-        if (setLoc.size > 0 && !setLoc.has(upperLv)) { playSound('error'); alert(`库位无效！[${inputLv}] 不是合法的云端内置库位。`); return; }
+        if(!op) { alert("⚠️ 拒绝提交！请先在上方输入您的 Operator Name (操作员姓名)，以确保协同溯源安全。"); return; }
+        if(!inputLv) { return; }
+        if (setLoc.size > 0 && !setLoc.has(upperLv)) { alert(`库位无效！[${inputLv}] 不是合法的云端内置库位。`); return; }
 
         let finalCorrectLocation = dbLocMap[upperLv] ? dbLocMap[upperLv] : inputLv;
         let batchRowsForGAS = [], temporaryLocalBatch = [], mismatch = false;
@@ -271,31 +323,27 @@
             const sv = document.getElementById('s'+i).value.trim().toUpperCase(); const qv = parseFloat(document.getElementById('q'+i).value); if(!sv) continue;
             let inDaily = dbDailyList.some(d => d.sku === sv);
             if(dailyActive && !inDaily && forceSKU !== sv) { mismatch = true; forceSKU = sv; break; }
-            if(!qv || qv <= 0) { playSound('error'); return; }
+            if(!qv || qv <= 0) { return; }
 
             let rowUniqueId = "id_" + Date.now() + "_" + i + "_" + Math.random().toString(36).substr(2, 5);
             let finalLongSku = dbMaster[sv] ? dbMaster[sv].b : sv; let finalGoodsName = dbMaster[sv] ? dbMaster[sv].c : "N/A";
 
-            // 💡 GAS 数组追加扩容第9列（Index为8的地方注入姓名，方便云端存盘）
             batchRowsForGAS.push([rowUniqueId, sv, finalLongSku, finalGoodsName, qv, finalCorrectLocation, "Patiki Warehouse: " + finalCorrectLocation, localDateStr, op]);
             temporaryLocalBatch.push({ id: rowUniqueId, _originSKU: sv, SKU: finalLongSku, Name: finalGoodsName, Quantity: qv, Location: finalCorrectLocation, FullLocation: "Patiki Warehouse: " + finalCorrectLocation, Date: localDateStr, Operator: op });
         }
 
-        if(mismatch) { playSound('error'); let b = document.getElementById('saveBtn'); b.innerText = "SKU NOT IN LIST! TAP AGAIN TO FORCE SAVE"; b.style.background = "orange"; setTimeout(() => { b.innerText = "SAVE ALL"; b.style.background = ""; forceSKU = null; }, 3000); return; }
+        if(mismatch) { let b = document.getElementById('saveBtn'); b.innerText = "SKU NOT IN LIST! TAP AGAIN TO FORCE SAVE"; b.style.background = "orange"; setTimeout(() => { b.innerText = "SAVE ALL"; b.style.background = ""; forceSKU = null; }, 3000); return; }
         if(batchRowsForGAS.length === 0) return;
 
         data = [...data, ...temporaryLocalBatch]; render();
         sendJsonpAction({ action: "insert", rowsData: JSON.stringify(batchRowsForGAS) });
 
-        let hasOver = false; let totals = {}; data.forEach(d => totals[d._originSKU] = (totals[d._originSKU] || 0) + d.Quantity);
-        let dailyTotals = {}; dbDailyList.forEach(d => dailyTotals[d.sku] = (dailyTotals[d.sku] || 0) + d.plan);
-        temporaryLocalBatch.forEach(b => { if(dailyActive && dailyTotals[b._originSKU] && totals[b._originSKU] > dailyTotals[b._originSKU]) hasOver = true; });
-        playSound(hasOver ? 'warn' : 'success');
         for(let i=1; i<=6; i++) { document.getElementById('s'+i).value = ""; document.getElementById('q'+i).value = ""; }
         document.getElementById('locIn').value = ""; document.getElementById('s1').focus(); forceSKU = null;
     }
 
     function render() {
+        if (!isUnlocked) return;
         const tbody = document.querySelector("#mainTable tbody"); tbody.innerHTML = "";
         let realSkuTotals = {}; data.forEach(d => { realSkuTotals[d._originSKU] = (realSkuTotals[d._originSKU] || 0) + d.Quantity; });
         let dailyTotals = {}; dbDailyList.forEach(d => dailyTotals[d.sku] = (dailyTotals[d.sku] || 0) + d.plan);
@@ -331,6 +379,7 @@
     }
 
     function updateNetworkRowQty(rowId, newQtyStr) {
+        if (!isUnlocked) return;
         let n = parseFloat(newQtyStr);
         if (n >= 0) {
             let targetRow = data.find(x => x.id === rowId);
@@ -348,6 +397,7 @@
     }
 
     function deleteNetworkRow(e, rowId) {
+        if (!isUnlocked) return;
         if (e) { e.stopPropagation(); e.preventDefault(); }
         if (confirm("确定要删除这笔数据吗？")) {
             let targetRow = data.find(x => x.id === rowId);
@@ -361,18 +411,14 @@
         }
     }
     
-    // --- 📡 核心升级点二：在消减合并算法中织入 Operator（操作员名字），确保不同人的同SKU独立隔离，并在最后一列增加输出 ---
     function exportCsv() {
+        if (!isUnlocked) return;
         const op = document.getElementById('opName').value.trim() || "User", dateNow = new Date().toISOString().slice(0,10).replace(/-/g, "");
-        let rawSplittedRows = [];
-        let scannedGroupsBySku = {};
+        let rawSplittedRows = []; let scannedGroupsBySku = {};
         
         data.forEach(d => {
             if (!scannedGroupsBySku[d._originSKU]) scannedGroupsBySku[d._originSKU] = [];
-            scannedGroupsBySku[d._originSKU].push({ 
-                fullSku: d.SKU, name: d.Name, loc: d.FullLocation, date: d.Date, qty: d.Quantity,
-                operatorName: d.Operator || "Unknown" // 承接住每条记录原本的名字
-            });
+            scannedGroupsBySku[d._originSKU].push({ fullSku: d.SKU, name: d.Name, loc: d.FullLocation, date: d.Date, qty: d.Quantity, operatorName: d.Operator || "Unknown" });
         });
 
         let dailyGroupsBySku = {}; dbDailyList.forEach(d => { if (!dailyGroupsBySku[d.sku]) dailyGroupsBySku[d.sku] = []; dailyGroupsBySku[d.sku].push({ po: d.po, plan: d.plan }); });
@@ -381,9 +427,7 @@
         allSkus.forEach(skuKey => {
             let scannedPool = scannedGroupsBySku[skuKey] || []; let dailyBills = JSON.parse(JSON.stringify(dailyGroupsBySku[skuKey] || [])); 
             if (!dailyActive || dailyBills.length === 0) {
-                scannedPool.forEach(s => {
-                    rawSplittedRows.push({ po: "EXTRA", sku: s.fullSku, name: s.name, bsn: "", ssk: "", exp: "", qty: s.qty, loc: s.loc, date: s.date, rec: "TRUE", note: "NOT IN LIST", opUser: s.operatorName });
-                });
+                scannedPool.forEach(s => { rawSplittedRows.push({ po: "EXTRA", sku: s.fullSku, name: s.name, bsn: "", ssk: "", exp: "", qty: s.qty, loc: s.loc, date: s.date, rec: "TRUE", note: "NOT IN LIST", opUser: s.operatorName }); });
                 return;
             }
 
@@ -400,41 +444,29 @@
                         currentBill.plan -= remScanQty; remScanQty = 0; 
                     }
                 }
-                if (remScanQty > 0) {
-                    rawSplittedRows.push({ po: "OVER_FLOW", sku: scanRow.fullSku, name: scanRow.name, bsn: "", ssk: "", exp: "", qty: remScanQty, loc: scanRow.loc, date: scanRow.date, rec: "TRUE", note: "OVERFLOW", opUser: scanRow.operatorName });
-                }
+                if (remScanQty > 0) { rawSplittedRows.push({ po: "OVER_FLOW", sku: scanRow.fullSku, name: scanRow.name, bsn: "", ssk: "", exp: "", qty: remScanQty, loc: scanRow.loc, date: scanRow.date, rec: "TRUE", note: "OVERFLOW", opUser: scanRow.operatorName }); }
             }
             while (billIdx < dailyBills.length) {
                 let currentBill = dailyBills[billIdx];
                 if (currentBill.plan > 0) {
-                    let mInfo = dbMaster[skuKey] || { b: skuKey, c: "N/A" };
-                    const t = new Date(); const formattedDate = `${t.getFullYear()}${String(t.getMonth()+1).padStart(2,'0')}${String(t.getDate()).padStart(2,'0')}`;
+                    let mInfo = dbMaster[skuKey] || { b: skuKey, c: "N/A" }; const t = new Date(); const formattedDate = `${t.getFullYear()}${String(t.getMonth()+1).padStart(2,'0')}${String(t.getDate()).padStart(2,'0')}`;
                     rawSplittedRows.push({ po: currentBill.po, sku: mInfo.b, name: mInfo.c, bsn: "", ssk: "", exp: "", qty: 0, loc: "—", date: formattedDate, rec: "FALSE", note: (-currentBill.plan).toString(), opUser: "System" });
                 }
                 billIdx++;
             }
         });
 
-        // 💡 压实强压缩字典特征值中织入 opUser，不同人即使同一库位也不会揉成一行！
         let compressedMap = {};
-        // 💡 表头第 12 列自动追加 "Operator" 标题列
         let finalRows = [["PO","SKU","Name","BatchSerialNumber","SupplierSKU","ExpiryDate_YYYYMMDD","Quantity","Location","DateReceived_YYYYMMDD","Received","Exception_Note","Operator"]];
 
         rawSplittedRows.forEach((row) => {
             let uniqueMatrixKey = `${row.po}##${row.sku}##${row.loc}##${row.note}##${row.opUser}`;
-            if(row.qty > 0 && compressedMap[uniqueMatrixKey]) {
-                compressedMap[uniqueMatrixKey].qty += row.qty;
-            } else if (row.qty > 0) {
-                compressedMap[uniqueMatrixKey] = row;
-            } else {
-                finalRows.push([row.po, row.sku, row.name, row.bsn, row.ssk, row.exp, row.qty, row.loc, row.date, row.rec, row.note, row.opUser]);
-            }
+            if(row.qty > 0 && compressedMap[uniqueMatrixKey]) { compressedMap[uniqueMatrixKey].qty += row.qty; } 
+            else if (row.qty > 0) { compressedMap[uniqueMatrixKey] = row; } 
+            else { finalRows.push([row.po, row.sku, row.name, row.bsn, row.ssk, row.exp, row.qty, row.loc, row.date, row.rec, row.note, row.opUser]); }
         });
 
-        Object.keys(compressedMap).forEach(key => {
-            let r = compressedMap[key];
-            finalRows.push([r.po, r.sku, r.name, r.bsn, r.ssk, r.exp, r.qty, r.loc, r.date, r.rec, r.note, r.opUser]);
-        });
+        Object.keys(compressedMap).forEach(key => { let r = compressedMap[key]; finalRows.push([r.po, r.sku, r.name, r.bsn, r.ssk, r.exp, r.qty, r.loc, r.date, r.rec, r.note, r.opUser]); });
 
         const csvContent = Papa.unparse(finalRows);
         const csvBlob = new Blob(["\ufeff" + csvContent], { type: 'text/csv;charset=utf-8;' });
