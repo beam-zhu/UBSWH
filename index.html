@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Warehouse V8.29.07 Single-Login Session Sync</title>
+    <title>Warehouse V8.29.08 Absolute Security Sync</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
     <style>
         :root { --primary: #1890ff; --success: #52c41a; --danger: #ff4d4f; --extra: #b37feb; --bg: #f5f7fa; }
@@ -59,7 +59,7 @@
         .lock-box { background: white; border-radius: 16px; padding: 24px; width: 100%; max-width: 360px; text-align: center; box-shadow: 0 10px 30px rgba(0,0,0,0.3); }
         .lock-box h3 { margin: 0 0 8px 0; color: #222; font-size: 20px; }
         .lock-box p { margin: 0 0 20px 0; color: #666; font-size: 13px; line-height: 1.5; }
-        .lock-box input { text-align: center; font-size: 24px; letter-spacing: 4px; height: 50px; border: 2px solid #d9d9d9; margin-bottom: 16px; background: #fff; color:#222; }
+        .lock-box input { text-align: center; font-size: 24px; height: 50px; border: 2px solid #d9d9d9; margin-bottom: 16px; background: #fff; color:#222; }
         .lock-box button { background: var(--primary); color: white; border: none; border-radius: 8px; height: 46px; width: 100%; font-size: 16px; font-weight: bold; cursor: pointer; }
     </style>
 </head>
@@ -69,7 +69,7 @@
     <div class="lock-box">
         <h3>🔒 仓储系统安全防线</h3>
         <p>多端联网作业已被控锁。<br>请向 Weibin 获取最新的作业口令以解锁。</p>
-        <input type="text" id="passInput" placeholder="请输入作业密码" inputmode="numeric">
+        <input type="text" id="passInput" placeholder="请输入作业密码" autocomplete="off">
         <button onclick="checkGatePassword()">解 锁 系 统</button>
     </div>
 </div>
@@ -85,7 +85,7 @@
                 <div class="file-btn"><span>DAILY清单 (第一列必须是PO)</span><input type="file" accept=".csv" onchange="processFile('check', this.files)"><span id="checkStat" class="status-tag">OPTIONAL</span></div>
             </div>
             <div style="display: flex; justify-content: space-between; margin-top: 8px;">
-                <button onclick="clearNetworkCache()" style="font-size:10px; color:red; border:none; background:none; padding:5px; font-weight:bold;">[清空全场云数据]</button>
+                <button onclick="clearScreenHistory()" style="font-size:10px; color:#1890ff; border:none; background:none; padding:5px; font-weight:bold;">[CLEAR SCREEN] (清空屏幕历史)</button>
                 <button onclick="recoverBackup()" style="font-size:10px; color:blue; border:none; background:none; padding:5px; font-weight:bold;">[RECOVER BACKUP]</button>
             </div>
         </div>
@@ -126,20 +126,24 @@
 </div>
 
 <script>
+    // 🔗 两个并行的公司级主对照库文件发布地址
     const FILE1_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vR8x1PYnDYTCIvzG5qoq_syoxgAJ4m6FGoMJb6W9bEQ-HwUVCiJV7PGkR8o80qT7r6I_GkL4cgWguvw/pub?gid=1763823264&single=true&output=csv";
     const FILE2_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQBh1fAm0-5pIJyHCRVDTt_n3vYILct87elf6_dJ9KvtZ126d-LYsgVkEaGKaZmti9lvFByG5LIc1dR/pub?gid=326617304&single=true&output=csv";
     const FIXED_LOC_CLOUD_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vStLtLccpDSfrf_yU_T9WrNcZufN29BqkDsVS2r9ql1INK_61uA8UetkiW4DZ4_dv63o-DHzFz0tOAq/pub?gid=1276542862&single=true&output=csv";
     
-    // 📡 💡【在此处精准填入您最部署生成的核心 Web 应用 URL 链接】
+    // 💡【核心升级：硬核防卡死本地锁芯】
+    // 💡 您作为最高管理员，随时在下面双引号里改密码（比如 "2026"、"8888"）。若不想要密码，直接留空改称 "" 即可放行！
+    const ADMIN_PASSWORD = "1234"; 
+
+    // 📡 谷歌云端实时同步核心接口
     const APP_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbw5e6uZSaNTdoe0xyY1ZwL2UUuvruzESTq7shO-n-AytC4hV7YnbFhQzKXi_GN9mKUo/exec";
 
     let auditLogPool = [];
     let dbMaster = {}, dbDailyList = [], setLoc = new Set(), dbLocMap = {}, data = [];
     let dailyActive = false, audioCtx = null, forceSKU = null;
     
-    // 💡 引入浏览器标签页级生存期存储隔离（只要不关标签页，登录态永不丢失）
-    let cloudGatePassword = "🛑WAIT_CONNECT";
-    let isUnlocked = sessionStorage.getItem("wh_session_unlocked") === "true";
+    // 从Session寄存器读取生存期内的解锁态（只要不关网页，永不需要二次输入密码）
+    let isUnlocked = (sessionStorage.getItem("wh_session_unlocked_v2") === "true") || (ADMIN_PASSWORD === "");
 
     function unlockAudio() {
         if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -152,7 +156,7 @@
         if (cachedLocsText) { buildLocationsEngine(cachedLocsText, true); }
         if (localLogs) { auditLogPool = JSON.parse(localLogs); }
         
-        // 💡 启动检测：如果之前已经输过密码且没关过页面，直接免密放行隐去黑屏
+        // 判定放行
         if (isUnlocked) {
             document.getElementById('pageLock').style.display = "none";
         }
@@ -172,7 +176,7 @@
 
     function fetchLocalTimeFormatted() {
         const t = new Date();
-        return `[${t.getFullYear()}-${String(t.getMonth()+1).padStart(2,'0')}-${String(t.getDate())+1}-${String(t.getHours()).padStart(2,'0')}:${String(t.getMinutes()).padStart(2,'0')}:${String(t.getSeconds()).padStart(2,'0')}]`;
+        return `[${t.getFullYear()}-${String(t.getMonth()+1).padStart(2,'0')}-${String(t.getDate()).padStart(2,'0')} ${String(t.getHours()).padStart(2,'0')}:${String(t.getMinutes()).padStart(2,'0')}:${String(t.getSeconds()).padStart(2,'0')}]`;
     }
 
     function syncNetworkPool() {
@@ -187,47 +191,28 @@
     window.jsonpCallback = function(response) {
         const netBanner = document.getElementById('networkStat');
         
-        if (response && response.password !== undefined) {
-            cloudGatePassword = response.password.toString().trim();
+        // 支持两种后台回发包模式，稳定抓取
+        if (response && response.pool !== undefined) {
             data = response.pool;
-            
-            // 💡 规则A：若云端J1彻彻底底被删空，执行全自动无密解锁放行
-            if (cloudGatePassword === "") {
-                isUnlocked = true;
-                sessionStorage.setItem("wh_session_unlocked", "true");
-                document.getElementById('pageLock').style.display = "none";
-            }
-            // 💡 规则B：如果在中途管理员突然改了新密码，且与当前输入框不符，则瞬间远程反向踢出重新锁死
-            else if (isUnlocked && document.getElementById('passInput').value.trim() !== cloudGatePassword && sessionStorage.getItem("wh_session_password_cache") !== cloudGatePassword) {
-                // 如果是无密放行后管理员重新加锁，或者换了新锁，踢出
-                isUnlocked = false;
-                sessionStorage.removeItem("wh_session_unlocked");
-                document.getElementById('pageLock').style.display = "flex";
-                document.getElementById('passInput').value = "";
-                alert("⚠️ 管理员已远程更改或启用了作业密码，请重新输入解锁口令！");
-            }
-            
-            refreshHistoricalDataNames();
-            if (isUnlocked) render(); 
-            
-            netBanner.innerText = `📡 多端联网在线中 (全场已聚合流水: ${data.length} 条)`;
-            netBanner.style.background = "#f6ffed"; netBanner.style.borderColor = "#b7eb8f"; netBanner.style.color = "#52c41a";
+        } else if (Array.isArray(response)) {
+            data = response;
         } else {
-            syncNetworkPool();
-        }
-    };
-
-    function checkGatePassword() {
-        var userIn = document.getElementById('passInput').value.trim();
-        if (cloudGatePassword === "🛑WAIT_CONNECT") {
-            alert("📡 正在全网握手连接密码指口，请稍后1秒再试...");
             return;
         }
-        if (userIn === cloudGatePassword || cloudGatePassword === "") {
+        
+        refreshHistoricalDataNames();
+        if (isUnlocked) render(); 
+        
+        netBanner.innerText = `📡 多端联网在线中 (全场已聚合流水: ${data.length} 条)`;
+        netBanner.style.background = "#f6ffed"; netBanner.style.borderColor = "#b7eb8f"; netBanner.style.color = "#52c41a";
+    };
+
+    // 💡 100% 免疫手机端延迟或冲突的超快解锁引擎
+    function checkGatePassword() {
+        var userIn = document.getElementById('passInput').value.trim();
+        if (userIn === ADMIN_PASSWORD || ADMIN_PASSWORD === "") {
             isUnlocked = true;
-            // 💡 将解锁令牌与密码指纹双重死锁封存在 Session 中
-            sessionStorage.setItem("wh_session_unlocked", "true");
-            sessionStorage.setItem("wh_session_password_cache", userIn);
+            sessionStorage.setItem("wh_session_unlocked_v2", "true");
             document.getElementById('pageLock').style.display = "none";
             render();
         } else {
@@ -338,20 +323,16 @@
     function updateCheckStatTag(name) { const s = document.getElementById('checkStat'); s.innerText = name; s.className = "status-tag ready"; }
     function saveLocalNameOnly() { localStorage.setItem('wh_v820_op', document.getElementById('opName').value); }
 
-    // ⚡ 终极升级点：清空云端大池后，直接执行本地前瞻假抹平，再触发后台静默合流，彻底抛弃location.reload()
-    function clearNetworkCache() { 
-        if(confirm("🚨 极端警告！\n您确定要彻底清空云端表格里的【全场协同数据流水】吗？\n此操作将清空所有人的数据面板，且不可逆！")) { 
-            sendJsonpAction({ action: "clearAll" }); 
-            // 清空本地渲染缓冲
-            data = []; 
-            render(); 
-            // 清除防误操日志缓存
-            auditLogPool = []; 
-            localStorage.removeItem('wh_v828_audit_logs'); 
-            alert("✨ 指令已发射！全场流水已成功归零。");
-            // 延迟1秒发起一次对齐
-            setTimeout(syncNetworkPool, 1000);
-        } 
+    // ⚡ 核心安全升级点：只刷平本地手机预览区，决不删除云端任何数据库，且绝不触发刷新，无密码回弹烦恼
+    function clearScreenHistory() {
+        if(confirm("💡 屏幕历史清理确认：\n这会清空您当前手机屏幕上的显示框和输入格（方便您扫描下一批货）。\n⚠️ 后台云端表格里的协同总账目绝对不会被删除，确定要清理当前屏幕吗？")) {
+            // 1. 只把本地渲染池和输入框抹掉
+            data = [];
+            for(let i=1; i<=6; i++) { document.getElementById('s'+i).value = ""; document.getElementById('q'+i).value = ""; }
+            document.getElementById('locIn').value = "";
+            render(); // 刷新屏幕
+            alert("✨ 屏幕已清空，您可以安全开始下一批扫描作业！");
+        }
     }
 
     function addBatch() {
