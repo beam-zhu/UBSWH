@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Warehouse V8.29.08 Auto-Loc Revived</title>
+    <title>Warehouse V8.29.10 Seamless Lock Sync</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
     <style>
         :root { --primary: #1890ff; --success: #52c41a; --danger: #ff4d4f; --extra: #b37feb; --bg: #f5f7fa; }
@@ -130,7 +130,7 @@
     const FILE2_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQBh1fAm0-5pIJyHCRVDTt_n3vYILct87elf6_dJ9KvtZ126d-LYsgVkEaGKaZmti9lvFByG5LIc1dR/pub?gid=326617304&single=true&output=csv";
     const FIXED_LOC_CLOUD_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vStLtLccpDSfrf_yU_T9WrNcZufN29BqkDsVS2r9ql1INK_61uA8UetkiW4DZ4_dv63o-DHzFz0tOAq/pub?gid=1276542862&single=true&output=csv";
     
-    // 💡 后台管理员控锁区：随时在这里修改单引号里的数字。若彻底不想要密码，直接留空改成 "" 即可无感秒进！
+    // 💡 【超级管理员控锁区】：随时在这里修改密码。若不需要密码，改成 "" 即可无感放行！
     const ADMIN_PASSWORD = "1234"; 
 
     // 📡 谷歌云端实时同步核心接口
@@ -139,7 +139,11 @@
     let auditLogPool = [];
     let dbMaster = {}, dbDailyList = [], setLoc = new Set(), dbLocMap = {}, data = [];
     let dailyActive = false, audioCtx = null, forceSKU = null;
-    let isUnlocked = (sessionStorage.getItem("wh_session_unlocked_v2") === "true") || (ADMIN_PASSWORD === "");
+    
+    // 从本地 Session 严格提取历史解锁态（安全清洗前后缀，杜绝误伤）
+    let cachedRawPass = (sessionStorage.getItem("wh_session_verified_password") || "").trim();
+    let targetCleanPass = ADMIN_PASSWORD.trim();
+    let isUnlocked = (targetCleanPass === "") || (cachedRawPass === targetCleanPass);
 
     function unlockAudio() {
         if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -152,7 +156,11 @@
         if (cachedLocsText) { buildLocationsEngine(cachedLocsText, true); }
         if (localLogs) { auditLogPool = JSON.parse(localLogs); }
         
-        if (isUnlocked) { document.getElementById('pageLock').style.display = "none"; }
+        if (isUnlocked) { 
+            document.getElementById('pageLock').style.display = "none"; 
+        } else {
+            document.getElementById('passInput').value = "";
+        }
 
         fetchCloudMasterDualChannels();
         fetchCloudLocations();
@@ -172,7 +180,21 @@
         return `[${t.getFullYear()}-${String(t.getMonth()+1).padStart(2,'0')}-${String(t.getDate()).padStart(2,'0')} ${String(t.getHours()).padStart(2,'0')}:${String(t.getMinutes()).padStart(2,'0')}:${String(t.getSeconds()).padStart(2,'0')}]`;
     }
 
+    // 💡 异步静默巡检网关：只核对密码是否被修改，绝不触发 location.reload() 刷新，保证输入毫无干扰！
     function syncNetworkPool() {
+        var currentCleanPass = ADMIN_PASSWORD.trim();
+        var localSessionPass = (sessionStorage.getItem("wh_session_verified_password") || "").trim();
+        
+        // 🚀 精准比对拦截：只有当页面处于解锁状态、代码里确实有密码、且本地密码和最新代码密码不符时，才触发瞬间秒级关窗踢出
+        if (isUnlocked && currentCleanPass !== "" && localSessionPass !== currentCleanPass) {
+            isUnlocked = false;
+            sessionStorage.removeItem("wh_session_verified_password");
+            document.getElementById('pageLock').style.display = "flex";
+            document.getElementById('passInput').value = "";
+            alert("🚨 安全警报！\n管理员已在后台远程更新了作业密码，您已被强制断开！\n请重新输入最新验证密码解锁系统。");
+            return;
+        }
+
         var script = document.createElement("script");
         script.src = APP_SCRIPT_URL + (APP_SCRIPT_URL.includes("?") ? "&" : "?") + "t=" + Date.now();
         script.id = "jsonp_sync_script";
@@ -196,9 +218,10 @@
 
     function checkGatePassword() {
         var userIn = document.getElementById('passInput').value.trim();
-        if (userIn === ADMIN_PASSWORD || ADMIN_PASSWORD === "") {
+        var currentCleanPass = ADMIN_PASSWORD.trim();
+        if (userIn === currentCleanPass || currentCleanPass === "") {
             isUnlocked = true;
-            sessionStorage.setItem("wh_session_unlocked_v2", "true");
+            sessionStorage.setItem("wh_session_verified_password", userIn);
             document.getElementById('pageLock').style.display = "none";
             render();
         } else {
@@ -226,7 +249,6 @@
         }).catch(err => { banner.innerText = "⚠️ 库位离线中"; });
     }
 
-    // ⚡精准修正：完美还原 Datalist 选项属性挂载（.value ➔ .setAttribute）
     function buildLocationsEngine(text, isOfflineCache) {
         setLoc.clear(); dbLocMap = {}; const dl = document.getElementById('locList'); dl.innerHTML = "";
         let items = text.split(/[ \t]*[\n\r,;]+[ \t]*/); let validCount = 0;
@@ -237,7 +259,7 @@
                 if(!setLoc.has(upperV)) { 
                     setLoc.add(upperV); dbLocMap[upperV] = rawV; 
                     let o = document.createElement('option'); 
-                    o.setAttribute('value', rawV); // 💡 终极修正：以规范的 HTML 属性形式注入库位，彻底唤醒各端设备键盘的下拉自动联想弹出框！
+                    o.setAttribute('value', rawV); 
                     dl.appendChild(o); 
                     validCount++; 
                 }
@@ -391,7 +413,7 @@
             let qtyCellHtml = item.hasInput ? `<input type="number" class="edit-input" value="${item.quantity}" onchange="updateNetworkRowQty('${item.id}', this.value, ${item.quantity})">` : `<span style="font-size:13px;">0</span> <span style="font-size:10px;color:#aaa;">(Plan:${item.diffText * -1})</span>`;
             let delCellHtml = item.hasInput ? `<button class="del-btn" onclick="deleteNetworkRow(event, '${item.id}')">×</button>` : "—";
             
-            tr.innerHTML = `<td class="td-sku">${item.displaySKU}</td><td class="td-loc">${item.location}</td><td>${qtyCellHtml}</td><td style="font-weight:bold; font-size:11px;">${item.diffText}</td><td><td>${delCellHtml}</td>`;
+            tr.innerHTML = `<td class="td-sku">${item.displaySKU}</td><td class="td-loc">${item.location}</td><td>${qtyCellHtml}</td><td style="font-weight:bold; font-size:11px;">${item.diffText}</td><td>${delCellHtml}</td>`;
             tbody.appendChild(tr);
         });
     }
