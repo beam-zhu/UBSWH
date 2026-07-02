@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Warehouse V8.29.03 Multi-Device Sync</title>
+    <title>Warehouse V8.29.04 Dual-Master Precision Sync</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
     <style>
         :root { --primary: #1890ff; --success: #52c41a; --danger: #ff4d4f; --extra: #b37feb; --bg: #f5f7fa; }
@@ -56,7 +56,7 @@
 
 <div class="main-wrapper">
     <div class="panel-right">
-        <div class="cloud-banner cb-sku" id="cloudStat">☁️ 公司SKU库 (A列/B列) 正在连接...</div>
+        <div class="cloud-banner cb-sku" id="cloudStat">☁️ 联动双主库安全引擎正在连接...</div>
         <div class="cloud-banner cb-loc" id="locCloudStat">☁️ 公司库位表 (A-U列) 正在连接...</div>
         <div class="cloud-banner cb-sync" id="networkStat">📡 多端联网对齐中...</div>
 
@@ -106,11 +106,12 @@
 </div>
 
 <script>
-    // 两路固定的外部参考表链接（第一路已锁定为您的最新A/B列SKU对照源文件）
-    const FIXED_CLOUD_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTtD04RPlIHGdAlhwM6z8GEihKdKBaQttMIaZbJndvW1EoZBjbUEJrWzLvKMCc9uTzBaBip0FpUSFTn/pub?output=csv";
+    // 🔗 两个并行的公司级主对照库文件发布地址
+    const FILE1_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTtD04RPlIHGdAlhwM6z8GEihKdKBaQttMIaZbJndvW1EoZBjbUEJrWzLvKMCc9uTzBaBip0FpUSFTn/pub?output=csv";
+    const FILE2_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQBh1fAm0-5pIJyHCRVDTt_n3vYILct87elf6_dJ9KvtZ126d-LYsgVkEaGKaZmti9lvFByG5LIc1dR/pub?gid=326617304&single=true&output=csv";
     const FIXED_LOC_CLOUD_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vStLtLccpDSfrf_yU_T9WrNcZufN29BqkDsVS2r9ql1INK_61uA8UetkiW4DZ4_dv63o-DHzFz0tOAq/pub?gid=1276542862&single=true&output=csv";
     
-    // 📡 💡【请在此处填入您之前通过“新建部署”获取到的核心 Web 应用 URL 链接】
+    // 📡 谷歌云端实时同步核心接口
     const APP_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwK2hJzZM_jmVftK4rbT4DEqWHUZVunRmAJIIN6sdMOOcmmhF8S8b8aNyXCkwqe0ETZ/exec";
 
     let auditLogPool = [];
@@ -128,10 +129,9 @@
         if (cachedLocsText) { buildLocationsEngine(cachedLocsText, true); }
         if (localLogs) { auditLogPool = JSON.parse(localLogs); }
         
-        fetchCloudMaster();
+        fetchCloudMasterDualChannels();
         fetchCloudLocations();
         
-        // 彻底复活免输入无感秒进同步
         syncNetworkPool();
         setInterval(syncNetworkPool, 5000); 
         
@@ -154,23 +154,16 @@
         document.getElementsByTagName("head")[0].appendChild(script);
     }
 
-    // 📡 唯一的中央回调响应逻辑（去除了密码层面的捆绑解析）
     window.jsonpCallback = function(response) {
         const netBanner = document.getElementById('networkStat');
-        
-        // 兼容处理：如果是新版后台带捆绑回传的格式（包内有.pool），则解析.pool
         if (response && response.pool !== undefined) {
             data = response.pool;
-            refreshHistoricalDataNames();
-            render(); 
+            refreshHistoricalDataNames(); render(); 
             netBanner.innerText = `📡 多端联网在线中 (全场已聚合流水: ${data.length} 条)`;
             netBanner.style.background = "#f6ffed"; netBanner.style.borderColor = "#b7eb8f"; netBanner.style.color = "#52c41a";
-        } 
-        // 兼容处理：如果返回的是标准数组格式，直接接收
-        else if (Array.isArray(response)) {
+        } else if (Array.isArray(response)) {
             data = response;
-            refreshHistoricalDataNames();
-            render(); 
+            refreshHistoricalDataNames(); render(); 
             netBanner.innerText = `📡 多端联网在线中 (全场已聚合流水: ${data.length} 条)`;
             netBanner.style.background = "#f6ffed"; netBanner.style.borderColor = "#b7eb8f"; netBanner.style.color = "#52c41a";
         } else {
@@ -210,44 +203,55 @@
         else { banner.innerText = `⚡ 公司库位表 (A-U列) 同步成功！`; banner.style.background = "#f6ffed"; banner.style.borderColor = "#b7eb8f"; banner.style.color = "#52c41a"; }
     }
 
-    function fetchCloudMaster() {
+    // ⚡ 核心逻辑一：异步并行加载两路对照表文件
+    function fetchCloudMasterDualChannels() {
         const banner = document.getElementById('cloudStat');
-        fetch(FIXED_CLOUD_URL).then(res => res.text()).then(txt => { 
-            parseSKU(txt); banner.innerText = "⚡ 公司SKU库 (A列/B列) 完美匹配中！"; banner.style.background = "#f6ffed"; banner.style.borderColor = "#b7eb8f"; banner.style.color = "#52c41a";
-            refreshHistoricalDataNames(); render(); 
-        }).catch(err => { banner.innerText = "❌ 公司云端同步失败"; });
+        Promise.all([
+            fetch(FILE1_URL).then(res => res.text()),
+            fetch(FILE2_URL).then(res => res.text())
+        ]).then(([txt1, txt2]) => {
+            parseDualSKUMaster(txt1, txt2);
+            banner.innerText = "⚡ 双通道 SKU 库联合挂载就绪，全字全量匹配中！";
+            banner.style.background = "#f6ffed"; banner.style.borderColor = "#b7eb8f"; banner.style.color = "#52c41a";
+            refreshHistoricalDataNames(); render();
+        }).catch(err => {
+            banner.innerText = "❌ 联合 SKU 库同步失败，请检查网络链路！";
+        });
     }
 
-    function refreshHistoricalDataNames() {
-        if (!data || data.length === 0) return;
-        data.forEach(d => { let k = d._originSKU; if (dbMaster[k]) { if (d.Name !== dbMaster[k].c) { d.Name = dbMaster[k].c; d.SKU = dbMaster[k].b; } } });
-    }
-
-    function processFile(t, files) {
-        if(!files || files.length === 0) return; const f = files[0]; const r = new FileReader();
-        r.onload = (e) => {
-            const txt = e.target.result;
-            if(t==='check') { parseCheck(txt); localStorage.setItem('csv_check', txt); localStorage.setItem('wh_v826_check_filename', f.name); updateCheckStatTag(f.name); }
-        }; r.readAsText(f);
-    }
-    function updateCheckStatTag(name) { const s = document.getElementById('checkStat'); s.innerText = name; s.className = "status-tag ready"; }
-    
-    // “~” 符号后纯数字精确隔离去重哈希匹配算法
-    function parseSKU(txt) { 
-        Papa.parse(txt, { complete: (res) => { 
-            dbMaster = {}; 
-            res.data.forEach((r, i) => { 
-                if(i > 0 && r[0]) { 
-                    let fullSku = r[0].trim().toUpperCase(); 
-                    let shortSku = fullSku; 
-                    if(fullSku.includes('~')) { 
-                        shortSku = fullSku.split('~').pop().trim(); 
+    // ⚡ 核心逻辑二：实现 Fallback 串联与“~”符号纯数字截取完全匹配机制
+    function parseDualSKUMaster(csv1, csv2) {
+        dbMaster = {};
+        
+        // 1. 先读取文件 2（H列 SKU，R列 Name），作为底衬
+        Papa.parse(csv2, { complete: (res) => {
+            res.data.forEach((r, i) => {
+                if (i > 0 && r[7]) { // H列对应索引 7
+                    let fullSku = r[7].trim().toUpperCase();
+                    let shortSku = fullSku;
+                    if (fullSku.includes('~')) {
+                        shortSku = fullSku.split('~').pop().trim();
                     }
-                    let goodsName = r[1] ? r[1].trim() : "N/A"; 
-                    dbMaster[shortSku] = { b: fullSku, c: goodsName }; 
-                } 
-            }); 
-        }}); 
+                    let goodsName = r[17] ? r[17].trim() : "N/A"; // R列对应索引 17
+                    dbMaster[shortSku] = { b: fullSku, c: goodsName };
+                }
+            });
+
+            // 2. 随后用文件 1 覆盖/优先填充（A列 SKU，B列 Name）。如冲突，文件 1 拥有第一匹配权
+            Papa.parse(csv1, { complete: (res1) => {
+                res1.data.forEach((r, i) => {
+                    if (i > 0 && r[0]) { // A列对应索引 0
+                        let fullSku = r[0].trim().toUpperCase();
+                        let shortSku = fullSku;
+                        if (fullSku.includes('~')) {
+                            shortSku = fullSku.split('~').pop().trim();
+                        }
+                        let goodsName = r[1] ? r[1].trim() : "N/A"; // B列对应索引 1
+                        dbMaster[shortSku] = { b: fullSku, c: goodsName };
+                    }
+                });
+            }});
+        }});
     }
     
     function parseCheck(txt) { 
@@ -263,11 +267,24 @@
         }}); 
     }
 
+    function refreshHistoricalDataNames() {
+        if (!data || data.length === 0) return;
+        data.forEach(d => { let k = d._originSKU; if (dbMaster[k]) { if (d.Name !== dbMaster[k].c) { d.Name = dbMaster[k].c; d.SKU = dbMaster[k].b; } } });
+    }
+
+    function processFile(t, files) {
+        if(!files || files.length === 0) return; const f = files[0]; const r = new FileReader();
+        r.onload = (e) => {
+            const txt = e.target.result;
+            if(t==='check') { parseCheck(txt); localStorage.setItem('csv_check', txt); localStorage.setItem('wh_v826_check_filename', f.name); updateCheckStatTag(f.name); }
+        }; r.readAsText(f);
+    }
+    function updateCheckStatTag(name) { const s = document.getElementById('checkStat'); s.innerText = name; s.className = "status-tag ready"; }
     function saveLocalNameOnly() { localStorage.setItem('wh_v820_op', document.getElementById('opName').value); }
     function clearNetworkCache() { if(confirm("⚠️ 确定要彻底清空您个人云端表格里的全部协同数据吗？全场设备将归零。")) { sendJsonpAction({ action: "clearAll" }); auditLogPool = []; localStorage.removeItem('wh_v828_audit_logs'); localStorage.clear(); location.reload(); } }
 
     function addBatch() {
-        unlockAudio(); fetchCloudMaster();
+        unlockAudio();
         let inputLv = document.getElementById('locIn').value.trim(); let upperLv = inputLv.toUpperCase();
         const op = document.getElementById('opName').value.trim();
         if(!op) { alert("⚠️ 拒绝提交！请先在上方输入您的 Operator Name (操作员姓名)，以确保协同溯源安全。"); return; }
@@ -285,6 +302,7 @@
             if(!qv || qv <= 0) { return; }
 
             let rowUniqueId = "id_" + Date.now() + "_" + i + "_" + Math.random().toString(36).substr(2, 5);
+            // 这里精确映射：前端变量只留短编码，数据流中打包文件的真实全长SKU
             let finalLongSku = dbMaster[sv] ? dbMaster[sv].b : sv; let finalGoodsName = dbMaster[sv] ? dbMaster[sv].c : "N/A";
 
             batchRowsForGAS.push([rowUniqueId, sv, finalLongSku, finalGoodsName, qv, finalCorrectLocation, "Patiki Warehouse: " + finalCorrectLocation, localDateStr, op]);
@@ -297,17 +315,11 @@
         data = [...data, ...temporaryLocalBatch]; render();
         sendJsonpAction({ action: "insert", rowsData: JSON.stringify(batchRowsForGAS) });
 
-        let hasOver = false; let totals = {}; data.forEach(d => totals[d._originSKU] = (totals[d._originSKU] || 0) + d.Quantity);
-        let dailyTotals = {}; dbDailyList.forEach(d => dailyTotals[d.sku] = (dailyTotals[d.sku] || 0) + d.plan);
-        temporaryLocalBatch.forEach(b => { 
-            if(dailyActive && dailyTotals[b._originSKU] && totals[b._originSKU] > dailyTotals[b._originSKU]) hasOver = true; 
-        });
-        playSound(hasOver ? 'warn' : 'success');
-
         for(let i=1; i<=6; i++) { document.getElementById('s'+i).value = ""; document.getElementById('q'+i).value = ""; }
         document.getElementById('locIn').value = ""; document.getElementById('s1').focus(); forceSKU = null;
     }
 
+    // ⚡ 核心展示逻辑：在手机端的预览框内只需要显示符号~后的纯数字
     function render() {
         const tbody = document.querySelector("#mainTable tbody"); tbody.innerHTML = "";
         let realSkuTotals = {}; data.forEach(d => { realSkuTotals[d._originSKU] = (realSkuTotals[d._originSKU] || 0) + d.Quantity; });
@@ -338,6 +350,8 @@
             let tr = document.createElement('tr'); tr.className = item.rowClass; tr.classList.add(item.hasInput ? "status-active" : "status-pending");
             let qtyCellHtml = item.hasInput ? `<input type="number" class="edit-input" value="${item.quantity}" onchange="updateNetworkRowQty('${item.id}', this.value)">` : `<span style="font-size:13px;">0</span> <span style="font-size:10px;color:#aaa;">(Plan:${item.diffText * -1})</span>`;
             let delCellHtml = item.hasInput ? `<button class="del-btn" onclick="deleteNetworkRow(event, '${item.id}')">×</button>` : "—";
+            
+            // 此处 item.displaySKU 永远是去除 ~ 前缀的短代码，达到手机端美化预览要求
             tr.innerHTML = `<td class="td-sku">${item.displaySKU}</td><td class="td-loc">${item.location}</td><td>${qtyCellHtml}</td><td style="font-weight:bold; font-size:11px;">${item.diffText}</td><td>${delCellHtml}</td>`;
             tbody.appendChild(tr);
         });
@@ -374,12 +388,14 @@
         }
     }
     
+    // ⚡ 核心逻辑三：导出全长 SKU，并对【相同 SKU + 相同库位】的数据进行高精度无损合并累加
     function exportCsv() {
         const op = document.getElementById('opName').value.trim() || "User", dateNow = new Date().toISOString().slice(0,10).replace(/-/g, "");
         let rawSplittedRows = []; let scannedGroupsBySku = {};
         
         data.forEach(d => {
             if (!scannedGroupsBySku[d._originSKU]) scannedGroupsBySku[d._originSKU] = [];
+            // 注意：s.fullSku 带有原始 A列/H列的完整官方长编码
             scannedGroupsBySku[d._originSKU].push({ fullSku: d.SKU, name: d.Name, loc: d.FullLocation, date: d.Date, qty: d.Quantity, operatorName: d.Operator || "Unknown" });
         });
 
@@ -421,13 +437,22 @@
         let compressedMap = {};
         let finalRows = [["PO","SKU","Name","BatchSerialNumber","SupplierSKU","ExpiryDate_YYYYMMDD","Quantity","Location","DateReceived_YYYYMMDD","Received","Exception_Note","Operator"]];
 
+        // 🚀 核心合并机制：以 PO、全长码SKU、物理库位、状态注脚、操作人为联合 Key，对数量累加合并
         rawSplittedRows.forEach((row) => {
             let uniqueMatrixKey = `${row.po}##${row.sku}##${row.loc}##${row.note}##${row.opUser}`;
-            if(row.qty > 0 && compressedMap[uniqueMatrixKey]) { compressedMap[uniqueMatrixKey].qty += row.qty; } 
-            else if (row.qty > 0) { compressedMap[uniqueMatrixKey] = row; } 
-            else { finalRows.push([row.po, row.sku, row.name, row.bsn, row.ssk, row.exp, row.qty, row.loc, row.date, row.rec, row.note, row.opUser]); }
+            if(row.qty > 0 && compressedMap[uniqueMatrixKey]) { 
+                compressedMap[uniqueMatrixKey].qty += row.qty; // 相同组合，数量完美合并相加
+            } 
+            else if (row.qty > 0) { 
+                compressedMap[uniqueMatrixKey] = row; 
+            } 
+            else { 
+                // 针对数量为 0 的缺货缺配行，直接添加，不干扰流程
+                finalRows.push([row.po, row.sku, row.name, row.bsn, row.ssk, row.exp, row.qty, row.loc, row.date, row.rec, row.note, row.opUser]); 
+            }
         });
 
+        // 将所有合并完的高精度有效行推入最终的 CSV 输出池
         Object.keys(compressedMap).forEach(key => { let r = compressedMap[key]; finalRows.push([r.po, r.sku, r.name, r.bsn, r.ssk, r.exp, r.qty, r.loc, r.date, r.rec, r.note, r.opUser]); });
 
         const csvContent = Papa.unparse(finalRows);
