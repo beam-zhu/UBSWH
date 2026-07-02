@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Warehouse V8.29.06 Double-Secured Sync</title>
+    <title>Warehouse V8.29.07 Single-Login Session Sync</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
     <style>
         :root { --primary: #1890ff; --success: #52c41a; --danger: #ff4d4f; --extra: #b37feb; --bg: #f5f7fa; }
@@ -51,7 +51,6 @@
         .cb-loc { background: #feffe6; border: 1px solid #fffb8f; color: #614700; }
         .cb-sync { background: #f6ffed; border: 1px solid #b7eb8f; color: #52c41a; }
 
-        /* 💡 全局磨砂防触屏密码拦截舱 */
         .lock-overlay {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
             background: rgba(0,0,0,0.85); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
@@ -68,9 +67,9 @@
 
 <div id="pageLock" class="lock-overlay">
     <div class="lock-box">
-        <h3>🔒 仓储系统安全放线</h3>
+        <h3>🔒 仓储系统安全防线</h3>
         <p>多端联网作业已被控锁。<br>请向 Weibin 获取最新的作业口令以解锁。</p>
-        <input type="text" id="passInput" placeholder="请输入密码" autocomplete="off">
+        <input type="text" id="passInput" placeholder="请输入作业密码" inputmode="numeric">
         <button onclick="checkGatePassword()">解 锁 系 统</button>
     </div>
 </div>
@@ -138,8 +137,9 @@
     let dbMaster = {}, dbDailyList = [], setLoc = new Set(), dbLocMap = {}, data = [];
     let dailyActive = false, audioCtx = null, forceSKU = null;
     
-    // 💡 密码防控底座参数
-    let cloudGatePassword = "🛑WAIT_CONNECT", isUnlocked = false;
+    // 💡 引入浏览器标签页级生存期存储隔离（只要不关标签页，登录态永不丢失）
+    let cloudGatePassword = "🛑WAIT_CONNECT";
+    let isUnlocked = sessionStorage.getItem("wh_session_unlocked") === "true";
 
     function unlockAudio() {
         if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -152,6 +152,11 @@
         if (cachedLocsText) { buildLocationsEngine(cachedLocsText, true); }
         if (localLogs) { auditLogPool = JSON.parse(localLogs); }
         
+        // 💡 启动检测：如果之前已经输过密码且没关过页面，直接免密放行隐去黑屏
+        if (isUnlocked) {
+            document.getElementById('pageLock').style.display = "none";
+        }
+
         fetchCloudMasterDualChannels();
         fetchCloudLocations();
         
@@ -167,7 +172,7 @@
 
     function fetchLocalTimeFormatted() {
         const t = new Date();
-        return `[${t.getFullYear()}-${String(t.getMonth()+1).padStart(2,'0')}-${String(t.getDate()).padStart(2,'0')} ${String(t.getHours()).padStart(2,'0')}:${String(t.getMinutes()).padStart(2,'0')}:${String(t.getSeconds()).padStart(2,'0')}]`;
+        return `[${t.getFullYear()}-${String(t.getMonth()+1).padStart(2,'0')}-${String(t.getDate())+1}-${String(t.getHours()).padStart(2,'0')}:${String(t.getMinutes()).padStart(2,'0')}:${String(t.getSeconds()).padStart(2,'0')}]`;
     }
 
     function syncNetworkPool() {
@@ -179,24 +184,26 @@
         document.getElementsByTagName("head")[0].appendChild(script);
     }
 
-    // 📡 唯一的中央数据对齐回执网关
     window.jsonpCallback = function(response) {
         const netBanner = document.getElementById('networkStat');
         
-        // 💡 核心对齐逻辑：解析云端打包发回的独立包
         if (response && response.password !== undefined) {
             cloudGatePassword = response.password.toString().trim();
             data = response.pool;
             
-            // 💡 终极机制：如果 J1 密码被管理员在后台【完全删空留白】，直接全自动解除黑屏放行
+            // 💡 规则A：若云端J1彻彻底底被删空，执行全自动无密解锁放行
             if (cloudGatePassword === "") {
                 isUnlocked = true;
+                sessionStorage.setItem("wh_session_unlocked", "true");
                 document.getElementById('pageLock').style.display = "none";
             }
-            // 如果管理员中途改了密码，在线的人在5秒内自动被弹窗并直接踢出去重新上锁
-            else if (isUnlocked && document.getElementById('passInput').value.trim() !== cloudGatePassword) {
+            // 💡 规则B：如果在中途管理员突然改了新密码，且与当前输入框不符，则瞬间远程反向踢出重新锁死
+            else if (isUnlocked && document.getElementById('passInput').value.trim() !== cloudGatePassword && sessionStorage.getItem("wh_session_password_cache") !== cloudGatePassword) {
+                // 如果是无密放行后管理员重新加锁，或者换了新锁，踢出
                 isUnlocked = false;
+                sessionStorage.removeItem("wh_session_unlocked");
                 document.getElementById('pageLock').style.display = "flex";
+                document.getElementById('passInput').value = "";
                 alert("⚠️ 管理员已远程更改或启用了作业密码，请重新输入解锁口令！");
             }
             
@@ -210,7 +217,6 @@
         }
     };
 
-    // 💡 密码解锁引擎（100% 杜绝卡死报错）
     function checkGatePassword() {
         var userIn = document.getElementById('passInput').value.trim();
         if (cloudGatePassword === "🛑WAIT_CONNECT") {
@@ -219,6 +225,9 @@
         }
         if (userIn === cloudGatePassword || cloudGatePassword === "") {
             isUnlocked = true;
+            // 💡 将解锁令牌与密码指纹双重死锁封存在 Session 中
+            sessionStorage.setItem("wh_session_unlocked", "true");
+            sessionStorage.setItem("wh_session_password_cache", userIn);
             document.getElementById('pageLock').style.display = "none";
             render();
         } else {
@@ -229,7 +238,7 @@
     }
 
     function sendJsonpAction(params) {
-        if (!isUnlocked) return; // 拦截非法越权请求
+        if (!isUnlocked) return; 
         var paramsStr = "";
         for (var key in params) { paramsStr += "&" + key + "=" + encodeURIComponent(params[key]); }
         var url = APP_SCRIPT_URL + (APP_SCRIPT_URL.includes("?") ? "" : "?") + paramsStr + "&t=" + Date.now();
@@ -328,7 +337,22 @@
     }
     function updateCheckStatTag(name) { const s = document.getElementById('checkStat'); s.innerText = name; s.className = "status-tag ready"; }
     function saveLocalNameOnly() { localStorage.setItem('wh_v820_op', document.getElementById('opName').value); }
-    function clearNetworkCache() { if(confirm("⚠️ 确定要彻底清空您个人云端表格里的全部协同数据吗？全场设备将归零。")) { sendJsonpAction({ action: "clearAll" }); auditLogPool = []; localStorage.removeItem('wh_v828_audit_logs'); localStorage.clear(); location.reload(); } }
+
+    // ⚡ 终极升级点：清空云端大池后，直接执行本地前瞻假抹平，再触发后台静默合流，彻底抛弃location.reload()
+    function clearNetworkCache() { 
+        if(confirm("🚨 极端警告！\n您确定要彻底清空云端表格里的【全场协同数据流水】吗？\n此操作将清空所有人的数据面板，且不可逆！")) { 
+            sendJsonpAction({ action: "clearAll" }); 
+            // 清空本地渲染缓冲
+            data = []; 
+            render(); 
+            // 清除防误操日志缓存
+            auditLogPool = []; 
+            localStorage.removeItem('wh_v828_audit_logs'); 
+            alert("✨ 指令已发射！全场流水已成功归零。");
+            // 延迟1秒发起一次对齐
+            setTimeout(syncNetworkPool, 1000);
+        } 
+    }
 
     function addBatch() {
         if (!isUnlocked) return;
@@ -403,7 +427,6 @@
         });
     }
 
-    // 💡 升级防触拦截：数量变更确认机制
     function updateNetworkRowQty(rowId, newQtyStr, oldQty) {
         if (!isUnlocked) return;
         let n = parseFloat(newQtyStr);
@@ -411,9 +434,8 @@
             var targetRow = data.find(x => x.id === rowId);
             if (!targetRow) return;
 
-            // 拉起系统级二次安全判定拦截弹窗
             if (!confirm(`⚠️ 安全确认：\n您确定要将 SKU [${targetRow._originSKU}] 的盘点数量从 [${oldQty}] 变更为 [${n}] 吗？`)) {
-                render(); // 如果点击取消，强行用原本的云端大池数据刷回输入框，拒绝变更
+                render(); 
                 return;
             }
 
@@ -426,7 +448,6 @@
         }
     }
 
-    // 💡 升级防触拦截：物理删除确认机制
     function deleteNetworkRow(e, rowId) {
         if (!isUnlocked) return;
         if (e) { e.stopPropagation(); e.preventDefault(); }
@@ -434,9 +455,8 @@
         var targetRow = data.find(x => x.id === rowId);
         if (!targetRow) return;
 
-        // 强力拉起系统级整行删除毁灭性操作拦截弹窗
-        if (!confirm(`🚨 毁灭性删除警报！\n操作员请注意：您正在试图彻底删除库位 [${targetRow.Location}] 下的 SKU [${targetRow._originSKU}]（数量:${targetRow.Quantity}）！\n此操作将全网删除，确定执行吗？`)) {
-            return; // 只要点取消，直接退出，毫发无损
+        if (!confirm(`🚨 毁灭性删除警报！\n您正在试图彻底删除库位 [${targetRow.Location}] 下的 SKU [${targetRow._originSKU}]（数量:${targetRow.Quantity}）！\n此操作将全网删除，确定执行吗？`)) {
+            return; 
         }
 
         let op = document.getElementById('opName').value.trim() || "Unknown Operator";
