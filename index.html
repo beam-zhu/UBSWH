@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Warehouse V8.29.02 Perfect Precision Match</title>
+    <title>Warehouse V8.29.03 Multi-Device Sync</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
     <style>
         :root { --primary: #1890ff; --success: #52c41a; --danger: #ff4d4f; --extra: #b37feb; --bg: #f5f7fa; }
@@ -50,34 +50,13 @@
         .cb-sku { background: #e6f7ff; border: 1px solid #91d5ff; color: #0050b3; }
         .cb-loc { background: #feffe6; border: 1px solid #fffb8f; color: #614700; }
         .cb-sync { background: #f6ffed; border: 1px solid #b7eb8f; color: #52c41a; }
-
-        .lock-overlay {
-            position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
-            background: rgba(0,0,0,0.85); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
-            z-index: 99999; display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 20px;
-        }
-        .lock-box { background: white; border-radius: 16px; padding: 24px; width: 100%; max-width: 360px; text-align: center; box-shadow: 0 10px 30px rgba(0,0,0,0.3); }
-        .lock-box h3 { margin: 0 0 8px 0; color: #222; font-size: 20px; }
-        .lock-box p { margin: 0 0 20px 0; color: #666; font-size: 13px; line-height: 1.5; }
-        .lock-box input { text-align: center; font-size: 24px; letter-spacing: 4px; height: 50px; border: 2px solid #d9d9d9; margin-bottom: 16px; background: #fff; }
-        .lock-box input:focus { border-color: var(--primary); outline: none; }
-        .lock-box button { background: var(--primary); color: white; border: none; border-radius: 8px; height: 46px; width: 100%; font-size: 16px; font-weight: bold; cursor: pointer; }
     </style>
 </head>
 <body onclick="unlockAudio()">
 
-<div id="pageLock" class="lock-overlay">
-    <div class="lock-box">
-        <h3>🔒 仓储系统安全防线</h3>
-        <p>页面已被管理员远程锁死。<br>请向 Weibin 获取最新的每日作业密码以解锁。</p>
-        <input type="password" id="passInput" placeholder="••••" inputmode="numeric">
-        <button onclick="checkGatePassword()">解 锁 系 统</button>
-    </div>
-</div>
-
 <div class="main-wrapper">
     <div class="panel-right">
-        <div class="cloud-banner cb-sku" id="cloudStat">☁️ 公司SKU库 (新链接源) 正在连接...</div>
+        <div class="cloud-banner cb-sku" id="cloudStat">☁️ 公司SKU库 (A列/B列) 正在连接...</div>
         <div class="cloud-banner cb-loc" id="locCloudStat">☁️ 公司库位表 (A-U列) 正在连接...</div>
         <div class="cloud-banner cb-sync" id="networkStat">📡 多端联网对齐中...</div>
 
@@ -127,17 +106,16 @@
 </div>
 
 <script>
-    // ⚡️ 1. 成功更换为您提供的全新 SKU 匹配源文件发布链接
+    // 两路固定的外部参考表链接（第一路已锁定为您的最新A/B列SKU对照源文件）
     const FIXED_CLOUD_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTtD04RPlIHGdAlhwM6z8GEihKdKBaQttMIaZbJndvW1EoZBjbUEJrWzLvKMCc9uTzBaBip0FpUSFTn/pub?output=csv";
     const FIXED_LOC_CLOUD_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vStLtLccpDSfrf_yU_T9WrNcZufN29BqkDsVS2r9ql1INK_61uA8UetkiW4DZ4_dv63o-DHzFz0tOAq/pub?gid=1276542862&single=true&output=csv";
     
-    // 📡 💡【请在此处精确填入您个人生成的部署 Web 应用 URL 链接】
+    // 📡 💡【请在此处填入您之前通过“新建部署”获取到的核心 Web 应用 URL 链接】
     const APP_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwK2hJzZM_jmVftK4rbT4DEqWHUZVunRmAJIIN6sdMOOcmmhF8S8b8aNyXCkwqe0ETZ/exec";
 
     let auditLogPool = [];
     let dbMaster = {}, dbDailyList = [], setLoc = new Set(), dbLocMap = {}, data = [];
     let dailyActive = false, audioCtx = null, forceSKU = null;
-    let cloudGatePassword = "🛑LOCKED", isUnlocked = false;
 
     function unlockAudio() {
         if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -153,14 +131,13 @@
         fetchCloudMaster();
         fetchCloudLocations();
         
+        // 彻底复活免输入无感秒进同步
         syncNetworkPool();
         setInterval(syncNetworkPool, 5000); 
         
         const cC = localStorage.getItem('csv_check'), savedFileName = localStorage.getItem('wh_v826_check_filename');
         if(cC) { parseCheck(cC); updateCheckStatTag(savedFileName || "READY"); }
         setupEnterKey();
-        
-        document.getElementById('passInput').addEventListener('keydown', (e) => { if(e.key === 'Enter') checkGatePassword(); });
     };
 
     function fetchLocalTimeFormatted() {
@@ -177,21 +154,23 @@
         document.getElementsByTagName("head")[0].appendChild(script);
     }
 
+    // 📡 唯一的中央回调响应逻辑（去除了密码层面的捆绑解析）
     window.jsonpCallback = function(response) {
         const netBanner = document.getElementById('networkStat');
-        if (response && response.password !== undefined) {
-            cloudGatePassword = response.password.toString().trim();
+        
+        // 兼容处理：如果是新版后台带捆绑回传的格式（包内有.pool），则解析.pool
+        if (response && response.pool !== undefined) {
             data = response.pool;
-            
-            if (isUnlocked && document.getElementById('passInput').value !== cloudGatePassword) {
-                isUnlocked = false;
-                document.getElementById('pageLock').style.display = "flex";
-                alert("⚠️ 管理员已远程更改了作业口令，请重新输入新密码解锁！");
-            }
-            
             refreshHistoricalDataNames();
-            if (isUnlocked) render(); 
-            
+            render(); 
+            netBanner.innerText = `📡 多端联网在线中 (全场已聚合流水: ${data.length} 条)`;
+            netBanner.style.background = "#f6ffed"; netBanner.style.borderColor = "#b7eb8f"; netBanner.style.color = "#52c41a";
+        } 
+        // 兼容处理：如果返回的是标准数组格式，直接接收
+        else if (Array.isArray(response)) {
+            data = response;
+            refreshHistoricalDataNames();
+            render(); 
             netBanner.innerText = `📡 多端联网在线中 (全场已聚合流水: ${data.length} 条)`;
             netBanner.style.background = "#f6ffed"; netBanner.style.borderColor = "#b7eb8f"; netBanner.style.color = "#52c41a";
         } else {
@@ -199,25 +178,7 @@
         }
     };
 
-    function checkGatePassword() {
-        const inputVal = document.getElementById('passInput').value.trim();
-        if (!cloudGatePassword || cloudGatePassword === "🛑LOCKED") {
-            alert("📡 正在全网握手连接密码锁芯，请稍候2秒再试...");
-            return;
-        }
-        if (inputVal === cloudGatePassword) {
-            isUnlocked = true;
-            document.getElementById('pageLock').style.display = "none"; 
-            render(); 
-        } else {
-            alert("❌ 口令错误！请向主管理员 Weibin 获取最新验证密码。");
-            document.getElementById('passInput').value = "";
-            document.getElementById('passInput').focus();
-        }
-    }
-
     function sendJsonpAction(params) {
-        if (!isUnlocked) return; 
         var paramsStr = "";
         for (var key in params) { paramsStr += "&" + key + "=" + encodeURIComponent(params[key]); }
         var url = APP_SCRIPT_URL + (APP_SCRIPT_URL.includes("?") ? "" : "?") + paramsStr + "&t=" + Date.now();
@@ -253,7 +214,7 @@
         const banner = document.getElementById('cloudStat');
         fetch(FIXED_CLOUD_URL).then(res => res.text()).then(txt => { 
             parseSKU(txt); banner.innerText = "⚡ 公司SKU库 (A列/B列) 完美匹配中！"; banner.style.background = "#f6ffed"; banner.style.borderColor = "#b7eb8f"; banner.style.color = "#52c41a";
-            refreshHistoricalDataNames(); if(isUnlocked) render(); 
+            refreshHistoricalDataNames(); render(); 
         }).catch(err => { banner.innerText = "❌ 公司云端同步失败"; });
     }
 
@@ -263,7 +224,7 @@
     }
 
     function processFile(t, files) {
-        if(!isUnlocked || !files || files.length === 0) return; const f = files[0]; const r = new FileReader();
+        if(!files || files.length === 0) return; const f = files[0]; const r = new FileReader();
         r.onload = (e) => {
             const txt = e.target.result;
             if(t==='check') { parseCheck(txt); localStorage.setItem('csv_check', txt); localStorage.setItem('wh_v826_check_filename', f.name); updateCheckStatTag(f.name); }
@@ -271,7 +232,7 @@
     }
     function updateCheckStatTag(name) { const s = document.getElementById('checkStat'); s.innerText = name; s.className = "status-tag ready"; }
     
-    // ⚡️ 2. 核心算法重构：适配 A列 SKU 和 B列 Name，实现“~”符号数字段独立全字匹配
+    // “~” 符号后纯数字精确隔离去重哈希匹配算法
     function parseSKU(txt) { 
         Papa.parse(txt, { complete: (res) => { 
             dbMaster = {}; 
@@ -279,7 +240,6 @@
                 if(i > 0 && r[0]) { 
                     let fullSku = r[0].trim().toUpperCase(); 
                     let shortSku = fullSku; 
-                    // 如果存在“~”符号，精准切割剥离出最后一段纯数字，建立强全量字符串索引，绝不发生子字符错乱
                     if(fullSku.includes('~')) { 
                         shortSku = fullSku.split('~').pop().trim(); 
                     }
@@ -299,15 +259,14 @@
                     if(q > 0) { dbDailyList.push({ po: p, sku: k, plan: q, idx: i }); dailyActive = true; }
                 } 
             }); 
-            if(isUnlocked) render();
+            render();
         }}); 
     }
 
     function saveLocalNameOnly() { localStorage.setItem('wh_v820_op', document.getElementById('opName').value); }
-    function clearNetworkCache() { if(confirm("⚠️ 确定要彻底清空您个人云端表格里的全部协同数据吗？")) { sendJsonpAction({ action: "clearAll" }); auditLogPool = []; localStorage.removeItem('wh_v828_audit_logs'); localStorage.clear(); location.reload(); } }
+    function clearNetworkCache() { if(confirm("⚠️ 确定要彻底清空您个人云端表格里的全部协同数据吗？全场设备将归零。")) { sendJsonpAction({ action: "clearAll" }); auditLogPool = []; localStorage.removeItem('wh_v828_audit_logs'); localStorage.clear(); location.reload(); } }
 
     function addBatch() {
-        if (!isUnlocked) return;
         unlockAudio(); fetchCloudMaster();
         let inputLv = document.getElementById('locIn').value.trim(); let upperLv = inputLv.toUpperCase();
         const op = document.getElementById('opName').value.trim();
@@ -338,12 +297,18 @@
         data = [...data, ...temporaryLocalBatch]; render();
         sendJsonpAction({ action: "insert", rowsData: JSON.stringify(batchRowsForGAS) });
 
+        let hasOver = false; let totals = {}; data.forEach(d => totals[d._originSKU] = (totals[d._originSKU] || 0) + d.Quantity);
+        let dailyTotals = {}; dbDailyList.forEach(d => dailyTotals[d.sku] = (dailyTotals[d.sku] || 0) + d.plan);
+        temporaryLocalBatch.forEach(b => { 
+            if(dailyActive && dailyTotals[b._originSKU] && totals[b._originSKU] > dailyTotals[b._originSKU]) hasOver = true; 
+        });
+        playSound(hasOver ? 'warn' : 'success');
+
         for(let i=1; i<=6; i++) { document.getElementById('s'+i).value = ""; document.getElementById('q'+i).value = ""; }
         document.getElementById('locIn').value = ""; document.getElementById('s1').focus(); forceSKU = null;
     }
 
     function render() {
-        if (!isUnlocked) return;
         const tbody = document.querySelector("#mainTable tbody"); tbody.innerHTML = "";
         let realSkuTotals = {}; data.forEach(d => { realSkuTotals[d._originSKU] = (realSkuTotals[d._originSKU] || 0) + d.Quantity; });
         let dailyTotals = {}; dbDailyList.forEach(d => dailyTotals[d.sku] = (dailyTotals[d.sku] || 0) + d.plan);
@@ -379,7 +344,6 @@
     }
 
     function updateNetworkRowQty(rowId, newQtyStr) {
-        if (!isUnlocked) return;
         let n = parseFloat(newQtyStr);
         if (n >= 0) {
             let targetRow = data.find(x => x.id === rowId);
@@ -397,7 +361,6 @@
     }
 
     function deleteNetworkRow(e, rowId) {
-        if (!isUnlocked) return;
         if (e) { e.stopPropagation(); e.preventDefault(); }
         if (confirm("确定要删除这笔数据吗？")) {
             let targetRow = data.find(x => x.id === rowId);
@@ -412,7 +375,6 @@
     }
     
     function exportCsv() {
-        if (!isUnlocked) return;
         const op = document.getElementById('opName').value.trim() || "User", dateNow = new Date().toISOString().slice(0,10).replace(/-/g, "");
         let rawSplittedRows = []; let scannedGroupsBySku = {};
         
