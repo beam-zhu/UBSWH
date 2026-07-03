@@ -283,26 +283,44 @@
         }).catch(err => { banner.innerText = "❌ 联合 SKU 库同步失败"; });
     }
 
-    function parseDualSKUMaster(csv1, csv2) {
+function parseDualSKUMaster(csv1, csv2) {
         dbMaster = {};
+        
+        // 解析第二个表格 (H列为SKU->r[7], R列为Name->r[17])
         Papa.parse(csv2, { complete: (res) => {
             res.data.forEach((r, i) => {
                 if (i > 0 && r[7]) { 
-                    let fullSku = r[7].trim().toUpperCase(); let shortSku = fullSku;
-                    if (fullSku.includes('~')) { shortSku = fullSku.split('~').pop().trim(); }
-                    let goodsName = r[17] ? r[17].trim() : "N/A"; 
-                    dbMaster[shortSku] = { b: fullSku, c: goodsName };
+                    let fullSku = r[7].toString().trim().toUpperCase();
+                    let goodsName = r[17] ? r[17].toString().trim() : "N/A"; 
+                    
+                    // 核心修复：同时把完整SKU和切开后的短SKU都注册进去，确保双向拦截万无一失
+                    dbMaster[fullSku] = { b: fullSku, c: goodsName };
+                    if (fullSku.includes('~')) { 
+                        let shortSku = fullSku.split('~').pop().trim();
+                        dbMaster[shortSku] = { b: fullSku, c: goodsName };
+                    }
                 }
             });
+            
+            // 解析第一个表格 (D列为SKU->r[3], M列为Name->r[12])
             Papa.parse(csv1, { complete: (res1) => {
                 res1.data.forEach((r, i) => {
                     if (i > 0 && r[3]) { 
-                        let fullSku = r[3].trim().toUpperCase(); let shortSku = fullSku;
-                        if (fullSku.includes('~')) { shortSku = fullSku.split('~').pop().trim(); }
-                        let goodsName = r[12] ? r[12].trim() : "N/A"; 
-                        dbMaster[shortSku] = { b: fullSku, c: goodsName };
+                        let fullSku = r[3].toString().trim().toUpperCase();
+                        let goodsName = r[12] ? r[12].toString().trim() : "N/A"; 
+                        
+                        // 同理，完整和短SKU双向存入库
+                        dbMaster[fullSku] = { b: fullSku, c: goodsName };
+                        if (fullSku.includes('~')) { 
+                            let shortSku = fullSku.split('~').pop().trim();
+                            dbMaster[shortSku] = { b: fullSku, c: goodsName };
+                        }
                     }
                 });
+                
+                // 强制触发一次全场历史流水的大洗牌，把原本卡死为 N/A 的数据瞬间激活
+                refreshHistoricalDataNames();
+                if(isUnlocked) render();
             }});
         }});
     }
