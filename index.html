@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Warehouse V8.29.10 Seamless Lock Sync</title>
+    <title>Warehouse V8.29.11 Clear & Auto Lock</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
     <style>
         :root { --primary: #1890ff; --success: #52c41a; --danger: #ff4d4f; --extra: #b37feb; --bg: #f5f7fa; }
@@ -85,7 +85,7 @@
                 <div class="file-btn"><span>DAILY清单 (第一列必须是PO)</span><input type="file" accept=".csv" onchange="processFile('check', this.files)"><span id="checkStat" class="status-tag">OPTIONAL</span></div>
             </div>
             <div style="display: flex; justify-content: space-between; margin-top: 8px;">
-                <button onclick="clearScreenHistory()" style="font-size:10px; color:#1890ff; border:none; background:none; padding:5px; font-weight:bold;">[CLEAR SCREEN] (清空屏幕历史)</button>
+                <button onclick="clearScreenAndForceLock()" style="font-size:10px; color:#ff4d4f; border:1px solid #ff4d4f; border-radius:4px; background:none; padding:5px; font-weight:bold;">[CLEAR SCREEN] (清空并锁屏)</button>
                 <button onclick="recoverBackup()" style="font-size:10px; color:blue; border:none; background:none; padding:5px; font-weight:bold;">[RECOVER BACKUP]</button>
             </div>
         </div>
@@ -127,10 +127,10 @@
 
 <script>
     const FILE1_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vR8x1PYnDYTCIvzG5qoq_syoxgAJ4m6FGoMJb6W9bEQ-HwUVCiJV7PGkR8o80qT7r6I_GkL4cgWguvw/pub?gid=1763823264&single=true&output=csv";
-    const FILE2_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQBh1fAm0-5pIJyHCRVDTt_n3vYILct87elf6_dJ9KvtZ126d-LYsgVkEaGKaZmti9lvFByG5LIc1dR/pub?gid=326617304&single=true&output=csv";
+    const FILE2_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQBh1fAm0-5pIJyHCRVDTt_n3vYILct87elf6_dJ9KvtZ126d-Studio/pub?gid=326617304&single=true&output=csv";
     const FIXED_LOC_CLOUD_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vStLtLccpDSfrf_yU_T9WrNcZufN29BqkDsVS2r9ql1INK_61uA8UetkiW4DZ4_dv63o-DHzFz0tOAq/pub?gid=1276542862&single=true&output=csv";
     
-    // 💡 【超级管理员控锁区】：随时在这里修改密码。若不需要密码，改成 "" 即可无感放行！
+    // 💡 管理员密码设置区。取消密码留空 "" 即可。
     const ADMIN_PASSWORD = "1234"; 
 
     // 📡 谷歌云端实时同步核心接口
@@ -140,10 +140,8 @@
     let dbMaster = {}, dbDailyList = [], setLoc = new Set(), dbLocMap = {}, data = [];
     let dailyActive = false, audioCtx = null, forceSKU = null;
     
-    // 从本地 Session 严格提取历史解锁态（安全清洗前后缀，杜绝误伤）
-    let cachedRawPass = (sessionStorage.getItem("wh_session_verified_password") || "").trim();
-    let targetCleanPass = ADMIN_PASSWORD.trim();
-    let isUnlocked = (targetCleanPass === "") || (cachedRawPass === targetCleanPass);
+    // 从本地存储核对该浏览器当前的锁定态
+    let isUnlocked = (ADMIN_PASSWORD === "") || (sessionStorage.getItem("wh_session_verified_password") === ADMIN_PASSWORD.trim());
 
     function unlockAudio() {
         if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -180,12 +178,11 @@
         return `[${t.getFullYear()}-${String(t.getMonth()+1).padStart(2,'0')}-${String(t.getDate()).padStart(2,'0')} ${String(t.getHours()).padStart(2,'0')}:${String(t.getMinutes()).padStart(2,'0')}:${String(t.getSeconds()).padStart(2,'0')}]`;
     }
 
-    // 💡 异步静默巡检网关：只核对密码是否被修改，绝不触发 location.reload() 刷新，保证输入毫无干扰！
     function syncNetworkPool() {
         var currentCleanPass = ADMIN_PASSWORD.trim();
         var localSessionPass = (sessionStorage.getItem("wh_session_verified_password") || "").trim();
         
-        // 🚀 精准比对拦截：只有当页面处于解锁状态、代码里确实有密码、且本地密码和最新代码密码不符时，才触发瞬间秒级关窗踢出
+        // 5秒静默巡检：若中途管理员改了密码，在线人员5秒内瞬间被踢出锁屏
         if (isUnlocked && currentCleanPass !== "" && localSessionPass !== currentCleanPass) {
             isUnlocked = false;
             sessionStorage.removeItem("wh_session_verified_password");
@@ -283,42 +280,30 @@
         }).catch(err => { banner.innerText = "❌ 联合 SKU 库同步失败"; });
     }
 
-function parseDualSKUMaster(csv1, csv2) {
+    function parseDualSKUMaster(csv1, csv2) {
         dbMaster = {};
-        
-        // 解析第二个表格 (H列为SKU->r[7], R列为Name->r[17])
         Papa.parse(csv2, { complete: (res) => {
             res.data.forEach((r, i) => {
                 if (i > 0 && r[7]) { 
                     let fullSku = r[7].toString().trim().toUpperCase();
-                    let goodsName = r[17] ? r[17].toString().trim() : "N/A"; 
-                    
-                    // 核心修复：同时把完整SKU和切开后的短SKU都注册进去，确保双向拦截万无一失
-                    dbMaster[fullSku] = { b: fullSku, c: goodsName };
+                    dbMaster[fullSku] = { b: fullSku, c: r[17] ? r[17].toString().trim() : "N/A" };
                     if (fullSku.includes('~')) { 
                         let shortSku = fullSku.split('~').pop().trim();
-                        dbMaster[shortSku] = { b: fullSku, c: goodsName };
+                        dbMaster[shortSku] = { b: fullSku, c: r[17] ? r[17].toString().trim() : "N/A" };
                     }
                 }
             });
-            
-            // 解析第一个表格 (D列为SKU->r[3], M列为Name->r[12])
             Papa.parse(csv1, { complete: (res1) => {
                 res1.data.forEach((r, i) => {
                     if (i > 0 && r[3]) { 
                         let fullSku = r[3].toString().trim().toUpperCase();
-                        let goodsName = r[12] ? r[12].toString().trim() : "N/A"; 
-                        
-                        // 同理，完整和短SKU双向存入库
-                        dbMaster[fullSku] = { b: fullSku, c: goodsName };
+                        dbMaster[fullSku] = { b: fullSku, c: r[12] ? r[12].toString().trim() : "N/A" };
                         if (fullSku.includes('~')) { 
                             let shortSku = fullSku.split('~').pop().trim();
-                            dbMaster[shortSku] = { b: fullSku, c: goodsName };
+                            dbMaster[shortSku] = { b: fullSku, c: r[12] ? r[12].toString().trim() : "N/A" };
                         }
                     }
                 });
-                
-                // 强制触发一次全场历史流水的大洗牌，把原本卡死为 N/A 的数据瞬间激活
                 refreshHistoricalDataNames();
                 if(isUnlocked) render();
             }});
@@ -353,13 +338,19 @@ function parseDualSKUMaster(csv1, csv2) {
     function updateCheckStatTag(name) { const s = document.getElementById('checkStat'); s.innerText = name; s.className = "status-tag ready"; }
     function saveLocalNameOnly() { localStorage.setItem('wh_v820_op', document.getElementById('opName').value); }
 
-    function clearScreenHistory() {
-        if(confirm("💡 屏幕历史清理确认：\n这会清空您当前手机屏幕上的显示框和输入格（方便您扫描下一批货）。\n⚠️ 后台云端表格里的协同总账目绝对不会被删除，确定要清理当前屏幕吗？")) {
+    // ⚡ 终极安全进化：清空屏幕历史 -> 摧毁Session解锁缓存 -> 强制自动刷新 -> 重新要密码
+    function clearScreenAndForceLock() {
+        if(confirm("💡 屏幕历史清空并锁屏确认：\n这会清空您当前屏幕上的所有显示框，并强制退出登录态。\n⚠️ 注意：后台云端数据库中的协同大总账绝对完好无损，不受任何影响。确定执行吗？")) {
+            // 1. 瞬间斩断并抹掉本地渲染缓冲数据
             data = [];
             for(let i=1; i<=6; i++) { document.getElementById('s'+i).value = ""; document.getElementById('q'+i).value = ""; }
             document.getElementById('locIn').value = "";
-            render(); 
-            alert("✨ 屏幕已清空，您可以安全开始下一批扫描作业！");
+            
+            // 2. 彻底撕毁浏览器的解锁安全通行证
+            sessionStorage.removeItem("wh_session_verified_password");
+            
+            // 3. 触发网页的物理级自动刷新，重新激活顶层密码拦截防线
+            window.location.reload();
         }
     }
 
