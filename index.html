@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Warehouse V8.29.13 Pure Seamless Sync</title>
+    <title>Warehouse var.29.14 Overwrite Clean Sync</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
     <style>
         :root { --primary: #1890ff; --success: #52c41a; --danger: #ff4d4f; --extra: #b37feb; --bg: #f5f7fa; }
@@ -65,7 +65,6 @@
                 <div class="file-btn"><span>DAILY清单 (第一列必须是PO)</span><input type="file" accept=".csv" onchange="processFile('check', this.files)"><span id="checkStat" class="status-tag">OPTIONAL</span></div>
             </div>
             <div style="display: flex; justify-content: space-between; margin-top: 8px;">
-                <!-- 💡 纯净无损清屏按钮：点按后只抹除本机视野，表格后台大账绝对不伤 -->
                 <button onclick="clearScreenPureHistory()" style="font-size:10px; color:#1890ff; border:1px solid #1890ff; border-radius:4px; background:none; padding:5px; font-weight:bold;">[CLEAR SCREEN] (清空屏幕历史)</button>
                 <button onclick="recoverBackup()" style="font-size:10px; color:blue; border:none; background:none; padding:5px; font-weight:bold;">[RECOVER BACKUP]</button>
             </div>
@@ -111,7 +110,7 @@
     const FILE2_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQBh1fAm0-5pIJyHCRVDTt_n3vYILct87elf6_dJ9KvtZ126d-LYsgVkEaGKaZmti9lvFByG5LIc1dR/pub?gid=326617304&single=true&output=csv";
     const FIXED_LOC_CLOUD_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vStLtLccpDSfrf_yU_T9WrNcZufN29BqkDsVS2r9ql1INK_61uA8UetkiW4DZ4_dv63o-DHzFz0tOAq/pub?gid=1276542862&single=true&output=csv";
     
-    // 📡 已自动锁定您的专属中央大管家核心 URL 链接
+    // 📡 已为您自动保留并嵌入您的专属谷歌大管家 URL 接口！
     const APP_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyuwspiWzxRItdBNEh4rXkmUnY0W914I0CApzWAYNO0GtHWaOYovGAh96usIlr43sC5rA/exec";
 
     let auditLogPool = [];
@@ -135,6 +134,7 @@
         syncNetworkPool();
         setInterval(syncNetworkPool, 5000); 
         
+        // 读取本地缓存的计划表
         const cC = localStorage.getItem('csv_check'), savedFileName = localStorage.getItem('wh_v826_check_filename');
         if(cC) { parseCheck(cC); updateCheckStatTag(savedFileName || "READY"); }
         setupEnterKey();
@@ -266,27 +266,34 @@
         data.forEach(d => { let k = d._originSKU; if (dbMaster[k]) { if (d.Name !== dbMaster[k].c) { d.Name = dbMaster[k].c; d.SKU = dbMaster[k].b; } } });
     }
 
+    // ⚡ 核心升级：只要重新加载文件，瞬间强力蒸发老缓存，确保新表数据纯净覆盖！
     function processFile(t, files) {
         if(!files || files.length === 0) return; const f = files[0]; const r = new FileReader();
         r.onload = (e) => {
             const txt = e.target.result;
-            if(t==='check') { parseCheck(txt); localStorage.setItem('csv_check', txt); localStorage.setItem('wh_v826_check_filename', f.name); updateCheckStatTag(f.name); }
+            if(t==='check') { 
+                // 🚀 雷霆清空：先彻底抹除本地老数据的磁盘痕迹
+                localStorage.removeItem('csv_check');
+                localStorage.removeItem('wh_v826_check_filename');
+                dbDailyList = []; 
+                
+                // 🚀 装载新货：载入当天全新的计划单
+                parseCheck(txt); 
+                localStorage.setItem('csv_check', txt); 
+                localStorage.setItem('wh_v826_check_filename', f.name); 
+                updateCheckStatTag(f.name); 
+            }
         }; r.readAsText(f);
     }
+    
     function updateCheckStatTag(name) { const s = document.getElementById('checkStat'); s.innerText = name; s.className = "status-tag ready"; }
     function saveLocalNameOnly() { localStorage.setItem('wh_v820_op', document.getElementById('opName').value); }
 
-    // 💡 纯净无损前端清屏：建立本站防回显时间截断舱，不刷新网页、不请求密码，体验极度流畅
     function clearScreenPureHistory() {
         if(confirm("💡 屏幕历史清空确认：\n这会清空您当前手机屏幕上的所有显示框，方便您进行下一批扫描作业。\n⚠️ 注意：后台云端大总账 100% 受到隔离保护，不会受到任何影响。确定执行吗？")) {
-            // 写入本地截断标记
             localStorage.setItem("wh_screen_clear_timestamp", Date.now().toString());
-            
-            // 清空当前的输入格
             for(let i=1; i<=6; i++) { document.getElementById('s'+i).value = ""; document.getElementById('q'+i).value = ""; }
             document.getElementById('locIn').value = "";
-            
-            // 立即原地触发极速假刷新渲染
             render();
             alert("✨ 屏幕历史已清理，新一轮扫描盘点无缝开始！");
         }
@@ -333,12 +340,11 @@
         const tbody = document.querySelector("#mainTable tbody"); tbody.innerHTML = "";
         let realSkuTotals = {}; 
         
-        // 💡 降维高精防回显拦截算法
         let filterTimeMark = Number(localStorage.getItem("wh_screen_clear_timestamp") || "0");
         let filteredData = data.filter(d => {
             if (d.id && d.id.startsWith("ts_")) {
                 let rowTs = parseInt(d.id.split("_")[1]) || 0;
-                return rowTs > filterTimeMark; // 强行屏蔽老流水行
+                return rowTs > filterTimeMark; 
             }
             return filterTimeMark === 0;
         });
