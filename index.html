@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Warehouse V8.29.12 Isolated Clear Sync</title>
+    <title>Warehouse V8.29.13 Pure Seamless Sync</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
     <style>
         :root { --primary: #1890ff; --success: #52c41a; --danger: #ff4d4f; --extra: #b37feb; --bg: #f5f7fa; }
@@ -50,29 +50,9 @@
         .cb-sku { background: #e6f7ff; border: 1px solid #91d5ff; color: #0050b3; }
         .cb-loc { background: #feffe6; border: 1px solid #fffb8f; color: #614700; }
         .cb-sync { background: #f6ffed; border: 1px solid #b7eb8f; color: #52c41a; }
-
-        .lock-overlay {
-            position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
-            background: rgba(0,0,0,0.85); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
-            z-index: 99999; display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 20px;
-        }
-        .lock-box { background: white; border-radius: 16px; padding: 24px; width: 100%; max-width: 360px; text-align: center; box-shadow: 0 10px 30px rgba(0,0,0,0.3); }
-        .lock-box h3 { margin: 0 0 8px 0; color: #222; font-size: 20px; }
-        .lock-box p { margin: 0 0 20px 0; color: #666; font-size: 13px; line-height: 1.5; }
-        .lock-box input { text-align: center; font-size: 24px; height: 50px; border: 2px solid #d9d9d9; margin-bottom: 16px; background: #fff; color:#222; }
-        .lock-box button { background: var(--primary); color: white; border: none; border-radius: 8px; height: 46px; width: 100%; font-size: 16px; font-weight: bold; cursor: pointer; }
     </style>
 </head>
 <body onclick="unlockAudio()">
-
-<div id="pageLock" class="lock-overlay">
-    <div class="lock-box">
-        <h3>🔒 仓储系统安全防线</h3>
-        <p>多端联网作业已被控锁。<br>请向 Weibin 获取最新的作业口令以解锁。</p>
-        <input type="text" id="passInput" placeholder="请输入作业密码" autocomplete="off">
-        <button onclick="checkGatePassword()">解 锁 系 统</button>
-    </div>
-</div>
 
 <div class="main-wrapper">
     <div class="panel-right">
@@ -85,7 +65,8 @@
                 <div class="file-btn"><span>DAILY清单 (第一列必须是PO)</span><input type="file" accept=".csv" onchange="processFile('check', this.files)"><span id="checkStat" class="status-tag">OPTIONAL</span></div>
             </div>
             <div style="display: flex; justify-content: space-between; margin-top: 8px;">
-                <button onclick="clearScreenAndForceLock()" style="font-size:10px; color:#ff4d4f; border:1px solid #ff4d4f; border-radius:4px; background:none; padding:5px; font-weight:bold;">[CLEAR SCREEN] (清空并锁屏)</button>
+                <!-- 💡 纯净无损清屏按钮：点按后只抹除本机视野，表格后台大账绝对不伤 -->
+                <button onclick="clearScreenPureHistory()" style="font-size:10px; color:#1890ff; border:1px solid #1890ff; border-radius:4px; background:none; padding:5px; font-weight:bold;">[CLEAR SCREEN] (清空屏幕历史)</button>
                 <button onclick="recoverBackup()" style="font-size:10px; color:blue; border:none; background:none; padding:5px; font-weight:bold;">[RECOVER BACKUP]</button>
             </div>
         </div>
@@ -130,16 +111,12 @@
     const FILE2_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQBh1fAm0-5pIJyHCRVDTt_n3vYILct87elf6_dJ9KvtZ126d-LYsgVkEaGKaZmti9lvFByG5LIc1dR/pub?gid=326617304&single=true&output=csv";
     const FIXED_LOC_CLOUD_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vStLtLccpDSfrf_yU_T9WrNcZufN29BqkDsVS2r9ql1INK_61uA8UetkiW4DZ4_dv63o-DHzFz0tOAq/pub?gid=1276542862&single=true&output=csv";
     
-    const ADMIN_PASSWORD = "1234"; 
-
-    // 💡 已为您自动加注专属的 Apps Script 网页应用发布 URL 链接！
+    // 📡 已自动锁定您的专属中央大管家核心 URL 链接
     const APP_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyuwspiWzxRItdBNEh4rXkmUnY0W914I0CApzWAYNO0GtHWaOYovGAh96usIlr43sC5rA/exec";
 
     let auditLogPool = [];
     let dbMaster = {}, dbDailyList = [], setLoc = new Set(), dbLocMap = {}, data = [];
     let dailyActive = false, audioCtx = null, forceSKU = null;
-    
-    let isUnlocked = (ADMIN_PASSWORD === "") || (sessionStorage.getItem("wh_session_verified_password") === ADMIN_PASSWORD.trim());
 
     function unlockAudio() {
         if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -152,12 +129,6 @@
         if (cachedLocsText) { buildLocationsEngine(cachedLocsText, true); }
         if (localLogs) { auditLogPool = JSON.parse(localLogs); }
         
-        if (isUnlocked) { 
-            document.getElementById('pageLock').style.display = "none"; 
-        } else {
-            document.getElementById('passInput').value = "";
-        }
-
         fetchCloudMasterDualChannels();
         fetchCloudLocations();
         
@@ -167,8 +138,6 @@
         const cC = localStorage.getItem('csv_check'), savedFileName = localStorage.getItem('wh_v826_check_filename');
         if(cC) { parseCheck(cC); updateCheckStatTag(savedFileName || "READY"); }
         setupEnterKey();
-        
-        document.getElementById('passInput').addEventListener('keydown', (e) => { if(e.key === 'Enter') checkGatePassword(); });
     };
 
     function fetchLocalTimeFormatted() {
@@ -177,18 +146,6 @@
     }
 
     function syncNetworkPool() {
-        var currentCleanPass = ADMIN_PASSWORD.trim();
-        var localSessionPass = (sessionStorage.getItem("wh_session_verified_password") || "").trim();
-        
-        if (isUnlocked && currentCleanPass !== "" && localSessionPass !== currentCleanPass) {
-            isUnlocked = false;
-            sessionStorage.removeItem("wh_session_verified_password");
-            document.getElementById('pageLock').style.display = "flex";
-            document.getElementById('passInput').value = "";
-            alert("🚨 安全警报！\n管理员已在后台远程更新了作业密码，您已被强制断开！\n请重新输入最新验证密码解锁系统。");
-            return;
-        }
-
         var script = document.createElement("script");
         script.src = APP_SCRIPT_URL + (APP_SCRIPT_URL.includes("?") ? "&" : "?") + "t=" + Date.now();
         script.id = "jsonp_sync_script";
@@ -204,29 +161,13 @@
         else { return; }
         
         refreshHistoricalDataNames();
-        if (isUnlocked) render(); 
+        render(); 
         
         netBanner.innerText = `📡 多端联网在线中 (全场已聚合流水: ${data.length} 条)`;
         netBanner.style.background = "#f6ffed"; netBanner.style.borderColor = "#b7eb8f"; netBanner.style.color = "#52c41a";
     };
 
-    function checkGatePassword() {
-        var userIn = document.getElementById('passInput').value.trim();
-        var currentCleanPass = ADMIN_PASSWORD.trim();
-        if (userIn === currentCleanPass || currentCleanPass === "") {
-            isUnlocked = true;
-            sessionStorage.setItem("wh_session_verified_password", userIn);
-            document.getElementById('pageLock').style.display = "none";
-            render();
-        } else {
-            alert("❌ 口令错误！请向管理员 Weibin 索要正确的每日作业密码。");
-            document.getElementById('passInput').value = "";
-            document.getElementById('passInput').focus();
-        }
-    }
-
     function sendJsonpAction(params) {
-        if (!isUnlocked) return; 
         var paramsStr = "";
         for (var key in params) { paramsStr += "&" + key + "=" + encodeURIComponent(params[key]); }
         var url = APP_SCRIPT_URL + (APP_SCRIPT_URL.includes("?") ? "" : "?") + paramsStr + "&t=" + Date.now();
@@ -273,7 +214,7 @@
             parseDualSKUMaster(txt1, txt2);
             banner.innerText = "⚡ 双通道 SKU 库联合挂载就绪，全字全量匹配中！";
             banner.style.background = "#f6ffed"; banner.style.borderColor = "#b7eb8f"; banner.style.color = "#52c41a";
-            refreshHistoricalDataNames(); if(isUnlocked) render();
+            refreshHistoricalDataNames(); render();
         }).catch(err => { banner.innerText = "❌ 联合 SKU 库同步失败"; });
     }
 
@@ -302,7 +243,7 @@
                     }
                 });
                 refreshHistoricalDataNames();
-                if(isUnlocked) render();
+                render();
             }});
         }});
     }
@@ -316,563 +257,7 @@
                     if(q > 0) { dbDailyList.push({ po: p, sku: k, plan: q, idx: i }); dailyActive = true; }
                 } 
             }); 
-            if(isUnlocked) render();
-        }}); 
-    }
-
-    function refreshHistoricalDataNames() {
-        if (!data || data.length === 0) return;
-        data.forEach(d => { let k = d._originSKU; if (dbMaster[k]) { if (d.Name !== dbMaster[k].c) { d.Name = dbMaster[k].c; d.SKU = dbMaster[k].b; } } });
-    }
-
-    function processFile(t, files) {
-        if(!isUnlocked || !files || files.length === 0) return; const f = files[0]; const r = new FileReader();
-        r.onload = (e) => {
-            const txt = e.target.result;
-            if(t==='check') { parseCheck(txt); localStorage.setItem('csv_check', txt); localStorage.setItem('wh_v826_check_filename', f.name); updateCheckStatTag(f.name); }
-        }; r.readAsText(f);
-    }
-    function updateCheckStatTag(name) { const s = document.getElementById('checkStat'); s.innerText = name; s.className = "status-tag ready"; }
-    function saveLocalNameOnly() { localStorage.setItem('wh_v820_op', document.getElementById('opName').value); }
-
-    // 💡 核心安全进化：点击时在本地写下一个高精度隔离戳，强迫刷新后的新视野只展示未来的新录入
-    function clearScreenAndForceLock() {
-        if(confirm("💡 屏幕历史清空并锁屏确认：\n这会清空您当前屏幕上的所有显示框，并强制退出登录态。\n⚠️ 注意：后台云端数据库中的协同大总账绝对完好无损，不受任何影响。确定执行吗？")) {
-            // 写入一个阻断隔离时间标记到浏览器的长效 localStorage 中
-            localStorage.setItem("wh_screen_clear_timestamp", Date.now().toString());
-            
-            // 彻底摧毁登录通行证
-            sessionStorage.removeItem("wh_session_verified_password");
-            
-            // 触发刷新重载
-            window.location.reload();
-        }
-    }
-
-    function addBatch() {
-        if (!isUnlocked) return;
-        unlockAudio();
-        let inputLv = document.getElementById('locIn').value.trim(); let upperLv = inputLv.toUpperCase();
-        const op = document.getElementById('opName').value.trim();
-        if(!op) { alert("⚠️ 拒绝提交！请先在上方输入您的 Operator Name (操作员姓名)，以确保协同溯源安全。"); return; }
-        if(!inputLv) { return; }
-        if (setLoc.size > 0 && !setLoc.has(upperLv)) { alert(`库位无效！[${inputLv}] 不是合法的云端内置库位。`); return; }
-
-        let finalCorrectLocation = dbLocMap[upperLv] ? dbLocMap[upperLv] : inputLv;
-        let batchRowsForGAS = [], temporaryLocalBatch = [], mismatch = false;
-        
-        // 💡 注入高精度毫秒级时间戳，以便供未来的防重现引擎作精准阻断比对
-        const preciseIdTimestamp = Date.now();
-        const today = new Date(); const y = today.getFullYear(); const m = String(today.getMonth() + 1).padStart(2, '0'); const d = String(today.getDate()).padStart(2, '0'); const localDateStr = `${y}${m}${d}`;
-
-        for(let i=1; i<=6; i++) {
-            const sv = document.getElementById('s'+i).value.trim().toUpperCase(); const qv = parseFloat(document.getElementById('q'+i).value); if(!sv) continue;
-            let inDaily = dbDailyList.some(d => d.sku === sv);
-            if(dailyActive && !inDaily && forceSKU !== sv) { mismatch = true; forceSKU = sv; break; }
-            if(!qv || qv <= 0) { return; }
-
-            // 💡 统一把行内部的唯一 ID 开头改为基于 Precise Timestamp 毫秒纯数字
-            let rowUniqueId = "ts_" + preciseIdTimestamp + "_" + i + "_" + Math.random().toString(36).substr(2, 4);
-            let finalLongSku = dbMaster[sv] ? dbMaster[sv].b : sv; let finalGoodsName = dbMaster[sv] ? dbMaster[sv].c : "N/A";
-
-            batchRowsForGAS.push([rowUniqueId, sv, finalLongSku, finalGoodsName, qv, finalCorrectLocation, "Patiki Warehouse: " + finalCorrectLocation, localDateStr, op]);
-            temporaryLocalBatch.push({ id: rowUniqueId, _originSKU: sv, SKU: finalLongSku, Name: finalGoodsName, Quantity: qv, Location: finalCorrectLocation, FullLocation: "Patiki Warehouse: " + finalCorrectLocation, Date: localDateStr, Operator: op });
-        }
-
-        if(mismatch) { let b = document.getElementById('saveBtn'); b.innerText = "SKU NOT IN LIST! TAP AGAIN TO FORCE SAVE"; b.style.background = "orange"; setTimeout(() => { b.innerText = "SAVE ALL"; b.style.background = ""; forceSKU = null; }, 3000); return; }
-        if(batchRowsForGAS.length === 0) return;
-
-        data = [...data, ...temporaryLocalBatch]; render();
-        sendJsonpAction({ action: "insert", rowsData: JSON.stringify(batchRowsForGAS) });
-
-        for(let i=1; i<=6; i++) { document.getElementById('s'+i).value = ""; document.getElementById('q'+i).value = ""; }
-        document.getElementById('locIn').value = ""; document.getElementById('s1').focus(); forceSKU = null;
-    }
-
-    // 💡 核心渲染对齐：时间隔离防回显拦截器
-    function render() {
-        if (!isUnlocked) return;
-        const tbody = document.querySelector("#mainTable tbody"); tbody.innerHTML = "";
-        
-        // 提取之前点击清屏时写下的阻断时刻
-        let filterCutoff = parseInt(localStorage.getItem("wh_screen_clear_timestamp") || "0");
-        
-        // 💡 拦截隔离：过滤掉在这个特定时刻之前产生的所有云端老流水行
-        let filteredData = data.filter(d => {
-            if (d.id && d.id.startsWith("ts_")) {
-                let rowTs = parseInt(d.id.split("_")[1]) || 0;
-                return rowTs > filterCutoff; // 只放行清屏时刻之后追加的活流水
-            }
-            // 如果是非标准历史格式行（旧数据），在清屏后一律隐藏
-            return filterCutoff === 0;
-        });
-
-        let realSkuTotals = {}; filteredData.forEach(d => { realSkuTotals[d._originSKU] = (realSkuTotals[d._originSKU] || 0) + d.Quantity; });
-        let dailyTotals = {}; dbDailyList.forEach(d => dailyTotals[d.sku] = (dailyTotals[d.sku] || 0) + d.plan);
-        let allDisplayRows = []; let trackedDailyKeysWithInput = new Set();
-
-        filteredData.forEach(d => {
-            let k = d._originSKU; let totalPlanForThisSku = dailyTotals[k]; let skuTotalScanned = realSkuTotals[k] || 0;
-            let diffText = "OK"; let isException = false; let rowClass = "";
-            if (totalPlanForThisSku === undefined) { diffText = "EXT"; isException = true; rowClass = "row-extra"; } 
-            else {
-                trackedDailyKeysWithInput.add(k);
-                if (skuTotalScanned > totalPlanForThisSku) { diffText = "+" + (skuTotalScanned - totalPlanForThisSku); isException = true; rowClass = "row-over"; } 
-                else if (skuTotalScanned < totalPlanForThisSku) { diffText = (skuTotalScanned - totalPlanForThisSku).toString(); isException = true; rowClass = "row-under"; }
-            }
-            allDisplayRows.push({ id: d.id, _originSKU: k, displaySKU: d._originSKU, location: d.Location, quantity: d.Quantity, diffText: diffText, isException: isException, rowClass: rowClass, hasInput: true, orderWeight: 0 });
-        });
-
-        if (dailyActive) {
-            dbDailyList.forEach(d => {
-                if (trackedDailyKeysWithInput.has(d.sku)) return;
-                allDisplayRows.push({ id: "pending_" + d.idx, _originSKU: d.sku, displaySKU: d.sku, location: "—", quantity: 0, diffText: (-d.plan).toString(), isException: true, rowClass: "row-under", hasInput: false, orderWeight: d.idx });
-            });
-        }
-
-        allDisplayRows.sort((a, b) => { if (a.hasInput !== b.hasInput) return b.hasInput - a.hasInput; if (a.isException !== b.isException) return b.isException - a.isException; if (!a.hasInput) return a.orderWeight - b.orderWeight; return a.displaySKU.localeCompare(b.displaySKU); });
-        allDisplayRows.forEach(item => {
-            let tr = document.createElement('tr'); tr.className = item.rowClass; tr.classList.add(item.hasInput ? "status-active" : "status-pending");
-            let qtyCellHtml = item.hasInput ? `<input type="number" class="edit-input" value="${item.quantity}" onchange="updateNetworkRowQty('${item.id}', this.value, ${item.quantity})">` : `<span style="font-size:13px;">0</span> <span style="font-size:10px;color:#aaa;">(Plan:${item.diffText * -1})</span>`;
-            let delCellHtml = item.hasInput ? `<button class="del-btn" onclick="deleteNetworkRow(event, '${item.id}')">×</button>` : "—";
-            
-            tr.innerHTML = `<td class="td-sku">${item.displaySKU}</td><td class="td-loc">${item.location}</td><td>${qtyCellHtml}</td><td style="font-weight:bold; font-size:11px;">${item.diffText}</td><td>${delCellHtml}</td>`;
-            tbody.appendChild(tr);
-        });
-    }
-
-    function updateNetworkRowQty(rowId, newQtyStr, oldQty) {
-        if (!isUnlocked) return;
-        let n = parseFloat(newQtyStr);
-        if (n >= 0) {
-            var targetRow = data.find(x => x.id === rowId);
-            if (!targetRow) return;
-
-            if (!confirm(`⚠️ 安全确认：\n您确定要将 SKU [${targetRow._originSKU}] 的盘点数量从 [${oldQty}] 变更为 [${n}] 吗？`)) {
-                render(); 
-                return;
-            }
-
-            let op = document.getElementById('opName').value.trim() || "Unknown Operator";
-            auditLogPool.push(`${fetchLocalTimeFormatted()} 操作员 [${op}] 调整了库位 [${targetRow.Location}] 的数据 ➔ SKU: [${targetRow._originSKU}], 数量从 [${oldQty}] 变更为 [${n}]`);
-            localStorage.setItem('wh_v828_audit_logs', JSON.stringify(auditLogPool));
-            
-            targetRow.Quantity = n; render(); 
-            sendJsonpAction({ action: "updateQty", id: rowId, quantity: n });
-        }
-    }
-
-    function deleteNetworkRow(e, rowId) {
-        if (!isUnlocked) return;
-        if (e) { e.stopPropagation(); e.preventDefault(); }
-        
-        var targetRow = data.find(x => x.id === rowId);
-        if (!targetRow) return;
-
-        if (!confirm(`🚨 毁灭性删除警报！\n您正在试图彻底删除库位 [${targetRow.Location}] 下的 SKU [${targetRow._originSKU}]（数量:${targetRow.Quantity}）！\n此操作将全网删除，确定执行吗？`)) {
-            return; 
-        }
-
-        let op = document.getElementById('opName').value.trim() || "Unknown Operator";
-        auditLogPool.push(`${fetchLocalTimeFormatted()} 🔴警报：操作员 [${op}] 删除了整行物理记录 ➔ 移除库位: [${targetRow.Location}], 受影响SKU: [${targetRow._originSKU}], 数量: [${targetRow.Quantity}]`);
-        localStorage.setItem('wh_v828_audit_logs', JSON.stringify(auditLogPool));
-        
-        data = data.filter(x => x.id !== rowId); render(); 
-        sendJsonpAction({ action: "delete", id: rowId });
-    }
-    
-    function exportCsv() {
-        if (!isUnlocked) return;
-        const op = document.getElementById('opName').value.trim() || "User", dateNow = new Date().toISOString().slice(0,10).replace(/-/g, "");
-        let rawSplittedRows = []; let scannedGroupsBySku = {};
-        
-        data.forEach(d => {
-            if (!scannedGroupsBySku[d._originSKU]) scannedGroupsBySku[d._originSKU] = [];
-            scannedGroupsBySku[d._originSKU].push({ fullSku: d.SKU, name: d.Name, loc: d.FullLocation, date: d.Date, qty: d.Quantity, operatorName: d.Operator || "Unknown" });
-        });
-
-        let dailyGroupsBySku = {}; dbDailyList.forEach(d => { if (!dailyGroupsBySku[d.sku]) dailyGroupsBySku[d.sku] = []; dailyGroupsBySku[d.sku].push({ po: d.po, plan: d.plan }); });
-        let allSkus = new Set([...Object.keys(scannedGroupsBySku), ...Object.keys(dailyGroupsBySku)]);
-
-        allSkus.forEach(skuKey => {
-            let scannedPool = scannedGroupsBySku[skuKey] || []; let dailyBills = JSON.parse(JSON.stringify(dailyGroupsBySku[skuKey] || [])); 
-            if (!dailyActive || dailyBills.length === 0) {
-                scannedPool.forEach(s => { rawSplittedRows.push({ po: "EXTRA", sku: s.fullSku, name: s.name, bsn: "", ssk: "", exp: "", qty: s.qty, loc: s.loc, date: s.date, rec: "TRUE", note: "NOT IN LIST", opUser: s.operatorName }); });
-                return;
-            }
-
-            let billIdx = 0;
-            for (let sIdx = 0; sIdx < scannedPool.length; sIdx++) {
-                let scanRow = scannedPool[sIdx]; let remScanQty = scanRow.qty; 
-                while (remScanQty > 0 && billIdx < dailyBills.length) {
-                    let currentBill = dailyBills[billIdx]; var remBillPlan = currentBill.plan; if (remBillPlan <= 0) { billIdx++; continue; } 
-                    if (remScanQty >= remBillPlan) {
-                        rawSplittedRows.push({ po: currentBill.po, sku: scanRow.fullSku, name: scanRow.name, bsn: "", ssk: "", exp: "", qty: remBillPlan, loc: scanRow.loc, date: scanRow.date, rec: "TRUE", note: "OK", opUser: scanRow.operatorName });
-                        remScanQty -= remBillPlan; currentBill.plan = 0; billIdx++; 
-                    } else {
-                        rawSplittedRows.push({ po: currentBill.po, sku: scanRow.fullSku, name: scanRow.name, bsn: "", ssk: "", exp: "", qty: remScanQty, loc: scanRow.loc, date: scanRow.date, rec: "TRUE", note: "OK", opUser: scanRow.operatorName });
-                        currentBill.plan -= remScanQty; remScanQty = 0; 
-                    }
-                }
-                if (remScanQty > 0) { rawSplittedRows.push({ po: "OVER_FLOW", sku: scanRow.fullSku, name: scanRow.name, bsn: "", ssk: "", exp: "", qty: remScanQty, loc: scanRow.loc, date: scanRow.date, rec: "TRUE", note: "OVERFLOW", opUser: scanRow.operatorName }); }
-            }
-            while (billIdx < dailyBills.length) {
-                let currentBill = dailyBills[billIdx];
-                if (currentBill.plan > 0) {
-                    let mInfo = dbMaster[skuKey] || { b: skuKey, c: "N/A" }; const t = new Date(); const formattedDate = `${t.getFullYear()}${String(t.getMonth()+1).padStart(2,'0')}${String(t.getDate()).padStart(2,'0')}`;
-                    rawSplittedRows.push({ po: currentBill.po, sku: mInfo.b, name: mInfo.c, bsn: "", ssk: "", exp: "", qty: 0, loc: "—", date: formattedDate, rec: "FALSE", note: (-currentBill.plan).toString(), opUser: "System" });
-                }
-                billIdx++;
-            }
-        });
-
-        let compressedMap = {};
-        let finalRows = [["PO","SKU","Name","BatchSerialNumber","SupplierSKU","ExpiryDate_YYYYMMDD","Quantity","Location","DateReceived_YYYYMMDD","Received","Exception_Note","Operator"]];
-
-        rawSplittedRows.forEach((row) => {
-            let uniqueMatrixKey = `${row.po}##${row.sku}##${row.loc}##${row.note}##${row.opUser}`;
-            if(row.qty > 0 && compressedMap[uniqueMatrixKey]) { compressedMap[uniqueMatrixKey].qty += row.qty; } 
-            else if (row.qty > 0) { compressedMap[uniqueMatrixKey] = row; } 
-            else { finalRows.push([row.po, row.sku, row.name, row.bsn, row.ssk, row.exp, row.qty, row.loc, row.date, row.rec, row.note, row.opUser]); }
-        });
-
-        Object.keys(compressedMap).forEach(key => { let r = compressedMap[key]; finalRows.push([r.po, r.sku, r.name, r.bsn, r.ssk, r.exp, r.qty, r.loc, r.date, r.rec, r.note, r.opUser]); });
-
-        const csvContent = Papa.unparse(finalRows);
-        const csvBlob = new Blob(["\ufeff" + csvContent], { type: 'text/csv;charset=utf-8;' });
-        const csvLink = document.createElement("a"); csvLink.href = URL.createObjectURL(csvBlob); csvLink.download = `Putway_PO_Split_${op}_${dateNow}.csv`; csvLink.click();
-
-        let txtTitle = `==================================================\n   Warehouse Operations Audit Log (防误操追责日志) \n   当前导出操作员: [${op}]   日期: [${dateNow}] \n==================================================\n\n`;
-        let txtBody = ""; if(auditLogPool.length === 0) { txtBody = "✨ 全场协同作业纯净。\n"; } else { auditLogPool.forEach((log, index) => { txtBody += `${index + 1}. ${log}\n`; }); }
-        const txtBlob = new Blob([txtTitle + txtBody], { type: 'text/plain;charset=utf-8;' });
-        const txtLink = document.createElement("a"); txtLink.href = URL.createObjectURL(txtBlob); txtLink.download = `Audit_Log_${op}_${dateNow}.txt`; txtLink.click();
-    }
-    
-    function setupEnterKey() {
-        const ins = Array.from(document.querySelectorAll('.panel-right input'));
-        ins.forEach((input, index) => { input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); (ins[index + 1] || ins[0]).focus(); if(input.id === 'locIn') addBatch(); } }); });
-    }
-</script>
-</body>
-</html><!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Warehouse V8.29.12 Isolated Clear Sync</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
-    <style>
-        :root { --primary: #1890ff; --success: #52c41a; --danger: #ff4d4f; --extra: #b37feb; --bg: #f5f7fa; }
-        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-        body { font-family: -apple-system, Roboto, Helvetica, Arial, sans-serif; margin: 0; background: var(--bg); min-height: 100vh; overflow-x: hidden; position: relative; }
-        
-        .main-wrapper { display: flex; flex-direction: column; padding: 8px; gap: 8px; }
-        .panel-right { order: 1; width: 100%; } 
-        .panel-left { order: 2; width: 100%; display: flex; flex-direction: column; }
-        
-        @media (min-width: 900px) { 
-            .main-wrapper { flex-direction: row; height: 100vh; overflow: hidden; }
-            .panel-right { flex: 4; height: 100%; overflow-y: auto; }
-            .panel-left { flex: 6; height: 100%; }
-        }
-        .card { background: white; border-radius: 12px; padding: 12px; border: 1px solid #e8e8e8; box-shadow: 0 2px 8px rgba(0,0,0,0.05); margin-bottom: 8px; }
-        input { height: 44px; padding: 10px; border: 1px solid #d9d9d9; border-radius: 8px; font-size: 16px; width: 100%; background: #fafafa; margin-bottom: 8px; }
-        .loc-input { height: 54px; font-size: 22px; border: 2px solid var(--primary); background: #fffbe6; color: #d46b08; }
-        .sku-row { display: grid; grid-template-columns: 3fr 1.2fr; gap: 8px; margin-bottom: 4px; }
-        .file-grid { display: grid; grid-template-columns: 1fr; gap: 6px; }
-        .file-btn { border: 1px dashed #ccc; padding: 4px; border-radius: 8px; text-align: center; background: #fff; font-size: 10px; position: relative; min-height: 40px; display: flex; flex-direction: column; justify-content: center; align-items: center; }
-        .file-btn input { position: absolute; top:0; left:0; width:100%; height:100%; opacity:0; }
-        .status-tag { font-size: 10px; font-weight: bold; color: #bfbfbf; margin-top: 2px; word-break: break-all; padding: 0 4px; text-align: center; }
-        .ready { color: var(--success); }
-        .btn { height: 54px; border: none; border-radius: 10px; font-weight: bold; cursor: pointer; font-size: 18px; width: 100%; }
-        .btn-save { background: var(--success); color: white; margin-top: 8px; }
-        .btn-export { background: #444; color: white; height: 48px; font-size: 14px; flex-shrink: 0; margin-top: 10px; }
-        
-        .table-wrap { flex: 1; overflow-y: auto; background: white; border-radius: 12px; border: 1px solid #e8e8e8; }
-        table { width: 100%; border-collapse: collapse; font-size: 12px; table-layout: fixed; }
-        th, td { padding: 8px 2px; border-bottom: 1px solid #f0f0f0; text-align: center; vertical-align: middle; }
-        .td-sku { word-break: break-all; white-space: normal; text-align: left; padding-left: 4px; font-weight: bold; font-size: 13px; }
-        .td-loc { font-size: 11px; color: #666; word-break: break-all; }
-        th { background: #fafafa; position: sticky; top: 0; z-index: 10; font-size: 10px; color: #555; }
-        
-        .row-over { background-color: #fff1f0 !important; color: #cf1322 !important; }
-        .row-under { background-color: #e6f7ff !important; color: #096dd9 !important; }
-        .row-extra { background-color: #f9f0ff !important; color: #531dab !important; }
-        .status-pending { color: #aaaaaa !important; } 
-        .status-active { color: #222222 !important; }   
-        .edit-input { width: 100%; padding: 4px; border: 1px solid var(--primary); border-radius: 4px; text-align: center; font-size: 13px; background: transparent; }
-        .del-btn { background: #ff7875; color: white; border: none; border-radius: 4px; padding: 4px 8px; font-weight: bold; cursor: pointer; }
-        .cloud-banner { padding: 6px; border-radius: 8px; font-size: 11px; text-align: center; margin-bottom: 4px; font-weight: bold; }
-        .cb-sku { background: #e6f7ff; border: 1px solid #91d5ff; color: #0050b3; }
-        .cb-loc { background: #feffe6; border: 1px solid #fffb8f; color: #614700; }
-        .cb-sync { background: #f6ffed; border: 1px solid #b7eb8f; color: #52c41a; }
-
-        .lock-overlay {
-            position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
-            background: rgba(0,0,0,0.85); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
-            z-index: 99999; display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 20px;
-        }
-        .lock-box { background: white; border-radius: 16px; padding: 24px; width: 100%; max-width: 360px; text-align: center; box-shadow: 0 10px 30px rgba(0,0,0,0.3); }
-        .lock-box h3 { margin: 0 0 8px 0; color: #222; font-size: 20px; }
-        .lock-box p { margin: 0 0 20px 0; color: #666; font-size: 13px; line-height: 1.5; }
-        .lock-box input { text-align: center; font-size: 24px; height: 50px; border: 2px solid #d9d9d9; margin-bottom: 16px; background: #fff; color:#222; }
-        .lock-box button { background: var(--primary); color: white; border: none; border-radius: 8px; height: 46px; width: 100%; font-size: 16px; font-weight: bold; cursor: pointer; }
-    </style>
-</head>
-<body onclick="unlockAudio()">
-
-<div id="pageLock" class="lock-overlay">
-    <div class="lock-box">
-        <h3>🔒 仓储系统安全防线</h3>
-        <p>多端联网作业已被控锁。<br>请向 Weibin 获取最新的作业口令以解锁。</p>
-        <input type="text" id="passInput" placeholder="请输入作业密码" autocomplete="off">
-        <button onclick="checkGatePassword()">解 锁 系 统</button>
-    </div>
-</div>
-
-<div class="main-wrapper">
-    <div class="panel-right">
-        <div class="cloud-banner cb-sku" id="cloudStat">☁️ 联动双主库安全引擎正在连接...</div>
-        <div class="cloud-banner cb-loc" id="locCloudStat">☁️ 公司库位表 (A-U列) 正在连接...</div>
-        <div class="cloud-banner cb-sync" id="networkStat">📡 多端联网对齐中...</div>
-
-        <div class="card">
-            <div class="file-grid">
-                <div class="file-btn"><span>DAILY清单 (第一列必须是PO)</span><input type="file" accept=".csv" onchange="processFile('check', this.files)"><span id="checkStat" class="status-tag">OPTIONAL</span></div>
-            </div>
-            <div style="display: flex; justify-content: space-between; margin-top: 8px;">
-                <button onclick="clearScreenAndForceLock()" style="font-size:10px; color:#ff4d4f; border:1px solid #ff4d4f; border-radius:4px; background:none; padding:5px; font-weight:bold;">[CLEAR SCREEN] (清空并锁屏)</button>
-                <button onclick="recoverBackup()" style="font-size:10px; color:blue; border:none; background:none; padding:5px; font-weight:bold;">[RECOVER BACKUP]</button>
-            </div>
-        </div>
-
-        <div class="card">
-            <input type="text" id="opName" placeholder="Operator Name (开工必填)" onchange="saveLocalNameOnly()">
-            <div id="batchContainer">
-                <div class="sku-row"><input type="text" id="s1" placeholder="SKU 1" inputmode="decimal"><input type="tel" id="q1" placeholder="Qty"></div>
-                <div class="sku-row"><input type="text" id="s2" placeholder="SKU 2" inputmode="decimal"><input type="tel" id="q2" placeholder="Qty"></div>
-                <div class="sku-row"><input type="text" id="s3" placeholder="SKU 3" inputmode="decimal"><input type="tel" id="q3" placeholder="Qty"></div>
-                <div class="sku-row"><input type="text" id="s4" placeholder="SKU 4" inputmode="decimal"><input type="tel" id="q4" placeholder="Qty"></div>
-                <div class="sku-row"><input type="text" id="s5" placeholder="SKU 5" inputmode="decimal"><input type="tel" id="q5" placeholder="Qty"></div>
-                <div class="sku-row"><input type="text" id="s6" placeholder="SKU 6" inputmode="decimal"><input type="tel" id="q6" placeholder="Qty"></div>
-            </div>
-            <input type="text" id="locIn" list="locList" class="loc-input" placeholder="SCAN LOCATION (LOC)">
-            <datalist id="locList"></datalist>
-            <button class="btn btn-save" id="saveBtn" onclick="addBatch()">SAVE ALL</button>
-        </div>
-    </div>
-
-    <div class="panel-left">
-        <div class="table-wrap">
-            <table id="mainTable">
-                <thead>
-                    <tr>
-                        <th style="width: 30%;">SKU</th>
-                        <th style="width: 25%;">Location</th>
-                        <th style="width: 18%;">Qty</th>
-                        <th style="width: 15%;">STATUS</th>
-                        <th style="width: 12%;">DEL</th>
-                    </tr>
-                </thead>
-                <tbody></tbody>
-            </table>
-        </div>
-        <button class="btn btn-export" onclick="exportCsv()">EXPORT CSV</button>
-    </div>
-</div>
-
-<script>
-    const FILE1_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vR8x1PYnDYTCIvzG5qoq_syoxgAJ4m6FGoMJb6W9bEQ-HwUVCiJV7PGkR8o80qT7r6I_GkL4cgWguvw/pub?gid=1763823264&single=true&output=csv";
-    const FILE2_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQBh1fAm0-5pIJyHCRVDTt_n3vYILct87elf6_dJ9KvtZ126d-LYsgVkEaGKaZmti9lvFByG5LIc1dR/pub?gid=326617304&single=true&output=csv";
-    const FIXED_LOC_CLOUD_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vStLtLccpDSfrf_yU_T9WrNcZufN29BqkDsVS2r9ql1INK_61uA8UetkiW4DZ4_dv63o-DHzFz0tOAq/pub?gid=1276542862&single=true&output=csv";
-    
-    const ADMIN_PASSWORD = "1234"; 
-
-    // 💡 已为您自动加注专属的 Apps Script 网页应用发布 URL 链接！
-    const APP_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyuwspiWzxRItdBNEh4rXkmUnY0W914I0CApzWAYNO0GtHWaOYovGAh96usIlr43sC5rA/exec";
-
-    let auditLogPool = [];
-    let dbMaster = {}, dbDailyList = [], setLoc = new Set(), dbLocMap = {}, data = [];
-    let dailyActive = false, audioCtx = null, forceSKU = null;
-    
-    let isUnlocked = (ADMIN_PASSWORD === "") || (sessionStorage.getItem("wh_session_verified_password") === ADMIN_PASSWORD.trim());
-
-    function unlockAudio() {
-        if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        if (audioCtx.state === 'suspended') audioCtx.resume();
-    }
-
-    window.onload = () => {
-        const op = localStorage.getItem('wh_v820_op'), cachedLocsText = localStorage.getItem('wh_v825_cached_locs'), localLogs = localStorage.getItem('wh_v828_audit_logs');
-        if (op) document.getElementById('opName').value = op;
-        if (cachedLocsText) { buildLocationsEngine(cachedLocsText, true); }
-        if (localLogs) { auditLogPool = JSON.parse(localLogs); }
-        
-        if (isUnlocked) { 
-            document.getElementById('pageLock').style.display = "none"; 
-        } else {
-            document.getElementById('passInput').value = "";
-        }
-
-        fetchCloudMasterDualChannels();
-        fetchCloudLocations();
-        
-        syncNetworkPool();
-        setInterval(syncNetworkPool, 5000); 
-        
-        const cC = localStorage.getItem('csv_check'), savedFileName = localStorage.getItem('wh_v826_check_filename');
-        if(cC) { parseCheck(cC); updateCheckStatTag(savedFileName || "READY"); }
-        setupEnterKey();
-        
-        document.getElementById('passInput').addEventListener('keydown', (e) => { if(e.key === 'Enter') checkGatePassword(); });
-    };
-
-    function fetchLocalTimeFormatted() {
-        const t = new Date();
-        return `[${t.getFullYear()}-${String(t.getMonth()+1).padStart(2,'0')}-${String(t.getDate()).padStart(2,'0')} ${String(t.getHours()).padStart(2,'0')}:${String(t.getMinutes()).padStart(2,'0')}:${String(t.getSeconds()).padStart(2,'0')}]`;
-    }
-
-    function syncNetworkPool() {
-        var currentCleanPass = ADMIN_PASSWORD.trim();
-        var localSessionPass = (sessionStorage.getItem("wh_session_verified_password") || "").trim();
-        
-        if (isUnlocked && currentCleanPass !== "" && localSessionPass !== currentCleanPass) {
-            isUnlocked = false;
-            sessionStorage.removeItem("wh_session_verified_password");
-            document.getElementById('pageLock').style.display = "flex";
-            document.getElementById('passInput').value = "";
-            alert("🚨 安全警报！\n管理员已在后台远程更新了作业密码，您已被强制断开！\n请重新输入最新验证密码解锁系统。");
-            return;
-        }
-
-        var script = document.createElement("script");
-        script.src = APP_SCRIPT_URL + (APP_SCRIPT_URL.includes("?") ? "&" : "?") + "t=" + Date.now();
-        script.id = "jsonp_sync_script";
-        var oldScript = document.getElementById("jsonp_sync_script");
-        if(oldScript) oldScript.parentNode.removeChild(oldScript);
-        document.getElementsByTagName("head")[0].appendChild(script);
-    }
-
-    window.jsonpCallback = function(response) {
-        const netBanner = document.getElementById('networkStat');
-        if (response && response.pool !== undefined) { data = response.pool; } 
-        else if (Array.isArray(response)) { data = response; } 
-        else { return; }
-        
-        refreshHistoricalDataNames();
-        if (isUnlocked) render(); 
-        
-        netBanner.innerText = `📡 多端联网在线中 (全场已聚合流水: ${data.length} 条)`;
-        netBanner.style.background = "#f6ffed"; netBanner.style.borderColor = "#b7eb8f"; netBanner.style.color = "#52c41a";
-    };
-
-    function checkGatePassword() {
-        var userIn = document.getElementById('passInput').value.trim();
-        var currentCleanPass = ADMIN_PASSWORD.trim();
-        if (userIn === currentCleanPass || currentCleanPass === "") {
-            isUnlocked = true;
-            sessionStorage.setItem("wh_session_verified_password", userIn);
-            document.getElementById('pageLock').style.display = "none";
             render();
-        } else {
-            alert("❌ 口令错误！请向管理员 Weibin 索要正确的每日作业密码。");
-            document.getElementById('passInput').value = "";
-            document.getElementById('passInput').focus();
-        }
-    }
-
-    function sendJsonpAction(params) {
-        if (!isUnlocked) return; 
-        var paramsStr = "";
-        for (var key in params) { paramsStr += "&" + key + "=" + encodeURIComponent(params[key]); }
-        var url = APP_SCRIPT_URL + (APP_SCRIPT_URL.includes("?") ? "" : "?") + paramsStr + "&t=" + Date.now();
-        var script = document.createElement("script"); script.src = url; script.id = "jsonp_action_script";
-        var oldScript = document.getElementById("jsonp_action_script");
-        if(oldScript) oldScript.parentNode.removeChild(oldScript);
-        document.getElementsByTagName("head")[0].appendChild(script);
-    }
-
-    function fetchCloudLocations() {
-        const banner = document.getElementById('locCloudStat');
-        fetch(FIXED_LOC_CLOUD_URL).then(res => res.text()).then(txt => {
-            if (txt && txt.trim().length > 10) { localStorage.setItem('wh_v825_cached_locs', txt); buildLocationsEngine(txt, false); }
-        }).catch(err => { banner.innerText = "⚠️ 库位离线中"; });
-    }
-
-    function buildLocationsEngine(text, isOfflineCache) {
-        setLoc.clear(); dbLocMap = {}; const dl = document.getElementById('locList'); dl.innerHTML = "";
-        let items = text.split(/[ \t]*[\n\r,;]+[ \t]*/); let validCount = 0;
-        const blackList = ["LOCATION", "库位", "SKU", "QUANTITY", "数量", "NAME", "名称", "表头", "A", "B", "C", "U"];
-        items.forEach(item => {
-            let rawV = item.trim(); let upperV = rawV.toUpperCase();
-            if (rawV && rawV.length >= 2 && !blackList.includes(upperV)) { 
-                if(!setLoc.has(upperV)) { 
-                    setLoc.add(upperV); dbLocMap[upperV] = rawV; 
-                    let o = document.createElement('option'); 
-                    o.setAttribute('value', rawV); 
-                    dl.appendChild(o); 
-                    validCount++; 
-                }
-            }
-        });
-        const banner = document.getElementById('locCloudStat');
-        if (isOfflineCache) { banner.innerText = `📦 本地内置库位就绪 (已锁死: ${validCount} 个库位联想)`; } 
-        else { banner.innerText = `⚡ 公司库位表 (A-U列) 同步成功！(已刷新: ${validCount} 个)`; banner.style.background = "#f6ffed"; banner.style.borderColor = "#b7eb8f"; banner.style.color = "#52c41a"; }
-    }
-
-    function fetchCloudMasterDualChannels() {
-        const banner = document.getElementById('cloudStat');
-        Promise.all([
-            fetch(FILE1_URL).then(res => res.text()),
-            fetch(FILE2_URL).then(res => res.text())
-        ]).then(([txt1, txt2]) => {
-            parseDualSKUMaster(txt1, txt2);
-            banner.innerText = "⚡ 双通道 SKU 库联合挂载就绪，全字全量匹配中！";
-            banner.style.background = "#f6ffed"; banner.style.borderColor = "#b7eb8f"; banner.style.color = "#52c41a";
-            refreshHistoricalDataNames(); if(isUnlocked) render();
-        }).catch(err => { banner.innerText = "❌ 联合 SKU 库同步失败"; });
-    }
-
-    function parseDualSKUMaster(csv1, csv2) {
-        dbMaster = {};
-        Papa.parse(csv2, { complete: (res) => {
-            res.data.forEach((r, i) => {
-                if (i > 0 && r[7]) { 
-                    let fullSku = r[7].toString().trim().toUpperCase();
-                    dbMaster[fullSku] = { b: fullSku, c: r[17] ? r[17].toString().trim() : "N/A" };
-                    if (fullSku.includes('~')) { 
-                        let shortSku = fullSku.split('~').pop().trim();
-                        dbMaster[shortSku] = { b: fullSku, c: r[17] ? r[17].toString().trim() : "N/A" };
-                    }
-                }
-            });
-            Papa.parse(csv1, { complete: (res1) => {
-                res1.data.forEach((r, i) => {
-                    if (i > 0 && r[3]) { 
-                        let fullSku = r[3].toString().trim().toUpperCase();
-                        dbMaster[fullSku] = { b: fullSku, c: r[12] ? r[12].toString().trim() : "N/A" };
-                        if (fullSku.includes('~')) { 
-                            let shortSku = fullSku.split('~').pop().trim();
-                            dbMaster[shortSku] = { b: fullSku, c: r[12] ? r[12].toString().trim() : "N/A" };
-                        }
-                    }
-                });
-                refreshHistoricalDataNames();
-                if(isUnlocked) render();
-            }});
-        }});
-    }
-    
-    function parseCheck(txt) { 
-        Papa.parse(txt, { complete: (res) => { 
-            dbDailyList = []; dailyActive = false; 
-            res.data.forEach((r, i) => { 
-                if(i > 0 && r[1]) { 
-                    let p = r[0] ? r[0].toString().trim() : "N/A"; let k = r[1].trim().toUpperCase(); let q = parseFloat(r[2]) || 0;
-                    if(q > 0) { dbDailyList.push({ po: p, sku: k, plan: q, idx: i }); dailyActive = true; }
-                } 
-            }); 
-            if(isUnlocked) render();
         }}); 
     }
 
@@ -882,7 +267,7 @@
     }
 
     function processFile(t, files) {
-        if(!isUnlocked || !files || files.length === 0) return; const f = files[0]; const r = new FileReader();
+        if(!files || files.length === 0) return; const f = files[0]; const r = new FileReader();
         r.onload = (e) => {
             const txt = e.target.result;
             if(t==='check') { parseCheck(txt); localStorage.setItem('csv_check', txt); localStorage.setItem('wh_v826_check_filename', f.name); updateCheckStatTag(f.name); }
@@ -891,22 +276,23 @@
     function updateCheckStatTag(name) { const s = document.getElementById('checkStat'); s.innerText = name; s.className = "status-tag ready"; }
     function saveLocalNameOnly() { localStorage.setItem('wh_v820_op', document.getElementById('opName').value); }
 
-    // 💡 核心安全进化：点击时在本地写下一个高精度隔离戳，强迫刷新后的新视野只展示未来的新录入
-    function clearScreenAndForceLock() {
-        if(confirm("💡 屏幕历史清空并锁屏确认：\n这会清空您当前屏幕上的所有显示框，并强制退出登录态。\n⚠️ 注意：后台云端数据库中的协同大总账绝对完好无损，不受任何影响。确定执行吗？")) {
-            // 写入一个阻断隔离时间标记到浏览器的长效 localStorage 中
+    // 💡 纯净无损前端清屏：建立本站防回显时间截断舱，不刷新网页、不请求密码，体验极度流畅
+    function clearScreenPureHistory() {
+        if(confirm("💡 屏幕历史清空确认：\n这会清空您当前手机屏幕上的所有显示框，方便您进行下一批扫描作业。\n⚠️ 注意：后台云端大总账 100% 受到隔离保护，不会受到任何影响。确定执行吗？")) {
+            // 写入本地截断标记
             localStorage.setItem("wh_screen_clear_timestamp", Date.now().toString());
             
-            // 彻底摧毁登录通行证
-            sessionStorage.removeItem("wh_session_verified_password");
+            // 清空当前的输入格
+            for(let i=1; i<=6; i++) { document.getElementById('s'+i).value = ""; document.getElementById('q'+i).value = ""; }
+            document.getElementById('locIn').value = "";
             
-            // 触发刷新重载
-            window.location.reload();
+            // 立即原地触发极速假刷新渲染
+            render();
+            alert("✨ 屏幕历史已清理，新一轮扫描盘点无缝开始！");
         }
     }
 
     function addBatch() {
-        if (!isUnlocked) return;
         unlockAudio();
         let inputLv = document.getElementById('locIn').value.trim(); let upperLv = inputLv.toUpperCase();
         const op = document.getElementById('opName').value.trim();
@@ -917,7 +303,6 @@
         let finalCorrectLocation = dbLocMap[upperLv] ? dbLocMap[upperLv] : inputLv;
         let batchRowsForGAS = [], temporaryLocalBatch = [], mismatch = false;
         
-        // 💡 注入高精度毫秒级时间戳，以便供未来的防重现引擎作精准阻断比对
         const preciseIdTimestamp = Date.now();
         const today = new Date(); const y = today.getFullYear(); const m = String(today.getMonth() + 1).padStart(2, '0'); const d = String(today.getDate()).padStart(2, '0'); const localDateStr = `${y}${m}${d}`;
 
@@ -927,7 +312,6 @@
             if(dailyActive && !inDaily && forceSKU !== sv) { mismatch = true; forceSKU = sv; break; }
             if(!qv || qv <= 0) { return; }
 
-            // 💡 统一把行内部的唯一 ID 开头改为基于 Precise Timestamp 毫秒纯数字
             let rowUniqueId = "ts_" + preciseIdTimestamp + "_" + i + "_" + Math.random().toString(36).substr(2, 4);
             let finalLongSku = dbMaster[sv] ? dbMaster[sv].b : sv; let finalGoodsName = dbMaster[sv] ? dbMaster[sv].c : "N/A";
 
@@ -945,25 +329,21 @@
         document.getElementById('locIn').value = ""; document.getElementById('s1').focus(); forceSKU = null;
     }
 
-    // 💡 核心渲染对齐：时间隔离防回显拦截器
     function render() {
-        if (!isUnlocked) return;
         const tbody = document.querySelector("#mainTable tbody"); tbody.innerHTML = "";
+        let realSkuTotals = {}; 
         
-        // 提取之前点击清屏时写下的阻断时刻
-        let filterCutoff = parseInt(localStorage.getItem("wh_screen_clear_timestamp") || "0");
-        
-        // 💡 拦截隔离：过滤掉在这个特定时刻之前产生的所有云端老流水行
+        // 💡 降维高精防回显拦截算法
+        let filterTimeMark = Number(localStorage.getItem("wh_screen_clear_timestamp") || "0");
         let filteredData = data.filter(d => {
             if (d.id && d.id.startsWith("ts_")) {
                 let rowTs = parseInt(d.id.split("_")[1]) || 0;
-                return rowTs > filterCutoff; // 只放行清屏时刻之后追加的活流水
+                return rowTs > filterTimeMark; // 强行屏蔽老流水行
             }
-            // 如果是非标准历史格式行（旧数据），在清屏后一律隐藏
-            return filterCutoff === 0;
+            return filterTimeMark === 0;
         });
 
-        let realSkuTotals = {}; filteredData.forEach(d => { realSkuTotals[d._originSKU] = (realSkuTotals[d._originSKU] || 0) + d.Quantity; });
+        filteredData.forEach(d => { realSkuTotals[d._originSKU] = (realSkuTotals[d._originSKU] || 0) + d.Quantity; });
         let dailyTotals = {}; dbDailyList.forEach(d => dailyTotals[d.sku] = (dailyTotals[d.sku] || 0) + d.plan);
         let allDisplayRows = []; let trackedDailyKeysWithInput = new Set();
 
@@ -998,7 +378,6 @@
     }
 
     function updateNetworkRowQty(rowId, newQtyStr, oldQty) {
-        if (!isUnlocked) return;
         let n = parseFloat(newQtyStr);
         if (n >= 0) {
             var targetRow = data.find(x => x.id === rowId);
@@ -1019,7 +398,6 @@
     }
 
     function deleteNetworkRow(e, rowId) {
-        if (!isUnlocked) return;
         if (e) { e.stopPropagation(); e.preventDefault(); }
         
         var targetRow = data.find(x => x.id === rowId);
@@ -1038,7 +416,6 @@
     }
     
     function exportCsv() {
-        if (!isUnlocked) return;
         const op = document.getElementById('opName').value.trim() || "User", dateNow = new Date().toISOString().slice(0,10).replace(/-/g, "");
         let rawSplittedRows = []; let scannedGroupsBySku = {};
         
