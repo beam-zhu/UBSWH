@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Warehouse var.29.14 Overwrite Clean Sync</title>
+    <title>Warehouse var.29.15 Precise Export Sync</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
     <style>
         :root { --primary: #1890ff; --success: #52c41a; --danger: #ff4d4f; --extra: #b37feb; --bg: #f5f7fa; }
@@ -110,7 +110,6 @@
     const FILE2_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQBh1fAm0-5pIJyHCRVDTt_n3vYILct87elf6_dJ9KvtZ126d-LYsgVkEaGKaZmti9lvFByG5LIc1dR/pub?gid=326617304&single=true&output=csv";
     const FIXED_LOC_CLOUD_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vStLtLccpDSfrf_yU_T9WrNcZufN29BqkDsVS2r9ql1INK_61uA8UetkiW4DZ4_dv63o-DHzFz0tOAq/pub?gid=1276542862&single=true&output=csv";
     
-    // 📡 已为您自动保留并嵌入您的专属谷歌大管家 URL 接口！
     const APP_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyuwspiWzxRItdBNEh4rXkmUnY0W914I0CApzWAYNO0GtHWaOYovGAh96usIlr43sC5rA/exec";
 
     let auditLogPool = [];
@@ -134,7 +133,6 @@
         syncNetworkPool();
         setInterval(syncNetworkPool, 5000); 
         
-        // 读取本地缓存的计划表
         const cC = localStorage.getItem('csv_check'), savedFileName = localStorage.getItem('wh_v826_check_filename');
         if(cC) { parseCheck(cC); updateCheckStatTag(savedFileName || "READY"); }
         setupEnterKey();
@@ -266,18 +264,14 @@
         data.forEach(d => { let k = d._originSKU; if (dbMaster[k]) { if (d.Name !== dbMaster[k].c) { d.Name = dbMaster[k].c; d.SKU = dbMaster[k].b; } } });
     }
 
-    // ⚡ 核心升级：只要重新加载文件，瞬间强力蒸发老缓存，确保新表数据纯净覆盖！
     function processFile(t, files) {
         if(!files || files.length === 0) return; const f = files[0]; const r = new FileReader();
         r.onload = (e) => {
             const txt = e.target.result;
             if(t==='check') { 
-                // 🚀 雷霆清空：先彻底抹除本地老数据的磁盘痕迹
                 localStorage.removeItem('csv_check');
                 localStorage.removeItem('wh_v826_check_filename');
                 dbDailyList = []; 
-                
-                // 🚀 装载新货：载入当天全新的计划单
                 parseCheck(txt); 
                 localStorage.setItem('csv_check', txt); 
                 localStorage.setItem('wh_v826_check_filename', f.name); 
@@ -336,18 +330,23 @@
         document.getElementById('locIn').value = ""; document.getElementById('s1').focus(); forceSKU = null;
     }
 
-    function render() {
-        const tbody = document.querySelector("#mainTable tbody"); tbody.innerHTML = "";
-        let realSkuTotals = {}; 
-        
+    // 独立解耦的“当前活视域流水过滤器”
+    function getFilteredActiveData() {
         let filterTimeMark = Number(localStorage.getItem("wh_screen_clear_timestamp") || "0");
-        let filteredData = data.filter(d => {
+        return data.filter(d => {
             if (d.id && d.id.startsWith("ts_")) {
                 let rowTs = parseInt(d.id.split("_")[1]) || 0;
                 return rowTs > filterTimeMark; 
             }
             return filterTimeMark === 0;
         });
+    }
+
+    function render() {
+        const tbody = document.querySelector("#mainTable tbody"); tbody.innerHTML = "";
+        let realSkuTotals = {}; 
+        
+        let filteredData = getFilteredActiveData();
 
         filteredData.forEach(d => { realSkuTotals[d._originSKU] = (realSkuTotals[d._originSKU] || 0) + d.Quantity; });
         let dailyTotals = {}; dbDailyList.forEach(d => dailyTotals[d.sku] = (dailyTotals[d.sku] || 0) + d.plan);
@@ -421,30 +420,48 @@
         sendJsonpAction({ action: "delete", id: rowId });
     }
     
+    // ⚡ 强力升级版 CSV 导出算法：完美解绑历史老数据 + 零遗漏捕捉清单外额外录入 SKU
     function exportCsv() {
         const op = document.getElementById('opName').value.trim() || "User", dateNow = new Date().toISOString().slice(0,10).replace(/-/g, "");
-        let rawSplittedRows = []; let scannedGroupsBySku = {};
+        let rawSplittedRows = []; 
+        let scannedGroupsBySku = {};
         
-        data.forEach(d => {
+        // 💡 铁律一：只抓取当前屏幕展示的活视域流水行，被清除隐藏的历史行 100% 拒绝参与导出！
+        let activeScopeData = getFilteredActiveData();
+        
+        activeScopeData.forEach(d => {
             if (!scannedGroupsBySku[d._originSKU]) scannedGroupsBySku[d._originSKU] = [];
             scannedGroupsBySku[d._originSKU].push({ fullSku: d.SKU, name: d.Name, loc: d.FullLocation, date: d.Date, qty: d.Quantity, operatorName: d.Operator || "Unknown" });
         });
 
-        let dailyGroupsBySku = {}; dbDailyList.forEach(d => { if (!dailyGroupsBySku[d.sku]) dailyGroupsBySku[d.sku] = []; dailyGroupsBySku[d.sku].push({ po: d.po, plan: d.plan }); });
+        let dailyGroupsBySku = {}; 
+        dbDailyList.forEach(d => { 
+            if (!dailyGroupsBySku[d.sku]) dailyGroupsBySku[d.sku] = []; 
+            dailyGroupsBySku[d.sku].push({ po: d.po, plan: d.plan }); 
+        });
+        
         let allSkus = new Set([...Object.keys(scannedGroupsBySku), ...Object.keys(dailyGroupsBySku)]);
 
         allSkus.forEach(skuKey => {
-            let scannedPool = scannedGroupsBySku[skuKey] || []; let dailyBills = JSON.parse(JSON.stringify(dailyGroupsBySku[skuKey] || [])); 
+            let scannedPool = scannedGroupsBySku[skuKey] || []; 
+            let dailyBills = JSON.parse(JSON.stringify(dailyGroupsBySku[skuKey] || [])); 
+            
+            // 💡 铁律二：如果是【完全不在 DAILY 清单内的额外录入 SKU】，强行赋予 PO 属性为 EXTRA_SKU，100% 保留物理记录！
             if (!dailyActive || dailyBills.length === 0) {
-                scannedPool.forEach(s => { rawSplittedRows.push({ po: "EXTRA", sku: s.fullSku, name: s.name, bsn: "", ssk: "", exp: "", qty: s.qty, loc: s.loc, date: s.date, rec: "TRUE", note: "NOT IN LIST", opUser: s.operatorName }); });
+                scannedPool.forEach(s => { 
+                    rawSplittedRows.push({ po: "EXTRA_SKU", sku: s.fullSku, name: s.name, bsn: "", ssk: "", exp: "", qty: s.qty, loc: s.loc, date: s.date, rec: "TRUE", note: "NOT IN LIST", opUser: s.operatorName }); 
+                });
                 return;
             }
 
             let billIdx = 0;
             for (let sIdx = 0; sIdx < scannedPool.length; sIdx++) {
-                let scanRow = scannedPool[sIdx]; let remScanQty = scanRow.qty; 
+                let scanRow = scannedPool[sIdx]; 
+                let remScanQty = scanRow.qty; 
                 while (remScanQty > 0 && billIdx < dailyBills.length) {
-                    let currentBill = dailyBills[billIdx]; var remBillPlan = currentBill.plan; if (remBillPlan <= 0) { billIdx++; continue; } 
+                    let currentBill = dailyBills[billIdx]; 
+                    var remBillPlan = currentBill.plan; 
+                    if (remBillPlan <= 0) { billIdx++; continue; } 
                     if (remScanQty >= remBillPlan) {
                         rawSplittedRows.push({ po: currentBill.po, sku: scanRow.fullSku, name: scanRow.name, bsn: "", ssk: "", exp: "", qty: remBillPlan, loc: scanRow.loc, date: scanRow.date, rec: "TRUE", note: "OK", opUser: scanRow.operatorName });
                         remScanQty -= remBillPlan; currentBill.plan = 0; billIdx++; 
@@ -453,8 +470,13 @@
                         currentBill.plan -= remScanQty; remScanQty = 0; 
                     }
                 }
-                if (remScanQty > 0) { rawSplittedRows.push({ po: "OVER_FLOW", sku: scanRow.fullSku, name: scanRow.name, bsn: "", ssk: "", exp: "", qty: remScanQty, loc: scanRow.loc, date: scanRow.date, rec: "TRUE", note: "OVERFLOW", opUser: scanRow.operatorName }); }
+                // 💡 铁律三：如果超出了清单额度的溢出盘点件，强行赋予 PO 属性为 OVER_FLOW，确保账目不丢！
+                if (remScanQty > 0) { 
+                    rawSplittedRows.push({ po: "OVER_FLOW", sku: scanRow.fullSku, name: scanRow.name, bsn: "", ssk: "", exp: "", qty: remScanQty, loc: scanRow.loc, date: scanRow.date, rec: "TRUE", note: "OVERFLOW", opUser: scanRow.operatorName }); 
+                }
             }
+            
+            // 对未到货的欠件进行补零记录
             while (billIdx < dailyBills.length) {
                 let currentBill = dailyBills[billIdx];
                 if (currentBill.plan > 0) {
