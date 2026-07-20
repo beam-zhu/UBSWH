@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Warehouse var.29.17 Daily Isolated Sync</title>
+    <title>Warehouse var.29.18 Matrix Combined Sync</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
     <style>
         :root { --primary: #1890ff; --success: #52c41a; --danger: #ff4d4f; --extra: #b37feb; --bg: #f5f7fa; }
@@ -62,7 +62,7 @@
 
         <div class="card">
             <div class="file-grid">
-                <div class="file-btn"><span>DAILY清单 (第一列必须 be PO)</span><input type="file" accept=".csv" onchange="processFile('check', this.files)"><span id="checkStat" class="status-tag">OPTIONAL</span></div>
+                <div class="file-btn"><span>DAILY清单 (第一列必须是PO)</span><input type="file" accept=".csv" onchange="processFile('check', this.files)"><span id="checkStat" class="status-tag">OPTIONAL</span></div>
             </div>
             <div style="display: flex; justify-content: space-between; margin-top: 8px;">
                 <button onclick="clearScreenPureHistory()" style="font-size:10px; color:#1890ff; border:1px solid #1890ff; border-radius:4px; background:none; padding:5px; font-weight:bold;">[CLEAR SCREEN] (清空屏幕历史)</button>
@@ -110,7 +110,6 @@
     const FILE2_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQBh1fAm0-5pIJyHCRVDTt_n3vYILct87elf6_dJ9KvtZ126d-LYsgVkEaGKaZmti9lvFByG5LIc1dR/pub?gid=326617304&single=true&output=csv";
     const FIXED_LOC_CLOUD_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vStLtLccpDSfrf_yU_T9WrNcZufN29BqkDsVS2r9ql1INK_61uA8UetkiW4DZ4_dv63o-DHzFz0tOAq/pub?gid=1276542862&single=true&output=csv";
     
-    // 📡 专属 Apps Script 网页应用 URL 链接
     const APP_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyuwspiWzxRItdBNEh4rXkmUnY0W914I0CApzWAYNO0GtHWaOYovGAh96usIlr43sC5rA/exec";
 
     let auditLogPool = [];
@@ -122,7 +121,6 @@
         if (audioCtx.state === 'suspended') audioCtx.resume();
     }
 
-    // 获取本地高精当天 YYYYMMDD 文本时间标记
     function getTodayDateStr() {
         const t = new Date();
         return `${t.getFullYear()}${String(t.getMonth()+1).padStart(2,'0')}${String(t.getDate()).padStart(2,'0')}`;
@@ -163,10 +161,9 @@
         const netBanner = document.getElementById('networkStat');
         let rawData = [];
         if (response && response.pool !== undefined) { rawData = response.pool; } 
-        else if (Array.isArray(response)) { rawData = response; } 
+        else if (Array.isArray(response)) { data = response; } 
         else { return; }
         
-        // 🚀 核心跨天防护：心跳在抓取时，在源头直接腰斩老数据，只留今天产生的数据进内存
         let todayStr = getTodayDateStr();
         data = rawData.filter(d => d.Date === todayStr);
         
@@ -305,7 +302,6 @@
         }
     }
 
-    // ⚡ 完美修复版：只恢复当天的历史数据备份，绝不拖泥带水
     function recoverBackup() {
         if(confirm("🔄 确认要恢复您今天录入的所有流水账目吗？\n这会解开本机的分段清屏滤镜，将属于今天的全部协同数据完好无损地拉回屏幕。")) {
             localStorage.setItem("wh_screen_clear_timestamp", "0");
@@ -440,9 +436,11 @@
         sendJsonpAction({ action: "delete", id: rowId });
     }
     
+    // ⚡ V8.29.18 终极聚合算法：强力合并相同 SKU + 相同库位 的记录
     function exportCsv() {
         const op = document.getElementById('opName').value.trim() || "User", dateNow = new Date().toISOString().slice(0,10).replace(/-/g, "");
-        let rawSplittedRows = []; let scannedGroupsBySku = {};
+        let rawSplittedRows = []; 
+        let scannedGroupsBySku = {};
         
         let activeScopeData = getFilteredActiveData();
         activeScopeData.forEach(d => {
@@ -450,21 +448,33 @@
             scannedGroupsBySku[d._originSKU].push({ fullSku: d.SKU, name: d.Name, loc: d.FullLocation, date: d.Date, qty: d.Quantity, operatorName: d.Operator || "Unknown" });
         });
 
-        let dailyGroupsBySku = {}; dbDailyList.forEach(d => { if (!dailyGroupsBySku[d.sku]) dailyGroupsBySku[d.sku] = []; dailyGroupsBySku[d.sku].push({ po: d.po, plan: d.plan }); });
+        let dailyGroupsBySku = {}; 
+        dbDailyList.forEach(d => { 
+            if (!dailyGroupsBySku[d.sku]) dailyGroupsBySku[d.sku] = []; 
+            dailyGroupsBySku[d.sku].push({ po: d.po, plan: d.plan }); 
+        });
+        
         let allSkus = new Set([...Object.keys(scannedGroupsBySku), ...Object.keys(dailyGroupsBySku)]);
 
         allSkus.forEach(skuKey => {
-            let scannedPool = scannedGroupsBySku[skuKey] || []; let dailyBills = JSON.parse(JSON.stringify(dailyGroupsBySku[skuKey] || [])); 
+            let scannedPool = scannedGroupsBySku[skuKey] || []; 
+            let dailyBills = JSON.parse(JSON.stringify(dailyGroupsBySku[skuKey] || [])); 
+            
             if (!dailyActive || dailyBills.length === 0) {
-                scannedPool.forEach(s => { rawSplittedRows.push({ po: "EXTRA_SKU", sku: s.fullSku, name: s.name, bsn: "", ssk: "", exp: "", qty: s.qty, loc: s.loc, date: s.date, rec: "TRUE", note: "NOT IN LIST", opUser: s.operatorName }); });
+                scannedPool.forEach(s => { 
+                    rawSplittedRows.push({ po: "EXTRA_SKU", sku: s.fullSku, name: s.name, bsn: "", ssk: "", exp: "", qty: s.qty, loc: s.loc, date: s.date, rec: "TRUE", note: "NOT IN LIST", opUser: s.operatorName }); 
+                });
                 return;
             }
 
             let billIdx = 0;
             for (let sIdx = 0; sIdx < scannedPool.length; sIdx++) {
-                let scanRow = scannedPool[sIdx]; let remScanQty = scanRow.qty; 
+                let scanRow = scannedPool[sIdx]; 
+                let remScanQty = scanRow.qty; 
                 while (remScanQty > 0 && billIdx < dailyBills.length) {
-                    let currentBill = dailyBills[billIdx]; var remBillPlan = currentBill.plan; if (remBillPlan <= 0) { billIdx++; continue; } 
+                    let currentBill = dailyBills[billIdx]; 
+                    var remBillPlan = currentBill.plan; 
+                    if (remBillPlan <= 0) { billIdx++; continue; } 
                     if (remScanQty >= remBillPlan) {
                         rawSplittedRows.push({ po: currentBill.po, sku: scanRow.fullSku, name: scanRow.name, bsn: "", ssk: "", exp: "", qty: remBillPlan, loc: scanRow.loc, date: scanRow.date, rec: "TRUE", note: "OK", opUser: scanRow.operatorName });
                         remScanQty -= remBillPlan; currentBill.plan = 0; billIdx++; 
@@ -473,33 +483,69 @@
                         currentBill.plan -= remScanQty; remScanQty = 0; 
                     }
                 }
-                if (remScanQty > 0) { rawSplittedRows.push({ po: "OVER_FLOW", sku: scanRow.fullSku, name: scanRow.name, bsn: "", ssk: "", exp: "", qty: remScanQty, loc: scanRow.loc, date: scanRow.date, rec: "TRUE", note: "OVERFLOW", opUser: scanRow.operatorName }); }
+                if (remScanQty > 0) { 
+                    rawSplittedRows.push({ po: "OVER_FLOW", sku: scanRow.fullSku, name: scanRow.name, bsn: "", ssk: "", exp: "", qty: remScanQty, loc: scanRow.loc, date: scanRow.date, rec: "TRUE", note: "OVERFLOW", opUser: scanRow.operatorName }); 
+                }
             }
+            
             while (billIdx < dailyBills.length) {
                 let currentBill = dailyBills[billIdx];
                 if (currentBill.plan > 0) {
                     let mInfo = dbMaster[skuKey] || { b: skuKey, c: "N/A" }; const t = new Date(); const formattedDate = `${t.getFullYear()}${String(t.getMonth()+1).padStart(2,'0')}${String(t.getDate()).padStart(2,'0')}`;
-                    rawSplittedRows.push({ po: currentBill.po, sku: mInfo.b, name: mInfo.c, bsn: "", ssk: "", exp: "", qty: 0, loc: "—", date: formattedDate, rec: "FALSE", note: (-currentBill.plan).toString(), opUser: "System" });
+                    rawSplittedRows.push({ po: currentBill.po, sku: mInfo.b, name: mInfo.c, bsn: "", ssk: "", exp: "", qty: 0, loc: "—", date: formattedDate, rec: "FALSE", note: "SHORTAGE", opUser: "System" });
                 }
                 billIdx++;
             }
         });
 
+        // 🚀 【超级聚合大变身】：重构压缩矩阵核心判定钥匙
         let compressedMap = {};
         let finalRows = [["PO","SKU","Name","BatchSerialNumber","SupplierSKU","ExpiryDate_YYYYMMDD","Quantity","Location","DateReceived_YYYYMMDD","Received","Exception_Note","Operator"]];
 
         rawSplittedRows.forEach((row) => {
-            let uniqueMatrixKey = `${row.po}##${row.sku}##${row.loc}##${row.note}##${row.opUser}`;
-            if(row.qty > 0 && compressedMap[uniqueMatrixKey]) { compressedMap[uniqueMatrixKey].qty += row.qty; } 
-            else if (row.qty > 0) { compressedMap[uniqueMatrixKey] = row; } 
-            else { finalRows.push([row.po, row.sku, row.name, row.bsn, row.ssk, row.exp, row.qty, row.loc, row.date, row.rec, row.note, row.opUser]); }
+            if (row.qty > 0) {
+                // 💡 铁律：只提取 SKU 和 库位 组成联合判定钥匙，强行将多行 PO 拆分打扁！
+                let pureCombineMatrixKey = `${row.sku.trim().toUpperCase()}##${row.loc.trim().toUpperCase()}`;
+                
+                if (compressedMap[pureCombineMatrixKey]) {
+                    // 如果存在相同SKU+库位的行，数量强力相加
+                    compressedMap[pureCombineMatrixKey].qty += row.qty;
+                    // 如果之前的行是欠件补充（System），用真人员工名字覆盖它
+                    if (compressedMap[pureCombineMatrixKey].opUser === "System" && row.opUser !== "System") {
+                        compressedMap[pureCombineMatrixKey].opUser = row.opUser;
+                    }
+                } else {
+                    // 如果是第一条，作为基础模板存入聚合池
+                    compressedMap[pureCombineMatrixKey] = {
+                        po: row.po, // 挂载匹配到的第一个PO号
+                        sku: row.sku,
+                        name: row.name,
+                        bsn: row.bsn,
+                        ssk: row.ssk,
+                        exp: row.exp,
+                        qty: row.qty,
+                        loc: row.loc,
+                        date: row.date,
+                        rec: row.rec,
+                        note: "COMBINED", // 备注打上合并印记
+                        opUser: row.opUser
+                    };
+                }
+            } else {
+                // 💡 如果是未到货的纯欠件行（数量为0），不参与合并，直接进入列表末尾生成缺货明细
+                finalRows.push([row.po, row.sku, row.name, row.bsn, row.ssk, row.exp, row.qty, row.loc, row.date, row.rec, "SHORTAGE", row.opUser]);
+            }
         });
 
-        Object.keys(compressedMap).forEach(key => { let r = compressedMap[key]; finalRows.push([r.po, r.sku, r.name, r.bsn, r.ssk, r.exp, r.qty, r.loc, r.date, r.rec, r.note, r.opUser]); });
+        // 将聚合池中完美压缩的数据压入最终生成行中
+        Object.keys(compressedMap).forEach(key => { 
+            let r = compressedMap[key]; 
+            finalRows.push([r.po, r.sku, r.name, r.bsn, r.ssk, r.exp, r.qty, r.loc, r.date, r.rec, r.note, r.opUser]); 
+        });
 
         const csvContent = Papa.unparse(finalRows);
         const csvBlob = new Blob(["\ufeff" + csvContent], { type: 'text/csv;charset=utf-8;' });
-        const csvLink = document.createElement("a"); csvLink.href = URL.createObjectURL(csvBlob); csvLink.download = `Putway_PO_Split_${op}_${dateNow}.csv`; csvLink.click();
+        const csvLink = document.createElement("a"); csvLink.href = URL.createObjectURL(csvBlob); csvLink.download = `Putway_Combined_${op}_${dateNow}.csv`; csvLink.click();
 
         let txtTitle = `==================================================\n   Warehouse Operations Audit Log (防误操追责日志) \n   当前导出操作员: [${op}]   日期: [${dateNow}] \n==================================================\n\n`;
         let txtBody = ""; if(auditLogPool.length === 0) { txtBody = "✨ 全场协同作业纯净。\n"; } else { auditLogPool.forEach((log, index) => { txtBody += `${index + 1}. ${log}\n`; }); }
