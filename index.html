@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Warehouse var.29.18 Matrix Combined Sync</title>
+    <title>Warehouse var.29.19 PO Water-Gate Splitter</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
     <style>
         :root { --primary: #1890ff; --success: #52c41a; --danger: #ff4d4f; --extra: #b37feb; --bg: #f5f7fa; }
@@ -161,7 +161,7 @@
         const netBanner = document.getElementById('networkStat');
         let rawData = [];
         if (response && response.pool !== undefined) { rawData = response.pool; } 
-        else if (Array.isArray(response)) { data = response; } 
+        else if (Array.isArray(response)) { rawData = response; } 
         else { return; }
         
         let todayStr = getTodayDateStr();
@@ -436,7 +436,7 @@
         sendJsonpAction({ action: "delete", id: rowId });
     }
     
-    // ⚡ V8.29.18 终极聚合算法：强力合并相同 SKU + 相同库位 的记录
+    // ⚡ V8.29.19 核心水闸分配与精准PO压缩引擎
     function exportCsv() {
         const op = document.getElementById('opName').value.trim() || "User", dateNow = new Date().toISOString().slice(0,10).replace(/-/g, "");
         let rawSplittedRows = []; 
@@ -471,23 +471,32 @@
             for (let sIdx = 0; sIdx < scannedPool.length; sIdx++) {
                 let scanRow = scannedPool[sIdx]; 
                 let remScanQty = scanRow.qty; 
+                
+                // 🚀 FIFO 顺序水闸：拿扫码枪录入的量依次去填满每一个 PO 订单
                 while (remScanQty > 0 && billIdx < dailyBills.length) {
                     let currentBill = dailyBills[billIdx]; 
                     var remBillPlan = currentBill.plan; 
                     if (remBillPlan <= 0) { billIdx++; continue; } 
+                    
                     if (remScanQty >= remBillPlan) {
                         rawSplittedRows.push({ po: currentBill.po, sku: scanRow.fullSku, name: scanRow.name, bsn: "", ssk: "", exp: "", qty: remBillPlan, loc: scanRow.loc, date: scanRow.date, rec: "TRUE", note: "OK", opUser: scanRow.operatorName });
-                        remScanQty -= remBillPlan; currentBill.plan = 0; billIdx++; 
+                        remScanQty -= remBillPlan; 
+                        currentBill.plan = 0; 
+                        billIdx++; 
                     } else {
                         rawSplittedRows.push({ po: currentBill.po, sku: scanRow.fullSku, name: scanRow.name, bsn: "", ssk: "", exp: "", qty: remScanQty, loc: scanRow.loc, date: scanRow.date, rec: "TRUE", note: "OK", opUser: scanRow.operatorName });
-                        currentBill.plan -= remScanQty; remScanQty = 0; 
+                        currentBill.plan -= remScanQty; 
+                        remScanQty = 0; 
                     }
                 }
+                
+                // 如果量太多溢出了，进入 OVER_FLOW 罐子
                 if (remScanQty > 0) { 
                     rawSplittedRows.push({ po: "OVER_FLOW", sku: scanRow.fullSku, name: scanRow.name, bsn: "", ssk: "", exp: "", qty: remScanQty, loc: scanRow.loc, date: scanRow.date, rec: "TRUE", note: "OVERFLOW", opUser: scanRow.operatorName }); 
                 }
             }
             
+            // 剩下的全是没有到货的欠件
             while (billIdx < dailyBills.length) {
                 let currentBill = dailyBills[billIdx];
                 if (currentBill.plan > 0) {
@@ -498,26 +507,20 @@
             }
         });
 
-        // 🚀 【超级聚合大变身】：重构压缩矩阵核心判定钥匙
+        // 🚀【PO + SKU + Location 三维精准二次合并引擎】
         let compressedMap = {};
         let finalRows = [["PO","SKU","Name","BatchSerialNumber","SupplierSKU","ExpiryDate_YYYYMMDD","Quantity","Location","DateReceived_YYYYMMDD","Received","Exception_Note","Operator"]];
 
         rawSplittedRows.forEach((row) => {
             if (row.qty > 0) {
-                // 💡 铁律：只提取 SKU 和 库位 组成联合判定钥匙，强行将多行 PO 拆分打扁！
-                let pureCombineMatrixKey = `${row.sku.trim().toUpperCase()}##${row.loc.trim().toUpperCase()}`;
+                // 💡 钥匙包含了 PO！确保 PO 之间绝对隔离，同一个 PO 内相同的 SKU 和 Location 才会被合并相加
+                let poMatrixKey = `${row.po.trim().toUpperCase()}##${row.sku.trim().toUpperCase()}##${row.loc.trim().toUpperCase()}`;
                 
-                if (compressedMap[pureCombineMatrixKey]) {
-                    // 如果存在相同SKU+库位的行，数量强力相加
-                    compressedMap[pureCombineMatrixKey].qty += row.qty;
-                    // 如果之前的行是欠件补充（System），用真人员工名字覆盖它
-                    if (compressedMap[pureCombineMatrixKey].opUser === "System" && row.opUser !== "System") {
-                        compressedMap[pureCombineMatrixKey].opUser = row.opUser;
-                    }
+                if (compressedMap[poMatrixKey]) {
+                    compressedMap[poMatrixKey].qty += row.qty;
                 } else {
-                    // 如果是第一条，作为基础模板存入聚合池
-                    compressedMap[pureCombineMatrixKey] = {
-                        po: row.po, // 挂载匹配到的第一个PO号
+                    compressedMap[poMatrixKey] = {
+                        po: row.po,
                         sku: row.sku,
                         name: row.name,
                         bsn: row.bsn,
@@ -527,17 +530,17 @@
                         loc: row.loc,
                         date: row.date,
                         rec: row.rec,
-                        note: "COMBINED", // 备注打上合并印记
+                        note: row.note,
                         opUser: row.opUser
                     };
                 }
             } else {
-                // 💡 如果是未到货的纯欠件行（数量为0），不参与合并，直接进入列表末尾生成缺货明细
+                // 欠件明细直接追加
                 finalRows.push([row.po, row.sku, row.name, row.bsn, row.ssk, row.exp, row.qty, row.loc, row.date, row.rec, "SHORTAGE", row.opUser]);
             }
         });
 
-        // 将聚合池中完美压缩的数据压入最终生成行中
+        // 将压好的精细账目放进表格
         Object.keys(compressedMap).forEach(key => { 
             let r = compressedMap[key]; 
             finalRows.push([r.po, r.sku, r.name, r.bsn, r.ssk, r.exp, r.qty, r.loc, r.date, r.rec, r.note, r.opUser]); 
@@ -545,7 +548,7 @@
 
         const csvContent = Papa.unparse(finalRows);
         const csvBlob = new Blob(["\ufeff" + csvContent], { type: 'text/csv;charset=utf-8;' });
-        const csvLink = document.createElement("a"); csvLink.href = URL.createObjectURL(csvBlob); csvLink.download = `Putway_Combined_${op}_${dateNow}.csv`; csvLink.click();
+        const csvLink = document.createElement("a"); csvLink.href = URL.createObjectURL(csvBlob); csvLink.download = `Putway_PO_Split_${op}_${dateNow}.csv`; csvLink.click();
 
         let txtTitle = `==================================================\n   Warehouse Operations Audit Log (防误操追责日志) \n   当前导出操作员: [${op}]   日期: [${dateNow}] \n==================================================\n\n`;
         let txtBody = ""; if(auditLogPool.length === 0) { txtBody = "✨ 全场协同作业纯净。\n"; } else { auditLogPool.forEach((log, index) => { txtBody += `${index + 1}. ${log}\n`; }); }
