@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Warehouse var.29.20 Master Priority Updated</title>
+    <title>Warehouse var.29.21 Dynamic Master Live Sync</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
     <style>
         :root { --primary: #1890ff; --success: #52c41a; --danger: #ff4d4f; --extra: #b37feb; --bg: #f5f7fa; }
@@ -107,7 +107,7 @@
 
 <script>
     const FILE1_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vR8x1PYnDYTCIvzG5qoq_syoxgAJ4m6FGoMJb6W9bEQ-HwUVCiJV7PGkR8o80qT7r6I_GkL4cgWguvw/pub?gid=1763823264&single=true&output=csv";
-    // 💡 目标第一优先级主库：(H列为SKU, R列为Name)
+    // 💡 第一优先级主库：(H列为SKU, R列为Name)
     const FILE2_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQBh1fAm0-5pIJyHCRVDTt_n3vYILct87elf6_dJ9KvtZ126d-LYsgVkEaGKaZmti9lvFByG5LIc1dR/pub?gid=326617304&single=true&output=csv";
     const FIXED_LOC_CLOUD_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vStLtLccpDSfrf_yU_T9WrNcZufN29BqkDsVS2r9ql1INK_61uA8UetkiW4DZ4_dv63o-DHzFz0tOAq/pub?gid=1276542862&single=true&output=csv";
     
@@ -168,6 +168,7 @@
         let todayStr = getTodayDateStr();
         data = rawData.filter(d => d.Date === todayStr);
         
+        // 🚀 每次云端流水心跳，强制用最新的 dbMaster 重新刷新一次全局内存里的 SKU 与 Name
         refreshHistoricalDataNames();
         render(); 
         
@@ -220,41 +221,40 @@
             fetch(FILE2_URL).then(res => res.text())
         ]).then(([txt1, txt2]) => {
             parseDualSKUMaster(txt1, txt2);
-            banner.innerText = "⚡ 双通道 SKU 库联合挂载就绪（已锁定第一优先主库匹配）！";
+            banner.innerText = "⚡ 双通道 SKU 动态活字典挂载完成！";
             banner.style.background = "#f6ffed"; banner.style.borderColor = "#b7eb8f"; banner.style.color = "#52c41a";
-            refreshHistoricalDataNames(); render();
         }).catch(err => { banner.innerText = "❌ 联合 SKU 库同步失败"; });
     }
 
-    // 🚀【核心修改】反转覆盖顺序：先装载 FILE1_URL，最后装载 FILE2_URL，确保 FILE2 拥有终极覆盖权（第一匹配对象）
+    // 🚀 核心逻辑升级：反向强制覆盖模式，第一主库 FILE2 拥有最高裁决权
     function parseDualSKUMaster(csv1, csv2) {
         dbMaster = {};
-        
-        // 1. 先读取备用库 FILE1 (D列->SKU, M列->Name)
         Papa.parse(csv1, { complete: (res1) => {
             res1.data.forEach((r, i) => {
                 if (i > 0 && r[3]) { 
                     let fullSku = r[3].toString().trim().toUpperCase();
-                    dbMaster[fullSku] = { b: fullSku, c: r[12] ? r[12].toString().trim() : "N/A" };
+                    let gName = r[12] ? r[12].toString().trim() : "N/A";
+                    dbMaster[fullSku] = { b: fullSku, c: gName };
                     if (fullSku.includes('~')) { 
                         let shortSku = fullSku.split('~').pop().trim();
-                        dbMaster[shortSku] = { b: fullSku, c: r[12] ? r[12].toString().trim() : "N/A" };
+                        dbMaster[shortSku] = { b: fullSku, c: gName };
                     }
                 }
             });
-            
-            // 2. 最后读取第一主库 FILE2 (H列->SKU, R列->Name)，若存在相同 SKU，会瞬间强力覆盖 FILE1！
             Papa.parse(csv2, { complete: (res2) => {
                 res2.data.forEach((r, i) => {
                     if (i > 0 && r[7]) { 
                         let fullSku = r[7].toString().trim().toUpperCase();
-                        dbMaster[fullSku] = { b: fullSku, c: r[17] ? r[17].toString().trim() : "N/A" };
+                        let gName = r[17] ? r[17].toString().trim() : "N/A";
+                        dbMaster[fullSku] = { b: fullSku, c: gName };
                         if (fullSku.includes('~')) { 
                             let shortSku = fullSku.split('~').pop().trim();
-                            dbMaster[shortSku] = { b: fullSku, c: r[17] ? r[17].toString().trim() : "N/A" };
+                            dbMaster[shortSku] = { b: fullSku, c: gName };
                         }
                     }
                 });
+                
+                // 💡 主库一旦更新完毕，立刻对全局已存在的数据做一次雷霆大清洗，瞬间刷新所有的 Name！
                 refreshHistoricalDataNames();
                 render();
             }});
@@ -274,9 +274,16 @@
         }}); 
     }
 
+    // 🚀【核心活字典算法】：无论流水原本存了什么，强行用最新的 dbMaster 字典替换掉它！
     function refreshHistoricalDataNames() {
         if (!data || data.length === 0) return;
-        data.forEach(d => { let k = d._originSKU; if (dbMaster[k]) { if (d.Name !== dbMaster[k].c) { d.Name = dbMaster[k].c; d.SKU = dbMaster[k].b; } } });
+        data.forEach(d => { 
+            let k = d._originSKU; 
+            if (dbMaster[k]) { 
+                d.Name = dbMaster[k].c; // 强行对齐最新 Name
+                d.SKU = dbMaster[k].b;  // 强行对齐最新长 SKU
+            } 
+        });
     }
 
     function processFile(t, files) {
@@ -388,7 +395,8 @@
             if(!qv || qv <= 0) { return; }
 
             let rowUniqueId = "ts_" + preciseIdTimestamp + "_" + i + "_" + Math.random().toString(36).substr(2, 4);
-            let finalLongSku = dbMaster[sv] ? dbMaster[sv].b : sv; let finalGoodsName = dbMaster[sv] ? dbMaster[sv].c : "N/A";
+            let finalLongSku = dbMaster[sv] ? dbMaster[sv].b : sv; 
+            let finalGoodsName = dbMaster[sv] ? dbMaster[sv].c : "N/A";
 
             batchRowsForGAS.push([rowUniqueId, sv, finalLongSku, finalGoodsName, qv, finalCorrectLocation, "Patiki Warehouse: " + finalCorrectLocation, todayStr, op]);
             temporaryLocalBatch.push({ id: rowUniqueId, _originSKU: sv, SKU: finalLongSku, Name: finalGoodsName, Quantity: qv, Location: finalCorrectLocation, FullLocation: "Patiki Warehouse: " + finalCorrectLocation, Date: todayStr, Operator: op });
@@ -442,11 +450,15 @@
         sendJsonpAction({ action: "delete", id: rowId });
     }
     
+    // ⚡ V8.29.21 活字典导出版：导出前再次强行从最新的 dbMaster 主库中提取最新 Name 填补
     function exportCsv() {
         const op = document.getElementById('opName').value.trim() || "User", dateNow = new Date().toISOString().slice(0,10).replace(/-/g, "");
         let rawSplittedRows = []; 
         let scannedGroupsBySku = {};
         
+        // 🚀 导出第一毫秒：再次全量洗牌更新全局数据的 Name，确保无一遗漏
+        refreshHistoricalDataNames();
+
         let activeScopeData = getFilteredActiveData();
         activeScopeData.forEach(d => {
             if (!scannedGroupsBySku[d._originSKU]) scannedGroupsBySku[d._originSKU] = [];
@@ -465,9 +477,12 @@
             let scannedPool = scannedGroupsBySku[skuKey] || []; 
             let dailyBills = JSON.parse(JSON.stringify(dailyGroupsBySku[skuKey] || [])); 
             
+            // 获取最新 Name（哪怕数据是半天前录入的）
+            let latestMasterInfo = dbMaster[skuKey] || { b: skuKey, c: "N/A" };
+
             if (!dailyActive || dailyBills.length === 0) {
                 scannedPool.forEach(s => { 
-                    rawSplittedRows.push({ po: "EXTRA_SKU", sku: s.fullSku, name: s.name, bsn: "", ssk: "", exp: "", qty: s.qty, loc: s.loc, date: s.date, rec: "TRUE", note: "NOT IN LIST", opUser: s.operatorName }); 
+                    rawSplittedRows.push({ po: "EXTRA_SKU", sku: latestMasterInfo.b, name: latestMasterInfo.c, bsn: "", ssk: "", exp: "", qty: s.qty, loc: s.loc, date: s.date, rec: "TRUE", note: "NOT IN LIST", opUser: s.operatorName }); 
                 });
                 return;
             }
@@ -483,27 +498,27 @@
                     if (remBillPlan <= 0) { billIdx++; continue; } 
                     
                     if (remScanQty >= remBillPlan) {
-                        rawSplittedRows.push({ po: currentBill.po, sku: scanRow.fullSku, name: scanRow.name, bsn: "", ssk: "", exp: "", qty: remBillPlan, loc: scanRow.loc, date: scanRow.date, rec: "TRUE", note: "OK", opUser: scanRow.operatorName });
+                        rawSplittedRows.push({ po: currentBill.po, sku: latestMasterInfo.b, name: latestMasterInfo.c, bsn: "", ssk: "", exp: "", qty: remBillPlan, loc: scanRow.loc, date: scanRow.date, rec: "TRUE", note: "OK", opUser: scanRow.operatorName });
                         remScanQty -= remBillPlan; 
                         currentBill.plan = 0; 
                         billIdx++; 
                     } else {
-                        rawSplittedRows.push({ po: currentBill.po, sku: scanRow.fullSku, name: scanRow.name, bsn: "", ssk: "", exp: "", qty: remScanQty, loc: scanRow.loc, date: scanRow.date, rec: "TRUE", note: "OK", opUser: scanRow.operatorName });
+                        rawSplittedRows.push({ po: currentBill.po, sku: latestMasterInfo.b, name: latestMasterInfo.c, bsn: "", ssk: "", exp: "", qty: remScanQty, loc: scanRow.loc, date: scanRow.date, rec: "TRUE", note: "OK", opUser: scanRow.operatorName });
                         currentBill.plan -= remScanQty; 
                         remScanQty = 0; 
                     }
                 }
                 
                 if (remScanQty > 0) { 
-                    rawSplittedRows.push({ po: "OVER_FLOW", sku: scanRow.fullSku, name: scanRow.name, bsn: "", ssk: "", exp: "", qty: remScanQty, loc: scanRow.loc, date: scanRow.date, rec: "TRUE", note: "OVERFLOW", opUser: scanRow.operatorName }); 
+                    rawSplittedRows.push({ po: "OVER_FLOW", sku: latestMasterInfo.b, name: latestMasterInfo.c, bsn: "", ssk: "", exp: "", qty: remScanQty, loc: scanRow.loc, date: scanRow.date, rec: "TRUE", note: "OVERFLOW", opUser: scanRow.operatorName }); 
                 }
             }
             
             while (billIdx < dailyBills.length) {
                 let currentBill = dailyBills[billIdx];
                 if (currentBill.plan > 0) {
-                    let mInfo = dbMaster[skuKey] || { b: skuKey, c: "N/A" }; const t = new Date(); const formattedDate = `${t.getFullYear()}${String(t.getMonth()+1).padStart(2,'0')}${String(t.getDate()).padStart(2,'0')}`;
-                    rawSplittedRows.push({ po: currentBill.po, sku: mInfo.b, name: mInfo.c, bsn: "", ssk: "", exp: "", qty: 0, loc: "—", date: formattedDate, rec: "FALSE", note: "SHORTAGE", opUser: "System" });
+                    const t = new Date(); const formattedDate = `${t.getFullYear()}${String(t.getMonth()+1).padStart(2,'0')}${String(t.getDate()).padStart(2,'0')}`;
+                    rawSplittedRows.push({ po: currentBill.po, sku: latestMasterInfo.b, name: latestMasterInfo.c, bsn: "", ssk: "", exp: "", qty: 0, loc: "—", date: formattedDate, rec: "FALSE", note: "SHORTAGE", opUser: "System" });
                 }
                 billIdx++;
             }
