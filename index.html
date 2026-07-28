@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Warehouse var.29.19 PO Water-Gate Splitter</title>
+    <title>Warehouse var.29.20 Master Priority Updated</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
     <style>
         :root { --primary: #1890ff; --success: #52c41a; --danger: #ff4d4f; --extra: #b37feb; --bg: #f5f7fa; }
@@ -107,6 +107,7 @@
 
 <script>
     const FILE1_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vR8x1PYnDYTCIvzG5qoq_syoxgAJ4m6FGoMJb6W9bEQ-HwUVCiJV7PGkR8o80qT7r6I_GkL4cgWguvw/pub?gid=1763823264&single=true&output=csv";
+    // 💡 目标第一优先级主库：(H列为SKU, R列为Name)
     const FILE2_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQBh1fAm0-5pIJyHCRVDTt_n3vYILct87elf6_dJ9KvtZ126d-LYsgVkEaGKaZmti9lvFByG5LIc1dR/pub?gid=326617304&single=true&output=csv";
     const FIXED_LOC_CLOUD_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vStLtLccpDSfrf_yU_T9WrNcZufN29BqkDsVS2r9ql1INK_61uA8UetkiW4DZ4_dv63o-DHzFz0tOAq/pub?gid=1276542862&single=true&output=csv";
     
@@ -219,33 +220,38 @@
             fetch(FILE2_URL).then(res => res.text())
         ]).then(([txt1, txt2]) => {
             parseDualSKUMaster(txt1, txt2);
-            banner.innerText = "⚡ 双通道 SKU 库联合挂载就绪，全字全量匹配中！";
+            banner.innerText = "⚡ 双通道 SKU 库联合挂载就绪（已锁定第一优先主库匹配）！";
             banner.style.background = "#f6ffed"; banner.style.borderColor = "#b7eb8f"; banner.style.color = "#52c41a";
             refreshHistoricalDataNames(); render();
         }).catch(err => { banner.innerText = "❌ 联合 SKU 库同步失败"; });
     }
 
+    // 🚀【核心修改】反转覆盖顺序：先装载 FILE1_URL，最后装载 FILE2_URL，确保 FILE2 拥有终极覆盖权（第一匹配对象）
     function parseDualSKUMaster(csv1, csv2) {
         dbMaster = {};
-        Papa.parse(csv2, { complete: (res) => {
-            res.data.forEach((r, i) => {
-                if (i > 0 && r[7]) { 
-                    let fullSku = r[7].toString().trim().toUpperCase();
-                    dbMaster[fullSku] = { b: fullSku, c: r[17] ? r[17].toString().trim() : "N/A" };
+        
+        // 1. 先读取备用库 FILE1 (D列->SKU, M列->Name)
+        Papa.parse(csv1, { complete: (res1) => {
+            res1.data.forEach((r, i) => {
+                if (i > 0 && r[3]) { 
+                    let fullSku = r[3].toString().trim().toUpperCase();
+                    dbMaster[fullSku] = { b: fullSku, c: r[12] ? r[12].toString().trim() : "N/A" };
                     if (fullSku.includes('~')) { 
                         let shortSku = fullSku.split('~').pop().trim();
-                        dbMaster[shortSku] = { b: fullSku, c: r[17] ? r[17].toString().trim() : "N/A" };
+                        dbMaster[shortSku] = { b: fullSku, c: r[12] ? r[12].toString().trim() : "N/A" };
                     }
                 }
             });
-            Papa.parse(csv1, { complete: (res1) => {
-                res1.data.forEach((r, i) => {
-                    if (i > 0 && r[3]) { 
-                        let fullSku = r[3].toString().trim().toUpperCase();
-                        dbMaster[fullSku] = { b: fullSku, c: r[12] ? r[12].toString().trim() : "N/A" };
+            
+            // 2. 最后读取第一主库 FILE2 (H列->SKU, R列->Name)，若存在相同 SKU，会瞬间强力覆盖 FILE1！
+            Papa.parse(csv2, { complete: (res2) => {
+                res2.data.forEach((r, i) => {
+                    if (i > 0 && r[7]) { 
+                        let fullSku = r[7].toString().trim().toUpperCase();
+                        dbMaster[fullSku] = { b: fullSku, c: r[17] ? r[17].toString().trim() : "N/A" };
                         if (fullSku.includes('~')) { 
                             let shortSku = fullSku.split('~').pop().trim();
-                            dbMaster[shortSku] = { b: fullSku, c: r[12] ? r[12].toString().trim() : "N/A" };
+                            dbMaster[shortSku] = { b: fullSku, c: r[17] ? r[17].toString().trim() : "N/A" };
                         }
                     }
                 });
@@ -436,7 +442,6 @@
         sendJsonpAction({ action: "delete", id: rowId });
     }
     
-    // ⚡ V8.29.19 核心水闸分配与精准PO压缩引擎
     function exportCsv() {
         const op = document.getElementById('opName').value.trim() || "User", dateNow = new Date().toISOString().slice(0,10).replace(/-/g, "");
         let rawSplittedRows = []; 
@@ -472,7 +477,6 @@
                 let scanRow = scannedPool[sIdx]; 
                 let remScanQty = scanRow.qty; 
                 
-                // 🚀 FIFO 顺序水闸：拿扫码枪录入的量依次去填满每一个 PO 订单
                 while (remScanQty > 0 && billIdx < dailyBills.length) {
                     let currentBill = dailyBills[billIdx]; 
                     var remBillPlan = currentBill.plan; 
@@ -490,13 +494,11 @@
                     }
                 }
                 
-                // 如果量太多溢出了，进入 OVER_FLOW 罐子
                 if (remScanQty > 0) { 
                     rawSplittedRows.push({ po: "OVER_FLOW", sku: scanRow.fullSku, name: scanRow.name, bsn: "", ssk: "", exp: "", qty: remScanQty, loc: scanRow.loc, date: scanRow.date, rec: "TRUE", note: "OVERFLOW", opUser: scanRow.operatorName }); 
                 }
             }
             
-            // 剩下的全是没有到货的欠件
             while (billIdx < dailyBills.length) {
                 let currentBill = dailyBills[billIdx];
                 if (currentBill.plan > 0) {
@@ -507,13 +509,11 @@
             }
         });
 
-        // 🚀【PO + SKU + Location 三维精准二次合并引擎】
         let compressedMap = {};
         let finalRows = [["PO","SKU","Name","BatchSerialNumber","SupplierSKU","ExpiryDate_YYYYMMDD","Quantity","Location","DateReceived_YYYYMMDD","Received","Exception_Note","Operator"]];
 
         rawSplittedRows.forEach((row) => {
             if (row.qty > 0) {
-                // 💡 钥匙包含了 PO！确保 PO 之间绝对隔离，同一个 PO 内相同的 SKU 和 Location 才会被合并相加
                 let poMatrixKey = `${row.po.trim().toUpperCase()}##${row.sku.trim().toUpperCase()}##${row.loc.trim().toUpperCase()}`;
                 
                 if (compressedMap[poMatrixKey]) {
@@ -535,12 +535,10 @@
                     };
                 }
             } else {
-                // 欠件明细直接追加
                 finalRows.push([row.po, row.sku, row.name, row.bsn, row.ssk, row.exp, row.qty, row.loc, row.date, row.rec, "SHORTAGE", row.opUser]);
             }
         });
 
-        // 将压好的精细账目放进表格
         Object.keys(compressedMap).forEach(key => { 
             let r = compressedMap[key]; 
             finalRows.push([r.po, r.sku, r.name, r.bsn, r.ssk, r.exp, r.qty, r.loc, r.date, r.rec, r.note, r.opUser]); 
