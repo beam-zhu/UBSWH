@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Warehouse var.29.21 Dynamic Master Live Sync</title>
+    <title>Warehouse var.29.22 Ultra Smooth Sync</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
     <style>
         :root { --primary: #1890ff; --success: #52c41a; --danger: #ff4d4f; --extra: #b37feb; --bg: #f5f7fa; }
@@ -71,16 +71,17 @@
         </div>
 
         <div class="card">
-            <input type="text" id="opName" placeholder="Operator Name (开工必填)" onchange="saveLocalNameOnly()">
+            <!-- 🚀 禁用手机端联想、拼写检查和自动大写，大幅释放手机键盘渲染资源 -->
+            <input type="text" id="opName" placeholder="Operator Name (开工必填)" onchange="saveLocalNameOnly()" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
             <div id="batchContainer">
-                <div class="sku-row"><input type="text" id="s1" placeholder="SKU 1" inputmode="decimal"><input type="tel" id="q1" placeholder="Qty"></div>
-                <div class="sku-row"><input type="text" id="s2" placeholder="SKU 2" inputmode="decimal"><input type="tel" id="q2" placeholder="Qty"></div>
-                <div class="sku-row"><input type="text" id="s3" placeholder="SKU 3" inputmode="decimal"><input type="tel" id="q3" placeholder="Qty"></div>
-                <div class="sku-row"><input type="text" id="s4" placeholder="SKU 4" inputmode="decimal"><input type="tel" id="q4" placeholder="Qty"></div>
-                <div class="sku-row"><input type="text" id="s5" placeholder="SKU 5" inputmode="decimal"><input type="tel" id="q5" placeholder="Qty"></div>
-                <div class="sku-row"><input type="text" id="s6" placeholder="SKU 6" inputmode="decimal"><input type="tel" id="q6" placeholder="Qty"></div>
+                <div class="sku-row"><input type="text" id="s1" placeholder="SKU 1" inputmode="decimal" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"><input type="tel" id="q1" placeholder="Qty" autocomplete="off"></div>
+                <div class="sku-row"><input type="text" id="s2" placeholder="SKU 2" inputmode="decimal" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"><input type="tel" id="q2" placeholder="Qty" autocomplete="off"></div>
+                <div class="sku-row"><input type="text" id="s3" placeholder="SKU 3" inputmode="decimal" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"><input type="tel" id="q3" placeholder="Qty" autocomplete="off"></div>
+                <div class="sku-row"><input type="text" id="s4" placeholder="SKU 4" inputmode="decimal" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"><input type="tel" id="q4" placeholder="Qty" autocomplete="off"></div>
+                <div class="sku-row"><input type="text" id="s5" placeholder="SKU 5" inputmode="decimal" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"><input type="tel" id="q5" placeholder="Qty" autocomplete="off"></div>
+                <div class="sku-row"><input type="text" id="s6" placeholder="SKU 6" inputmode="decimal" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"><input type="tel" id="q6" placeholder="Qty" autocomplete="off"></div>
             </div>
-            <input type="text" id="locIn" list="locList" class="loc-input" placeholder="SCAN LOCATION (LOC)">
+            <input type="text" id="locIn" list="locList" class="loc-input" placeholder="SCAN LOCATION (LOC)" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
             <datalist id="locList"></datalist>
             <button class="btn btn-save" id="saveBtn" onclick="addBatch()">SAVE ALL</button>
         </div>
@@ -107,7 +108,6 @@
 
 <script>
     const FILE1_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vR8x1PYnDYTCIvzG5qoq_syoxgAJ4m6FGoMJb6W9bEQ-HwUVCiJV7PGkR8o80qT7r6I_GkL4cgWguvw/pub?gid=1763823264&single=true&output=csv";
-    // 💡 第一优先级主库：(H列为SKU, R列为Name)
     const FILE2_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQBh1fAm0-5pIJyHCRVDTt_n3vYILct87elf6_dJ9KvtZ126d-LYsgVkEaGKaZmti9lvFByG5LIc1dR/pub?gid=326617304&single=true&output=csv";
     const FIXED_LOC_CLOUD_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vStLtLccpDSfrf_yU_T9WrNcZufN29BqkDsVS2r9ql1INK_61uA8UetkiW4DZ4_dv63o-DHzFz0tOAq/pub?gid=1276542862&single=true&output=csv";
     
@@ -116,6 +116,9 @@
     let auditLogPool = [];
     let dbMaster = {}, dbDailyList = [], setLoc = new Set(), dbLocMap = {}, data = [];
     let dailyActive = false, audioCtx = null, forceSKU = null;
+    
+    // 💡 状态标记：记录用户当前是否正在输入框打字/操作
+    let isUserTyping = false;
 
     function unlockAudio() {
         if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -141,8 +144,27 @@
         
         const cC = localStorage.getItem('csv_check'), savedFileName = localStorage.getItem('wh_v826_check_filename');
         if(cC) { parseCheck(cC); updateCheckStatTag(savedFileName || "READY"); }
+        
         setupEnterKey();
+        setupFocusListeners(); // 🚀 绑定全屏输入防护引擎
     };
+
+    // 🚀【防打扰高流畅算法】：当工人聚焦输入框时，自动屏蔽心跳渲染，打字完成后恢复
+    function setupFocusListeners() {
+        const inputs = document.querySelectorAll('input');
+        inputs.forEach(input => {
+            input.addEventListener('focus', () => { isUserTyping = true; });
+            input.addEventListener('blur', () => { 
+                // 延迟 300 毫秒恢复，避免焦点在不同输入框间快速切换时的卡顿
+                setTimeout(() => {
+                    const activeElement = document.activeElement;
+                    if (!activeElement || activeElement.tagName !== 'INPUT') {
+                        isUserTyping = false;
+                    }
+                }, 300);
+            });
+        });
+    }
 
     function fetchLocalTimeFormatted() {
         const t = new Date();
@@ -168,9 +190,12 @@
         let todayStr = getTodayDateStr();
         data = rawData.filter(d => d.Date === todayStr);
         
-        // 🚀 每次云端流水心跳，强制用最新的 dbMaster 重新刷新一次全局内存里的 SKU 与 Name
         refreshHistoricalDataNames();
-        render(); 
+        
+        // 🚀 防卡顿核心逻辑：如果工人正在打字，静默接收数据，不触发重绘；打字结束后再重绘！
+        if (!isUserTyping) {
+            requestAnimationFrame(() => { render(); });
+        }
         
         netBanner.innerText = `📡 多端联网在线中 (今日已聚合流水: ${data.length} 条)`;
         netBanner.style.background = "#f6ffed"; netBanner.style.borderColor = "#b7eb8f"; netBanner.style.color = "#52c41a";
@@ -197,6 +222,9 @@
         setLoc.clear(); dbLocMap = {}; const dl = document.getElementById('locList'); dl.innerHTML = "";
         let items = text.split(/[ \t]*[\n\r,;]+[ \t]*/); let validCount = 0;
         const blackList = ["LOCATION", "库位", "SKU", "QUANTITY", "数量", "NAME", "名称", "表头", "A", "B", "C", "U"];
+        
+        // 创建文档碎片（DocumentFragment）一次性插入，避免多次触发重排
+        const fragment = document.createDocumentFragment();
         items.forEach(item => {
             let rawV = item.trim(); let upperV = rawV.toUpperCase();
             if (rawV && rawV.length >= 2 && !blackList.includes(upperV)) { 
@@ -204,11 +232,13 @@
                     setLoc.add(upperV); dbLocMap[upperV] = rawV; 
                     let o = document.createElement('option'); 
                     o.setAttribute('value', rawV); 
-                    dl.appendChild(o); 
+                    fragment.appendChild(o); 
                     validCount++; 
                 }
             }
         });
+        dl.appendChild(fragment);
+
         const banner = document.getElementById('locCloudStat');
         if (isOfflineCache) { banner.innerText = `📦 本地内置库位就绪 (已锁死: ${validCount} 个库位联想)`; } 
         else { banner.innerText = `⚡ 公司库位表 (A-U列) 同步成功！(已刷新: ${validCount} 个)`; banner.style.background = "#f6ffed"; banner.style.borderColor = "#b7eb8f"; banner.style.color = "#52c41a"; }
@@ -226,7 +256,6 @@
         }).catch(err => { banner.innerText = "❌ 联合 SKU 库同步失败"; });
     }
 
-    // 🚀 核心逻辑升级：反向强制覆盖模式，第一主库 FILE2 拥有最高裁决权
     function parseDualSKUMaster(csv1, csv2) {
         dbMaster = {};
         Papa.parse(csv1, { complete: (res1) => {
@@ -253,10 +282,8 @@
                         }
                     }
                 });
-                
-                // 💡 主库一旦更新完毕，立刻对全局已存在的数据做一次雷霆大清洗，瞬间刷新所有的 Name！
                 refreshHistoricalDataNames();
-                render();
+                if (!isUserTyping) render();
             }});
         }});
     }
@@ -270,18 +297,17 @@
                     if(q > 0) { dbDailyList.push({ po: p, sku: k, plan: q, idx: i }); dailyActive = true; }
                 } 
             }); 
-            render();
+            if (!isUserTyping) render();
         }}); 
     }
 
-    // 🚀【核心活字典算法】：无论流水原本存了什么，强行用最新的 dbMaster 字典替换掉它！
     function refreshHistoricalDataNames() {
         if (!data || data.length === 0) return;
         data.forEach(d => { 
             let k = d._originSKU; 
             if (dbMaster[k]) { 
-                d.Name = dbMaster[k].c; // 强行对齐最新 Name
-                d.SKU = dbMaster[k].b;  // 强行对齐最新长 SKU
+                d.Name = dbMaster[k].c; 
+                d.SKU = dbMaster[k].b; 
             } 
         });
     }
@@ -334,10 +360,11 @@
         });
     }
 
+    // 🚀【高效 DOM 渲染引擎】：优化构建过程，减少重排与画面卡顿
     function render() {
-        const tbody = document.querySelector("#mainTable tbody"); tbody.innerHTML = "";
-        let realSkuTotals = {}; 
+        const tbody = document.querySelector("#mainTable tbody");
         
+        let realSkuTotals = {}; 
         let filteredData = getFilteredActiveData();
 
         filteredData.forEach(d => { realSkuTotals[d._originSKU] = (realSkuTotals[d._originSKU] || 0) + d.Quantity; });
@@ -364,14 +391,20 @@
         }
 
         allDisplayRows.sort((a, b) => { if (a.hasInput !== b.hasInput) return b.hasInput - a.hasInput; if (a.isException !== b.isException) return b.isException - a.isException; if (!a.hasInput) return a.orderWeight - b.orderWeight; return a.displaySKU.localeCompare(b.displaySKU); });
+        
+        // 使用 DocumentFragment 一次性渲染，消除手机端逐行渲染的卡顿感
+        const fragment = document.createDocumentFragment();
         allDisplayRows.forEach(item => {
             let tr = document.createElement('tr'); tr.className = item.rowClass; tr.classList.add(item.hasInput ? "status-active" : "status-pending");
             let qtyCellHtml = item.hasInput ? `<input type="number" class="edit-input" value="${item.quantity}" onchange="updateNetworkRowQty('${item.id}', this.value, ${item.quantity})">` : `<span style="font-size:13px;">0</span> <span style="font-size:10px;color:#aaa;">(Plan:${item.diffText * -1})</span>`;
             let delCellHtml = item.hasInput ? `<button class="del-btn" onclick="deleteNetworkRow(event, '${item.id}')">×</button>` : "—";
             
             tr.innerHTML = `<td class="td-sku">${item.displaySKU}</td><td class="td-loc">${item.location}</td><td>${qtyCellHtml}</td><td style="font-weight:bold; font-size:11px;">${item.diffText}</td><td>${delCellHtml}</td>`;
-            tbody.appendChild(tr);
+            fragment.appendChild(tr);
         });
+
+        tbody.innerHTML = "";
+        tbody.appendChild(fragment);
     }
 
     function addBatch() {
@@ -450,13 +483,11 @@
         sendJsonpAction({ action: "delete", id: rowId });
     }
     
-    // ⚡ V8.29.21 活字典导出版：导出前再次强行从最新的 dbMaster 主库中提取最新 Name 填补
     function exportCsv() {
         const op = document.getElementById('opName').value.trim() || "User", dateNow = new Date().toISOString().slice(0,10).replace(/-/g, "");
         let rawSplittedRows = []; 
         let scannedGroupsBySku = {};
         
-        // 🚀 导出第一毫秒：再次全量洗牌更新全局数据的 Name，确保无一遗漏
         refreshHistoricalDataNames();
 
         let activeScopeData = getFilteredActiveData();
@@ -477,7 +508,6 @@
             let scannedPool = scannedGroupsBySku[skuKey] || []; 
             let dailyBills = JSON.parse(JSON.stringify(dailyGroupsBySku[skuKey] || [])); 
             
-            // 获取最新 Name（哪怕数据是半天前录入的）
             let latestMasterInfo = dbMaster[skuKey] || { b: skuKey, c: "N/A" };
 
             if (!dailyActive || dailyBills.length === 0) {
