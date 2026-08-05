@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Warehouse var.29.27 Sheet Switch Anti-Cache Fixed</title>
+    <title>Warehouse var.29.28 Precise Sheet Switcher</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
     <style>
         :root { --primary: #1890ff; --success: #52c41a; --danger: #ff4d4f; --extra: #b37feb; --bg: #f5f7fa; }
@@ -118,7 +118,7 @@
     const FILE2_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQBh1fAm0-5pIJyHCRVDTt_n3vYILct87elf6_dJ9KvtZ126d-LYsgVkEaGKaZmti9lvFByG5LIc1dR/pub?gid=326617304&single=true&output=csv";
     const FIXED_LOC_CLOUD_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vStLtLccpDSfrf_yU_T9WrNcZufN29BqkDsVS2r9ql1INK_61uA8UetkiW4DZ4_dv63o-DHzFz0tOAq/pub?gid=1276542862&single=true&output=csv";
     
-    const DAILY_DOC_ID = "2PACX-1vQC1FvVsk_0dObuH7lAGn5pmNch9UfqUV9BzrmFezpeux6K714a-DhOLwQYfzHmae-o5LdVo0olxere";
+    // ⚡ 专属直连后端 API 链接
     const GET_TABS_API_URL = "https://script.google.com/macros/s/AKfycbyQT2pvRXzyy02dYzvBEITy4AIJA_TTv130JkIvzQIl-FI6e1lJNOrme4wRqxJFTBmvOA/exec";
     const APP_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyuwspiWzxRItdBNEh4rXkmUnY0W914I0CApzWAYNO0GtHWaOYovGAh96usIlr43sC5rA/exec";
 
@@ -172,9 +172,8 @@
     }
 
     function fetchContainerSheetTabs() {
-        const banner = document.getElementById('dailyCloudStat');
         var script = document.createElement("script");
-        script.src = GET_TABS_API_URL + "?callback=tabsApiCallback&t=" + Date.now();
+        script.src = GET_TABS_API_URL + "?action=getTabs&callback=tabsApiCallback&t=" + Date.now();
         script.id = "jsonp_tabs_script";
         var oldScript = document.getElementById("jsonp_tabs_script");
         if(oldScript) oldScript.parentNode.removeChild(oldScript);
@@ -223,46 +222,40 @@
         dailyActive = false;
         
         const banner = document.getElementById('dailyCloudStat');
-        banner.innerText = `🔄 正在穿透 CDN 抓取柜号 [${sheetName}] 数据中...`;
+        banner.innerText = `🔄 正在穿透读取柜号 [${sheetName}] 专属数据中...`;
         
         render();
         loadDataBySheetName(sheetName);
     }
 
-    // 🚀【彻底破除 CDN 强缓存的全新抓取引擎】
+    // 🚀【JSONP API 精准秒拉特定柜号内页数据】
     function loadDataBySheetName(sheetName) {
         if (!sheetName) return;
-        const banner = document.getElementById('dailyCloudStat');
         
-        // 💡 加入强破缓存标记 &nocache= + 动态时间戳，强制谷歌服务器拉取最新页面数据
-        let sheetCsvUrl = `https://docs.google.com/spreadsheets/d/e/${DAILY_DOC_ID}/pub?sheet=${encodeURIComponent(sheetName)}&output=csv&nocache=${Date.now()}`;
-        
-        fetch(sheetCsvUrl, { cache: "no-store" })
-        .then(res => res.text())
-        .then(csvTxt => {
-            Papa.parse(csvTxt, { complete: (res) => {
-                dbDailyList = [];
-                dailyActive = false;
-                
-                res.data.forEach((r, i) => {
-                    if (i > 0 && r[1]) {
-                        let p = r[0] ? r[0].toString().trim() : "N/A";
-                        let k = r[1].trim().toUpperCase();
-                        let q = parseFloat(r[2]) || 0;
-                        if (q > 0) {
-                            dbDailyList.push({ po: p, sku: k, plan: q, idx: i });
-                            dailyActive = true;
-                        }
-                    }
-                });
-                
-                banner.innerText = `⚡ 柜号 [${sheetName}] 挂载成功 (共 ${dbDailyList.length} 项计划项)`;
-                render();
-            }});
-        }).catch(err => {
-            banner.innerText = `❌ 柜号 [${sheetName}] 抓取失败，请确认发布状态`;
-        });
+        var script = document.createElement("script");
+        script.src = GET_TABS_API_URL + "?sheet=" + encodeURIComponent(sheetName) + "&callback=sheetDataCallback&t=" + Date.now();
+        script.id = "jsonp_sheet_data_script";
+        var oldScript = document.getElementById("jsonp_sheet_data_script");
+        if(oldScript) oldScript.parentNode.removeChild(oldScript);
+        document.getElementsByTagName("head")[0].appendChild(script);
     }
+
+    window.sheetDataCallback = function(response) {
+        const banner = document.getElementById('dailyCloudStat');
+        dbDailyList = [];
+        dailyActive = false;
+        
+        if (response && response.rows && Array.isArray(response.rows)) {
+            response.rows.forEach((r, i) => {
+                dbDailyList.push({ po: r.po, sku: r.sku, plan: r.plan, idx: i });
+                dailyActive = true;
+            });
+            banner.innerText = `⚡ 柜号 [${response.sheetName}] 挂载成功 (精准载入 ${dbDailyList.length} 项计划项)`;
+        } else {
+            banner.innerText = `⚠️ 当前柜号未包含有效比对数据`;
+        }
+        render();
+    };
 
     function fetchLocalTimeFormatted() {
         const t = new Date();
