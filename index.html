@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Warehouse var.29.23 Cloud Daily Sync</title>
+    <title>Warehouse var.29.24 Multi-Sheet Container Sync</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
     <style>
         :root { --primary: #1890ff; --success: #52c41a; --danger: #ff4d4f; --extra: #b37feb; --bg: #f5f7fa; }
@@ -24,10 +24,10 @@
         .loc-input { height: 54px; font-size: 22px; border: 2px solid var(--primary); background: #fffbe6; color: #d46b08; }
         .sku-row { display: grid; grid-template-columns: 3fr 1.2fr; gap: 8px; margin-bottom: 4px; }
         
-        /* 🚀 云端清单下拉选择框专有样式 */
+        /* 🚀 柜号标签页选择框专有样式 */
         .select-daily-box {
-            height: 46px; font-size: 14px; font-weight: bold; color: #1890ff;
-            background: #e6f7ff; border: 1px solid #91d5ff; border-radius: 8px;
+            height: 46px; font-size: 15px; font-weight: bold; color: #1890ff;
+            background: #e6f7ff; border: 2px solid #91d5ff; border-radius: 8px;
             cursor: pointer; text-align: center;
         }
 
@@ -64,13 +64,13 @@
     <div class="panel-right">
         <div class="cloud-banner cb-sku" id="cloudStat">☁️ 联动双主库安全引擎正在连接...</div>
         <div class="cloud-banner cb-loc" id="locCloudStat">☁️ 公司库位表 (A-U列) 正在连接...</div>
-        <div class="cloud-banner cb-daily" id="dailyCloudStat">☁️ 云端 DAILY 计划表同步中...</div>
+        <div class="cloud-banner cb-daily" id="dailyCloudStat">☁️ 正在扫描云端柜号 Sheet 列表...</div>
         <div class="cloud-banner cb-sync" id="networkStat">📡 多端联网对齐中...</div>
 
         <div class="card">
-            <!-- 🚀 替换为云端多清单下拉选择框 -->
-            <select id="dailyPoSelector" class="select-daily-box" onchange="onPoSelectorChange(this.value)">
-                <option value="ALL">📋 DAILY 清单: 正在从云端加载批次...</option>
+            <!-- 🚀 按柜号 Sheet 标签页切换的下拉菜单 -->
+            <select id="sheetContainerSelector" class="select-daily-box" onchange="onContainerSheetChange(this.value)">
+                <option value="">🚢 正在自动感知云端柜号列表...</option>
             </select>
 
             <div style="display: flex; justify-content: space-between; margin-top: 8px;">
@@ -119,16 +119,16 @@
     const FILE2_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQBh1fAm0-5pIJyHCRVDTt_n3vYILct87elf6_dJ9KvtZ126d-LYsgVkEaGKaZmti9lvFByG5LIc1dR/pub?gid=326617304&single=true&output=csv";
     const FIXED_LOC_CLOUD_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vStLtLccpDSfrf_yU_T9WrNcZufN29BqkDsVS2r9ql1INK_61uA8UetkiW4DZ4_dv63o-DHzFz0tOAq/pub?gid=1276542862&single=true&output=csv";
     
-    // 🌐 专属云端 DAILY 计划表链接 (Col1: PO, Col2: SKU, Col3: QTY)
-    const CLOUD_DAILY_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQC1FvVsk_0dObuH7lAGn5pmNch9UfqUV9BzrmFezpeux6K714a-DhOLwQYfzHmae-o5LdVo0olxere/pub?output=csv";
+    // 🌐 DAILY Google Sheet 的文档 ID
+    const DAILY_DOC_ID = "2PACX-1vQC1FvVsk_0dObuH7lAGn5pmNch9UfqUV9BzrmFezpeux6K714a-DhOLwQYfzHmae-o5LdVo0olxere";
 
     const APP_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyuwspiWzxRItdBNEh4rXkmUnY0W914I0CApzWAYNO0GtHWaOYovGAh96usIlr43sC5rA/exec";
 
     let auditLogPool = [];
-    let dbMaster = {}, dbDailyList = [], rawCloudDailyFullPool = [], setLoc = new Set(), dbLocMap = {}, data = [];
+    let dbMaster = {}, dbDailyList = [], setLoc = new Set(), dbLocMap = {}, data = [];
     let dailyActive = false, audioCtx = null, forceSKU = null;
     let isUserTyping = false;
-    let currentSelectedPo = "ALL"; // 默认为全量加载
+    let currentSelectedSheetName = "";
 
     function unlockAudio() {
         if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -148,11 +148,11 @@
         
         fetchCloudMasterDualChannels();
         fetchCloudLocations();
-        fetchCloudDailyList(); // 🚀 首次静默加载云端 Daily 清单
+        fetchContainerSheetTabs(); // 🚀 动态感应 Daily 里的所有柜号标签页
         
         syncNetworkPool();
         setInterval(syncNetworkPool, 5000); 
-        setInterval(fetchCloudDailyList, 15000); // 🚀 每 15 秒静默对齐云端 Daily 清单
+        setInterval(fetchContainerSheetTabs, 30000); // 每30秒自动感知是否有新建的柜号页
         
         setupEnterKey();
         setupFocusListeners();
@@ -173,87 +173,96 @@
         });
     }
 
-    // 🚀【云端 DAILY 自动化抓取引擎】：全自动读取 Google Sheet 里的清单
-    function fetchCloudDailyList() {
+    // 🚀【柜号 Sheet 标签页动态感知引擎】：自动提取表单里所有的柜号 (如 K0072, S0282)
+    function fetchContainerSheetTabs() {
         const banner = document.getElementById('dailyCloudStat');
-        fetch(CLOUD_DAILY_URL + (CLOUD_DAILY_URL.includes("?") ? "&" : "?") + "t=" + Date.now())
+        
+        // 借助后端 Apps Script 或 HTML 解析提取公开发布页面的全量工作表标签名称
+        fetch(`https://docs.google.com/spreadsheets/d/e/${DAILY_DOC_ID}/pubhtml?t=` + Date.now())
         .then(res => res.text())
-        .then(txt => {
-            if (txt && txt.trim().length > 10) {
-                Papa.parse(txt, { complete: (res) => {
-                    rawCloudDailyFullPool = [];
-                    let poSet = new Set();
-                    
-                    res.data.forEach((r, i) => {
-                        if (i > 0 && r[1]) {
-                            let p = r[0] ? r[0].toString().trim() : "N/A";
-                            let k = r[1].trim().toUpperCase();
-                            let q = parseFloat(r[2]) || 0;
-                            if (q > 0) {
-                                rawCloudDailyFullPool.push({ po: p, sku: k, plan: q, idx: i });
-                                if (p !== "N/A" && p !== "") poSet.add(p);
-                            }
-                        }
-                    });
-                    
-                    updateDailyPoSelectorOptions(Array.from(poSet));
-                    filterDailyListBySelectedPo();
-                    
-                    banner.innerText = `⚡ 云端 DAILY 清单连通！(全表计划项: ${rawCloudDailyFullPool.length} 条)`;
-                    banner.style.background = "#f9f0ff"; banner.style.borderColor = "#d3ade6"; banner.style.color = "#531dab";
-                }});
+        .then(htmlTxt => {
+            let parser = new DOMParser();
+            let doc = parser.parseFromString(htmlTxt, 'text/html');
+            let sheetNodes = doc.querySelectorAll('#sheet-menu li a');
+            
+            let sheetNames = [];
+            sheetNodes.forEach(node => {
+                let sName = node.innerText.trim();
+                if (sName) sheetNames.push(sName);
+            });
+
+            // 兜底方案：如果没有找到列表，直接按默认抓取
+            if (sheetNames.length === 0) {
+                sheetNames = ["K0072"]; // 默认兜底标签页
             }
-        }).catch(err => { banner.innerText = "⚠️ 云端 DAILY 清单连接中断"; });
+
+            updateContainerDropdownUI(sheetNames);
+            
+            banner.innerText = `⚡ 动态柜号库联动就绪 (已识别 ${sheetNames.length} 个柜号 Sheet)`;
+            banner.style.background = "#f9f0ff"; banner.style.borderColor = "#d3ade6"; banner.style.color = "#531dab";
+        }).catch(err => {
+            banner.innerText = "⚠️ 柜号清单网络感知异常，正在重试...";
+        });
     }
 
-    // 🚀【动态下拉菜单构建】：将 Google Sheet 里的 PO 号自动填充到下拉菜单中
-    function updateDailyPoSelectorOptions(poList) {
-        const selector = document.getElementById('dailyPoSelector');
-        let prevVal = selector.value || "ALL";
+    function updateContainerDropdownUI(sheetNames) {
+        const selector = document.getElementById('sheetContainerSelector');
+        let savedSelected = localStorage.getItem('wh_selected_container_sheet') || sheetNames[0];
+        
         selector.innerHTML = "";
-        
-        let optAll = document.createElement('option');
-        optAll.value = "ALL";
-        optAll.innerText = `📋 动态 DAILY 清单: 全量加载 (共包含 ${rawCloudDailyFullPool.length} 项)`;
-        selector.appendChild(optAll);
-        
-        poList.sort().forEach(po => {
+        sheetNames.forEach(name => {
             let opt = document.createElement('option');
-            opt.value = po;
-            opt.innerText = `📦 独立批次 / PO: [ ${po} ]`;
+            opt.value = name;
+            opt.innerText = `📦 柜号 / 工作表: [ ${name} ]`;
             selector.appendChild(opt);
         });
-        
-        // 保持之前选中的状态
-        if (Array.from(selector.options).some(o => o.value === prevVal)) {
-            selector.value = prevVal;
-            currentSelectedPo = prevVal;
-        } else {
-            selector.value = "ALL";
-            currentSelectedPo = "ALL";
+
+        if (sheetNames.includes(savedSelected)) {
+            selector.value = savedSelected;
+            currentSelectedSheetName = savedSelected;
+        } else if (sheetNames.length > 0) {
+            selector.value = sheetNames[0];
+            currentSelectedSheetName = sheetNames[0];
         }
+
+        loadDataBySheetName(currentSelectedSheetName);
     }
 
-    function onPoSelectorChange(val) {
-        currentSelectedPo = val;
-        filterDailyListBySelectedPo();
+    function onContainerSheetChange(sheetName) {
+        currentSelectedSheetName = sheetName;
+        localStorage.setItem('wh_selected_container_sheet', sheetName);
+        loadDataBySheetName(sheetName);
     }
 
-    // 🚀【多批次切换滤镜】：当切换下拉菜单时，瞬间切分需求并重新计算比对状态
-    function filterDailyListBySelectedPo() {
-        dbDailyList = [];
-        dailyActive = false;
+    // 🚀【特定柜号数据抓取】：指定抓取对应柜号 Sheet 内的数据
+    function loadDataBySheetName(sheetName) {
+        if (!sheetName) return;
+        const banner = document.getElementById('dailyCloudStat');
         
-        if (rawCloudDailyFullPool.length === 0) return;
+        let sheetCsvUrl = `https://docs.google.com/spreadsheets/d/e/${DAILY_DOC_ID}/pub?sheet=${encodeURIComponent(sheetName)}&output=csv&t=` + Date.now();
         
-        if (currentSelectedPo === "ALL") {
-            dbDailyList = [...rawCloudDailyFullPool];
-        } else {
-            dbDailyList = rawCloudDailyFullPool.filter(item => item.po === currentSelectedPo);
-        }
-        
-        if (dbDailyList.length > 0) dailyActive = true;
-        if (!isUserTyping) render();
+        fetch(sheetCsvUrl)
+        .then(res => res.text())
+        .then(csvTxt => {
+            Papa.parse(csvTxt, { complete: (res) => {
+                dbDailyList = [];
+                dailyActive = false;
+                
+                res.data.forEach((r, i) => {
+                    if (i > 0 && r[1]) {
+                        let p = r[0] ? r[0].toString().trim() : "N/A";
+                        let k = r[1].trim().toUpperCase();
+                        let q = parseFloat(r[2]) || 0;
+                        if (q > 0) {
+                            dbDailyList.push({ po: p, sku: k, plan: q, idx: i });
+                            dailyActive = true;
+                        }
+                    }
+                });
+                
+                if (!isUserTyping) render();
+            }});
+        });
     }
 
     function fetchLocalTimeFormatted() {
@@ -645,14 +654,15 @@
             finalRows.push([r.po, r.sku, r.name, r.bsn, r.ssk, r.exp, r.qty, r.loc, r.date, r.rec, r.note, r.opUser]); 
         });
 
+        let containerNamePrefix = currentSelectedSheetName ? `${currentSelectedSheetName}_` : "";
         const csvContent = Papa.unparse(finalRows);
         const csvBlob = new Blob(["\ufeff" + csvContent], { type: 'text/csv;charset=utf-8;' });
-        const csvLink = document.createElement("a"); csvLink.href = URL.createObjectURL(csvBlob); csvLink.download = `Putway_PO_Split_${op}_${dateNow}.csv`; csvLink.click();
+        const csvLink = document.createElement("a"); csvLink.href = URL.createObjectURL(csvBlob); csvLink.download = `Putway_${containerNamePrefix}${op}_${dateNow}.csv`; csvLink.click();
 
-        let txtTitle = `==================================================\n   Warehouse Operations Audit Log (防误操追责日志) \n   当前导出操作员: [${op}]   日期: [${dateNow}] \n==================================================\n\n`;
+        let txtTitle = `==================================================\n   Warehouse Operations Audit Log (防误操追责日志) \n   当前导出操作员: [${op}]   柜号: [${currentSelectedSheetName}]   日期: [${dateNow}] \n==================================================\n\n`;
         let txtBody = ""; if(auditLogPool.length === 0) { txtBody = "✨ 全场协同作业纯净。\n"; } else { auditLogPool.forEach((log, index) => { txtBody += `${index + 1}. ${log}\n`; }); }
         const txtBlob = new Blob([txtTitle + txtBody], { type: 'text/plain;charset=utf-8;' });
-        const txtLink = document.createElement("a"); txtLink.href = URL.createObjectURL(txtBlob); txtLink.download = `Audit_Log_${op}_${dateNow}.txt`; txtLink.click();
+        const txtLink = document.createElement("a"); txtLink.href = URL.createObjectURL(txtBlob); txtLink.download = `Audit_Log_${containerNamePrefix}${op}_${dateNow}.txt`; txtLink.click();
     }
     
     function setupEnterKey() {
