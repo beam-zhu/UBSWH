@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Warehouse var.29.26 Container Switch Fixed</title>
+    <title>Warehouse var.29.27 Sheet Switch Anti-Cache Fixed</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
     <style>
         :root { --primary: #1890ff; --success: #52c41a; --danger: #ff4d4f; --extra: #b37feb; --bg: #f5f7fa; }
@@ -186,7 +186,7 @@
         if (response && response.sheets && Array.isArray(response.sheets)) {
             let sheetNames = response.sheets;
             updateContainerDropdownUI(sheetNames);
-            banner.innerText = `⚡ 动态柜号库联动就绪 (已感知 ${sheetNames.length} 个柜号 Sheet: ${sheetNames.join(', ')})`;
+            banner.innerText = `⚡ 动态柜号库就绪 (可载入 ${sheetNames.length} 个柜号 Sheet: ${sheetNames.join(', ')})`;
             banner.style.background = "#f9f0ff"; banner.style.borderColor = "#d3ade6"; banner.style.color = "#531dab";
         }
     };
@@ -214,35 +214,30 @@
         loadDataBySheetName(currentSelectedSheetName);
     }
 
-    // 🚀【彻底修复切换 Bug】：切换下拉菜单时，强行清空旧内存，重拉新数据
     function onContainerSheetChange(sheetName) {
         if (!sheetName) return;
         currentSelectedSheetName = sheetName;
         localStorage.setItem('wh_selected_container_sheet', sheetName);
         
-        // 1. 瞬间清空待对比计划列表
         dbDailyList = [];
         dailyActive = false;
         
-        // 2. 界面显示抓取中
         const banner = document.getElementById('dailyCloudStat');
-        banner.innerText = `🔄 正在切换装载柜号 [${sheetName}] 数据中...`;
+        banner.innerText = `🔄 正在穿透 CDN 抓取柜号 [${sheetName}] 数据中...`;
         
-        // 3. 原地重绘，先清掉旧对比项
         render();
-        
-        // 4. 发起极速抓取
         loadDataBySheetName(sheetName);
     }
 
-    // 🚀【特定柜号数据装载引擎】：加入强力防缓存戳与全量清洗
+    // 🚀【彻底破除 CDN 强缓存的全新抓取引擎】
     function loadDataBySheetName(sheetName) {
         if (!sheetName) return;
         const banner = document.getElementById('dailyCloudStat');
         
-        let sheetCsvUrl = `https://docs.google.com/spreadsheets/d/e/${DAILY_DOC_ID}/pub?sheet=${encodeURIComponent(sheetName)}&output=csv&t=` + Date.now();
+        // 💡 加入强破缓存标记 &nocache= + 动态时间戳，强制谷歌服务器拉取最新页面数据
+        let sheetCsvUrl = `https://docs.google.com/spreadsheets/d/e/${DAILY_DOC_ID}/pub?sheet=${encodeURIComponent(sheetName)}&output=csv&nocache=${Date.now()}`;
         
-        fetch(sheetCsvUrl)
+        fetch(sheetCsvUrl, { cache: "no-store" })
         .then(res => res.text())
         .then(csvTxt => {
             Papa.parse(csvTxt, { complete: (res) => {
@@ -261,11 +256,11 @@
                     }
                 });
                 
-                banner.innerText = `⚡ 当前柜号 [${sheetName}] 已挂载，共 ${dbDailyList.length} 项比对计划`;
+                banner.innerText = `⚡ 柜号 [${sheetName}] 挂载成功 (共 ${dbDailyList.length} 项计划项)`;
                 render();
             }});
         }).catch(err => {
-            banner.innerText = `❌ 柜号 [${sheetName}] 抓取失败，请检查 Sheet 是否存在`;
+            banner.innerText = `❌ 柜号 [${sheetName}] 抓取失败，请确认发布状态`;
         });
     }
 
