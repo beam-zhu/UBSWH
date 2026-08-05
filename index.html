@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Warehouse var.29.24 Multi-Sheet Container Sync</title>
+    <title>Warehouse var.29.25 Multi-Sheet Tabs Fixed</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
     <style>
         :root { --primary: #1890ff; --success: #52c41a; --danger: #ff4d4f; --extra: #b37feb; --bg: #f5f7fa; }
@@ -64,7 +64,7 @@
     <div class="panel-right">
         <div class="cloud-banner cb-sku" id="cloudStat">☁️ 联动双主库安全引擎正在连接...</div>
         <div class="cloud-banner cb-loc" id="locCloudStat">☁️ 公司库位表 (A-U列) 正在连接...</div>
-        <div class="cloud-banner cb-daily" id="dailyCloudStat">☁️ 正在扫描云端柜号 Sheet 列表...</div>
+        <div class="cloud-banner cb-daily" id="dailyCloudStat">☁️ 正在读取云端所有柜号 Sheet 标签...</div>
         <div class="cloud-banner cb-sync" id="networkStat">📡 多端联网对齐中...</div>
 
         <div class="card">
@@ -119,8 +119,11 @@
     const FILE2_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQBh1fAm0-5pIJyHCRVDTt_n3vYILct87elf6_dJ9KvtZ126d-LYsgVkEaGKaZmti9lvFByG5LIc1dR/pub?gid=326617304&single=true&output=csv";
     const FIXED_LOC_CLOUD_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vStLtLccpDSfrf_yU_T9WrNcZufN29BqkDsVS2r9ql1INK_61uA8UetkiW4DZ4_dv63o-DHzFz0tOAq/pub?gid=1276542862&single=true&output=csv";
     
-    // 🌐 DAILY Google Sheet 的文档 ID
+    // 🌐 DAILY Google Sheet 文档发布 ID
     const DAILY_DOC_ID = "2PACX-1vQC1FvVsk_0dObuH7lAGn5pmNch9UfqUV9BzrmFezpeux6K714a-DhOLwQYfzHmae-o5LdVo0olxere";
+    
+    // ⚡ 您刚部署的专属标签页扫描接口 URL
+    const GET_TABS_API_URL = "https://script.google.com/macros/s/AKfycbyQT2pvRXzyy02dYzvBEITy4AIJA_TTv130JkIvzQIl-FI6e1lJNOrme4wRqxJFTBmvOA/exec";
 
     const APP_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyuwspiWzxRItdBNEh4rXkmUnY0W914I0CApzWAYNO0GtHWaOYovGAh96usIlr43sC5rA/exec";
 
@@ -148,11 +151,11 @@
         
         fetchCloudMasterDualChannels();
         fetchCloudLocations();
-        fetchContainerSheetTabs(); // 🚀 动态感应 Daily 里的所有柜号标签页
+        fetchContainerSheetTabs(); // 🚀 动态感知云端 Daily 中的所有柜号标签页
         
         syncNetworkPool();
         setInterval(syncNetworkPool, 5000); 
-        setInterval(fetchContainerSheetTabs, 30000); // 每30秒自动感知是否有新建的柜号页
+        setInterval(fetchContainerSheetTabs, 20000); // 每 20 秒自动感知一次新建标签页
         
         setupEnterKey();
         setupFocusListeners();
@@ -173,37 +176,29 @@
         });
     }
 
-    // 🚀【柜号 Sheet 标签页动态感知引擎】：自动提取表单里所有的柜号 (如 K0072, S0282)
+    // 🚀【JSONP 原生无阻碍标签页感知引擎】：秒级读取 Google Sheet 中所有的 Tab 标签页名称
     function fetchContainerSheetTabs() {
         const banner = document.getElementById('dailyCloudStat');
         
-        // 借助后端 Apps Script 或 HTML 解析提取公开发布页面的全量工作表标签名称
-        fetch(`https://docs.google.com/spreadsheets/d/e/${DAILY_DOC_ID}/pubhtml?t=` + Date.now())
-        .then(res => res.text())
-        .then(htmlTxt => {
-            let parser = new DOMParser();
-            let doc = parser.parseFromString(htmlTxt, 'text/html');
-            let sheetNodes = doc.querySelectorAll('#sheet-menu li a');
-            
-            let sheetNames = [];
-            sheetNodes.forEach(node => {
-                let sName = node.innerText.trim();
-                if (sName) sheetNames.push(sName);
-            });
-
-            // 兜底方案：如果没有找到列表，直接按默认抓取
-            if (sheetNames.length === 0) {
-                sheetNames = ["K0072"]; // 默认兜底标签页
-            }
-
-            updateContainerDropdownUI(sheetNames);
-            
-            banner.innerText = `⚡ 动态柜号库联动就绪 (已识别 ${sheetNames.length} 个柜号 Sheet)`;
-            banner.style.background = "#f9f0ff"; banner.style.borderColor = "#d3ade6"; banner.style.color = "#531dab";
-        }).catch(err => {
-            banner.innerText = "⚠️ 柜号清单网络感知异常，正在重试...";
-        });
+        var script = document.createElement("script");
+        script.src = GET_TABS_API_URL + "?callback=tabsApiCallback&t=" + Date.now();
+        script.id = "jsonp_tabs_script";
+        var oldScript = document.getElementById("jsonp_tabs_script");
+        if(oldScript) oldScript.parentNode.removeChild(oldScript);
+        document.getElementsByTagName("head")[0].appendChild(script);
     }
+
+    window.tabsApiCallback = function(response) {
+        const banner = document.getElementById('dailyCloudStat');
+        if (response && response.sheets && Array.isArray(response.sheets)) {
+            let sheetNames = response.sheets;
+            updateContainerDropdownUI(sheetNames);
+            banner.innerText = `⚡ 动态柜号库联动就绪 (已精准感知 ${sheetNames.length} 个柜号 Sheet)`;
+            banner.style.background = "#f9f0ff"; banner.style.borderColor = "#d3ade6"; banner.style.color = "#531dab";
+        } else {
+            banner.innerText = "⚠️ 柜号清单加载异常，正自动重试...";
+        }
+    };
 
     function updateContainerDropdownUI(sheetNames) {
         const selector = document.getElementById('sheetContainerSelector');
@@ -234,10 +229,9 @@
         loadDataBySheetName(sheetName);
     }
 
-    // 🚀【特定柜号数据抓取】：指定抓取对应柜号 Sheet 内的数据
+    // 🚀【特定柜号数据装载引擎】：读取被选中的 Sheet 里面的 PO、SKU、Qty 计划
     function loadDataBySheetName(sheetName) {
         if (!sheetName) return;
-        const banner = document.getElementById('dailyCloudStat');
         
         let sheetCsvUrl = `https://docs.google.com/spreadsheets/d/e/${DAILY_DOC_ID}/pub?sheet=${encodeURIComponent(sheetName)}&output=csv&t=` + Date.now();
         
