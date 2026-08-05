@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Warehouse var.29.25 Multi-Sheet Tabs Fixed</title>
+    <title>Warehouse var.29.26 Container Switch Fixed</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
     <style>
         :root { --primary: #1890ff; --success: #52c41a; --danger: #ff4d4f; --extra: #b37feb; --bg: #f5f7fa; }
@@ -24,7 +24,6 @@
         .loc-input { height: 54px; font-size: 22px; border: 2px solid var(--primary); background: #fffbe6; color: #d46b08; }
         .sku-row { display: grid; grid-template-columns: 3fr 1.2fr; gap: 8px; margin-bottom: 4px; }
         
-        /* 🚀 柜号标签页选择框专有样式 */
         .select-daily-box {
             height: 46px; font-size: 15px; font-weight: bold; color: #1890ff;
             background: #e6f7ff; border: 2px solid #91d5ff; border-radius: 8px;
@@ -119,12 +118,8 @@
     const FILE2_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQBh1fAm0-5pIJyHCRVDTt_n3vYILct87elf6_dJ9KvtZ126d-LYsgVkEaGKaZmti9lvFByG5LIc1dR/pub?gid=326617304&single=true&output=csv";
     const FIXED_LOC_CLOUD_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vStLtLccpDSfrf_yU_T9WrNcZufN29BqkDsVS2r9ql1INK_61uA8UetkiW4DZ4_dv63o-DHzFz0tOAq/pub?gid=1276542862&single=true&output=csv";
     
-    // 🌐 DAILY Google Sheet 文档发布 ID
     const DAILY_DOC_ID = "2PACX-1vQC1FvVsk_0dObuH7lAGn5pmNch9UfqUV9BzrmFezpeux6K714a-DhOLwQYfzHmae-o5LdVo0olxere";
-    
-    // ⚡ 您刚部署的专属标签页扫描接口 URL
     const GET_TABS_API_URL = "https://script.google.com/macros/s/AKfycbyQT2pvRXzyy02dYzvBEITy4AIJA_TTv130JkIvzQIl-FI6e1lJNOrme4wRqxJFTBmvOA/exec";
-
     const APP_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyuwspiWzxRItdBNEh4rXkmUnY0W914I0CApzWAYNO0GtHWaOYovGAh96usIlr43sC5rA/exec";
 
     let auditLogPool = [];
@@ -151,11 +146,11 @@
         
         fetchCloudMasterDualChannels();
         fetchCloudLocations();
-        fetchContainerSheetTabs(); // 🚀 动态感知云端 Daily 中的所有柜号标签页
+        fetchContainerSheetTabs();
         
         syncNetworkPool();
         setInterval(syncNetworkPool, 5000); 
-        setInterval(fetchContainerSheetTabs, 20000); // 每 20 秒自动感知一次新建标签页
+        setInterval(fetchContainerSheetTabs, 20000); 
         
         setupEnterKey();
         setupFocusListeners();
@@ -176,10 +171,8 @@
         });
     }
 
-    // 🚀【JSONP 原生无阻碍标签页感知引擎】：秒级读取 Google Sheet 中所有的 Tab 标签页名称
     function fetchContainerSheetTabs() {
         const banner = document.getElementById('dailyCloudStat');
-        
         var script = document.createElement("script");
         script.src = GET_TABS_API_URL + "?callback=tabsApiCallback&t=" + Date.now();
         script.id = "jsonp_tabs_script";
@@ -193,10 +186,8 @@
         if (response && response.sheets && Array.isArray(response.sheets)) {
             let sheetNames = response.sheets;
             updateContainerDropdownUI(sheetNames);
-            banner.innerText = `⚡ 动态柜号库联动就绪 (已精准感知 ${sheetNames.length} 个柜号 Sheet)`;
+            banner.innerText = `⚡ 动态柜号库联动就绪 (已感知 ${sheetNames.length} 个柜号 Sheet: ${sheetNames.join(', ')})`;
             banner.style.background = "#f9f0ff"; banner.style.borderColor = "#d3ade6"; banner.style.color = "#531dab";
-        } else {
-            banner.innerText = "⚠️ 柜号清单加载异常，正自动重试...";
         }
     };
 
@@ -223,15 +214,31 @@
         loadDataBySheetName(currentSelectedSheetName);
     }
 
+    // 🚀【彻底修复切换 Bug】：切换下拉菜单时，强行清空旧内存，重拉新数据
     function onContainerSheetChange(sheetName) {
+        if (!sheetName) return;
         currentSelectedSheetName = sheetName;
         localStorage.setItem('wh_selected_container_sheet', sheetName);
+        
+        // 1. 瞬间清空待对比计划列表
+        dbDailyList = [];
+        dailyActive = false;
+        
+        // 2. 界面显示抓取中
+        const banner = document.getElementById('dailyCloudStat');
+        banner.innerText = `🔄 正在切换装载柜号 [${sheetName}] 数据中...`;
+        
+        // 3. 原地重绘，先清掉旧对比项
+        render();
+        
+        // 4. 发起极速抓取
         loadDataBySheetName(sheetName);
     }
 
-    // 🚀【特定柜号数据装载引擎】：读取被选中的 Sheet 里面的 PO、SKU、Qty 计划
+    // 🚀【特定柜号数据装载引擎】：加入强力防缓存戳与全量清洗
     function loadDataBySheetName(sheetName) {
         if (!sheetName) return;
+        const banner = document.getElementById('dailyCloudStat');
         
         let sheetCsvUrl = `https://docs.google.com/spreadsheets/d/e/${DAILY_DOC_ID}/pub?sheet=${encodeURIComponent(sheetName)}&output=csv&t=` + Date.now();
         
@@ -254,8 +261,11 @@
                     }
                 });
                 
-                if (!isUserTyping) render();
+                banner.innerText = `⚡ 当前柜号 [${sheetName}] 已挂载，共 ${dbDailyList.length} 项比对计划`;
+                render();
             }});
+        }).catch(err => {
+            banner.innerText = `❌ 柜号 [${sheetName}] 抓取失败，请检查 Sheet 是否存在`;
         });
     }
 
