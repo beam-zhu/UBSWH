@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Warehouse var.29.22 Ultra Smooth Sync</title>
+    <title>Warehouse var.29.23 Cloud Daily Sync</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
     <style>
         :root { --primary: #1890ff; --success: #52c41a; --danger: #ff4d4f; --extra: #b37feb; --bg: #f5f7fa; }
@@ -20,12 +20,17 @@
             .panel-left { flex: 6; height: 100%; }
         }
         .card { background: white; border-radius: 12px; padding: 12px; border: 1px solid #e8e8e8; box-shadow: 0 2px 8px rgba(0,0,0,0.05); margin-bottom: 8px; }
-        input { height: 44px; padding: 10px; border: 1px solid #d9d9d9; border-radius: 8px; font-size: 16px; width: 100%; background: #fafafa; margin-bottom: 8px; }
+        input, select { height: 44px; padding: 10px; border: 1px solid #d9d9d9; border-radius: 8px; font-size: 16px; width: 100%; background: #fafafa; margin-bottom: 8px; }
         .loc-input { height: 54px; font-size: 22px; border: 2px solid var(--primary); background: #fffbe6; color: #d46b08; }
         .sku-row { display: grid; grid-template-columns: 3fr 1.2fr; gap: 8px; margin-bottom: 4px; }
-        .file-grid { display: grid; grid-template-columns: 1fr; gap: 6px; }
-        .file-btn { border: 1px dashed #ccc; padding: 4px; border-radius: 8px; text-align: center; background: #fff; font-size: 10px; position: relative; min-height: 40px; display: flex; flex-direction: column; justify-content: center; align-items: center; }
-        .file-btn input { position: absolute; top:0; left:0; width:100%; height:100%; opacity:0; }
+        
+        /* 🚀 云端清单下拉选择框专有样式 */
+        .select-daily-box {
+            height: 46px; font-size: 14px; font-weight: bold; color: #1890ff;
+            background: #e6f7ff; border: 1px solid #91d5ff; border-radius: 8px;
+            cursor: pointer; text-align: center;
+        }
+
         .status-tag { font-size: 10px; font-weight: bold; color: #bfbfbf; margin-top: 2px; word-break: break-all; padding: 0 4px; text-align: center; }
         .ready { color: var(--success); }
         .btn { height: 54px; border: none; border-radius: 10px; font-weight: bold; cursor: pointer; font-size: 18px; width: 100%; }
@@ -50,6 +55,7 @@
         .cb-sku { background: #e6f7ff; border: 1px solid #91d5ff; color: #0050b3; }
         .cb-loc { background: #feffe6; border: 1px solid #fffb8f; color: #614700; }
         .cb-sync { background: #f6ffed; border: 1px solid #b7eb8f; color: #52c41a; }
+        .cb-daily { background: #f9f0ff; border: 1px solid #d3ade6; color: #531dab; }
     </style>
 </head>
 <body onclick="unlockAudio()">
@@ -58,12 +64,15 @@
     <div class="panel-right">
         <div class="cloud-banner cb-sku" id="cloudStat">☁️ 联动双主库安全引擎正在连接...</div>
         <div class="cloud-banner cb-loc" id="locCloudStat">☁️ 公司库位表 (A-U列) 正在连接...</div>
+        <div class="cloud-banner cb-daily" id="dailyCloudStat">☁️ 云端 DAILY 计划表同步中...</div>
         <div class="cloud-banner cb-sync" id="networkStat">📡 多端联网对齐中...</div>
 
         <div class="card">
-            <div class="file-grid">
-                <div class="file-btn"><span>DAILY清单 (第一列必须是PO)</span><input type="file" accept=".csv" onchange="processFile('check', this.files)"><span id="checkStat" class="status-tag">OPTIONAL</span></div>
-            </div>
+            <!-- 🚀 替换为云端多清单下拉选择框 -->
+            <select id="dailyPoSelector" class="select-daily-box" onchange="onPoSelectorChange(this.value)">
+                <option value="ALL">📋 DAILY 清单: 正在从云端加载批次...</option>
+            </select>
+
             <div style="display: flex; justify-content: space-between; margin-top: 8px;">
                 <button onclick="clearScreenPureHistory()" style="font-size:10px; color:#1890ff; border:1px solid #1890ff; border-radius:4px; background:none; padding:5px; font-weight:bold;">[CLEAR SCREEN] (清空屏幕历史)</button>
                 <button onclick="recoverBackup()" style="font-size:10px; color:blue; border:1px solid blue; border-radius:4px; background:none; padding:5px; font-weight:bold;">[RECOVER BACKUP]</button>
@@ -71,7 +80,6 @@
         </div>
 
         <div class="card">
-            <!-- 🚀 禁用手机端联想、拼写检查和自动大写，大幅释放手机键盘渲染资源 -->
             <input type="text" id="opName" placeholder="Operator Name (开工必填)" onchange="saveLocalNameOnly()" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
             <div id="batchContainer">
                 <div class="sku-row"><input type="text" id="s1" placeholder="SKU 1" inputmode="decimal" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"><input type="tel" id="q1" placeholder="Qty" autocomplete="off"></div>
@@ -111,14 +119,16 @@
     const FILE2_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQBh1fAm0-5pIJyHCRVDTt_n3vYILct87elf6_dJ9KvtZ126d-LYsgVkEaGKaZmti9lvFByG5LIc1dR/pub?gid=326617304&single=true&output=csv";
     const FIXED_LOC_CLOUD_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vStLtLccpDSfrf_yU_T9WrNcZufN29BqkDsVS2r9ql1INK_61uA8UetkiW4DZ4_dv63o-DHzFz0tOAq/pub?gid=1276542862&single=true&output=csv";
     
+    // 🌐 专属云端 DAILY 计划表链接 (Col1: PO, Col2: SKU, Col3: QTY)
+    const CLOUD_DAILY_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQC1FvVsk_0dObuH7lAGn5pmNch9UfqUV9BzrmFezpeux6K714a-DhOLwQYfzHmae-o5LdVo0olxere/pub?output=csv";
+
     const APP_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyuwspiWzxRItdBNEh4rXkmUnY0W914I0CApzWAYNO0GtHWaOYovGAh96usIlr43sC5rA/exec";
 
     let auditLogPool = [];
-    let dbMaster = {}, dbDailyList = [], setLoc = new Set(), dbLocMap = {}, data = [];
+    let dbMaster = {}, dbDailyList = [], rawCloudDailyFullPool = [], setLoc = new Set(), dbLocMap = {}, data = [];
     let dailyActive = false, audioCtx = null, forceSKU = null;
-    
-    // 💡 状态标记：记录用户当前是否正在输入框打字/操作
     let isUserTyping = false;
+    let currentSelectedPo = "ALL"; // 默认为全量加载
 
     function unlockAudio() {
         if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -138,24 +148,21 @@
         
         fetchCloudMasterDualChannels();
         fetchCloudLocations();
+        fetchCloudDailyList(); // 🚀 首次静默加载云端 Daily 清单
         
         syncNetworkPool();
         setInterval(syncNetworkPool, 5000); 
-        
-        const cC = localStorage.getItem('csv_check'), savedFileName = localStorage.getItem('wh_v826_check_filename');
-        if(cC) { parseCheck(cC); updateCheckStatTag(savedFileName || "READY"); }
+        setInterval(fetchCloudDailyList, 15000); // 🚀 每 15 秒静默对齐云端 Daily 清单
         
         setupEnterKey();
-        setupFocusListeners(); // 🚀 绑定全屏输入防护引擎
+        setupFocusListeners();
     };
 
-    // 🚀【防打扰高流畅算法】：当工人聚焦输入框时，自动屏蔽心跳渲染，打字完成后恢复
     function setupFocusListeners() {
         const inputs = document.querySelectorAll('input');
         inputs.forEach(input => {
             input.addEventListener('focus', () => { isUserTyping = true; });
             input.addEventListener('blur', () => { 
-                // 延迟 300 毫秒恢复，避免焦点在不同输入框间快速切换时的卡顿
                 setTimeout(() => {
                     const activeElement = document.activeElement;
                     if (!activeElement || activeElement.tagName !== 'INPUT') {
@@ -164,6 +171,89 @@
                 }, 300);
             });
         });
+    }
+
+    // 🚀【云端 DAILY 自动化抓取引擎】：全自动读取 Google Sheet 里的清单
+    function fetchCloudDailyList() {
+        const banner = document.getElementById('dailyCloudStat');
+        fetch(CLOUD_DAILY_URL + (CLOUD_DAILY_URL.includes("?") ? "&" : "?") + "t=" + Date.now())
+        .then(res => res.text())
+        .then(txt => {
+            if (txt && txt.trim().length > 10) {
+                Papa.parse(txt, { complete: (res) => {
+                    rawCloudDailyFullPool = [];
+                    let poSet = new Set();
+                    
+                    res.data.forEach((r, i) => {
+                        if (i > 0 && r[1]) {
+                            let p = r[0] ? r[0].toString().trim() : "N/A";
+                            let k = r[1].trim().toUpperCase();
+                            let q = parseFloat(r[2]) || 0;
+                            if (q > 0) {
+                                rawCloudDailyFullPool.push({ po: p, sku: k, plan: q, idx: i });
+                                if (p !== "N/A" && p !== "") poSet.add(p);
+                            }
+                        }
+                    });
+                    
+                    updateDailyPoSelectorOptions(Array.from(poSet));
+                    filterDailyListBySelectedPo();
+                    
+                    banner.innerText = `⚡ 云端 DAILY 清单连通！(全表计划项: ${rawCloudDailyFullPool.length} 条)`;
+                    banner.style.background = "#f9f0ff"; banner.style.borderColor = "#d3ade6"; banner.style.color = "#531dab";
+                }});
+            }
+        }).catch(err => { banner.innerText = "⚠️ 云端 DAILY 清单连接中断"; });
+    }
+
+    // 🚀【动态下拉菜单构建】：将 Google Sheet 里的 PO 号自动填充到下拉菜单中
+    function updateDailyPoSelectorOptions(poList) {
+        const selector = document.getElementById('dailyPoSelector');
+        let prevVal = selector.value || "ALL";
+        selector.innerHTML = "";
+        
+        let optAll = document.createElement('option');
+        optAll.value = "ALL";
+        optAll.innerText = `📋 动态 DAILY 清单: 全量加载 (共包含 ${rawCloudDailyFullPool.length} 项)`;
+        selector.appendChild(optAll);
+        
+        poList.sort().forEach(po => {
+            let opt = document.createElement('option');
+            opt.value = po;
+            opt.innerText = `📦 独立批次 / PO: [ ${po} ]`;
+            selector.appendChild(opt);
+        });
+        
+        // 保持之前选中的状态
+        if (Array.from(selector.options).some(o => o.value === prevVal)) {
+            selector.value = prevVal;
+            currentSelectedPo = prevVal;
+        } else {
+            selector.value = "ALL";
+            currentSelectedPo = "ALL";
+        }
+    }
+
+    function onPoSelectorChange(val) {
+        currentSelectedPo = val;
+        filterDailyListBySelectedPo();
+    }
+
+    // 🚀【多批次切换滤镜】：当切换下拉菜单时，瞬间切分需求并重新计算比对状态
+    function filterDailyListBySelectedPo() {
+        dbDailyList = [];
+        dailyActive = false;
+        
+        if (rawCloudDailyFullPool.length === 0) return;
+        
+        if (currentSelectedPo === "ALL") {
+            dbDailyList = [...rawCloudDailyFullPool];
+        } else {
+            dbDailyList = rawCloudDailyFullPool.filter(item => item.po === currentSelectedPo);
+        }
+        
+        if (dbDailyList.length > 0) dailyActive = true;
+        if (!isUserTyping) render();
     }
 
     function fetchLocalTimeFormatted() {
@@ -184,7 +274,7 @@
         const netBanner = document.getElementById('networkStat');
         let rawData = [];
         if (response && response.pool !== undefined) { rawData = response.pool; } 
-        else if (Array.isArray(response)) { rawData = response; } 
+        else if (Array.isArray(response)) { data = response; } 
         else { return; }
         
         let todayStr = getTodayDateStr();
@@ -192,7 +282,6 @@
         
         refreshHistoricalDataNames();
         
-        // 🚀 防卡顿核心逻辑：如果工人正在打字，静默接收数据，不触发重绘；打字结束后再重绘！
         if (!isUserTyping) {
             requestAnimationFrame(() => { render(); });
         }
@@ -223,7 +312,6 @@
         let items = text.split(/[ \t]*[\n\r,;]+[ \t]*/); let validCount = 0;
         const blackList = ["LOCATION", "库位", "SKU", "QUANTITY", "数量", "NAME", "名称", "表头", "A", "B", "C", "U"];
         
-        // 创建文档碎片（DocumentFragment）一次性插入，避免多次触发重排
         const fragment = document.createDocumentFragment();
         items.forEach(item => {
             let rawV = item.trim(); let upperV = rawV.toUpperCase();
@@ -287,19 +375,6 @@
             }});
         }});
     }
-    
-    function parseCheck(txt) { 
-        Papa.parse(txt, { complete: (res) => { 
-            dbDailyList = []; dailyActive = false; 
-            res.data.forEach((r, i) => { 
-                if(i > 0 && r[1]) { 
-                    let p = r[0] ? r[0].toString().trim() : "N/A"; let k = r[1].trim().toUpperCase(); let q = parseFloat(r[2]) || 0;
-                    if(q > 0) { dbDailyList.push({ po: p, sku: k, plan: q, idx: i }); dailyActive = true; }
-                } 
-            }); 
-            if (!isUserTyping) render();
-        }}); 
-    }
 
     function refreshHistoricalDataNames() {
         if (!data || data.length === 0) return;
@@ -312,23 +387,6 @@
         });
     }
 
-    function processFile(t, files) {
-        if(!files || files.length === 0) return; const f = files[0]; const r = new FileReader();
-        r.onload = (e) => {
-            const txt = e.target.result;
-            if(t==='check') { 
-                localStorage.removeItem('csv_check');
-                localStorage.removeItem('wh_v826_check_filename');
-                dbDailyList = []; 
-                parseCheck(txt); 
-                localStorage.setItem('csv_check', txt); 
-                localStorage.setItem('wh_v826_check_filename', f.name); 
-                updateCheckStatTag(f.name); 
-            }
-        }; r.readAsText(f);
-    }
-    
-    function updateCheckStatTag(name) { const s = document.getElementById('checkStat'); s.innerText = name; s.className = "status-tag ready"; }
     function saveLocalNameOnly() { localStorage.setItem('wh_v820_op', document.getElementById('opName').value); }
 
     function clearScreenPureHistory() {
@@ -360,7 +418,6 @@
         });
     }
 
-    // 🚀【高效 DOM 渲染引擎】：优化构建过程，减少重排与画面卡顿
     function render() {
         const tbody = document.querySelector("#mainTable tbody");
         
@@ -392,7 +449,6 @@
 
         allDisplayRows.sort((a, b) => { if (a.hasInput !== b.hasInput) return b.hasInput - a.hasInput; if (a.isException !== b.isException) return b.isException - a.isException; if (!a.hasInput) return a.orderWeight - b.orderWeight; return a.displaySKU.localeCompare(b.displaySKU); });
         
-        // 使用 DocumentFragment 一次性渲染，消除手机端逐行渲染的卡顿感
         const fragment = document.createDocumentFragment();
         allDisplayRows.forEach(item => {
             let tr = document.createElement('tr'); tr.className = item.rowClass; tr.classList.add(item.hasInput ? "status-active" : "status-pending");
