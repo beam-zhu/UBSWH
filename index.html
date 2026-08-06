@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Warehouse var.29.28 Precise Sheet Switcher</title>
+    <title>Warehouse var.29.29 Standard File Naming Format</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
     <style>
         :root { --primary: #1890ff; --success: #52c41a; --danger: #ff4d4f; --extra: #b37feb; --bg: #f5f7fa; }
@@ -67,7 +67,6 @@
         <div class="cloud-banner cb-sync" id="networkStat">📡 多端联网对齐中...</div>
 
         <div class="card">
-            <!-- 🚀 按柜号 Sheet 标签页切换的下拉菜单 -->
             <select id="sheetContainerSelector" class="select-daily-box" onchange="onContainerSheetChange(this.value)">
                 <option value="">🚢 正在自动感知云端柜号列表...</option>
             </select>
@@ -118,7 +117,6 @@
     const FILE2_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQBh1fAm0-5pIJyHCRVDTt_n3vYILct87elf6_dJ9KvtZ126d-LYsgVkEaGKaZmti9lvFByG5LIc1dR/pub?gid=326617304&single=true&output=csv";
     const FIXED_LOC_CLOUD_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vStLtLccpDSfrf_yU_T9WrNcZufN29BqkDsVS2r9ql1INK_61uA8UetkiW4DZ4_dv63o-DHzFz0tOAq/pub?gid=1276542862&single=true&output=csv";
     
-    // ⚡ 专属直连后端 API 链接
     const GET_TABS_API_URL = "https://script.google.com/macros/s/AKfycbyQT2pvRXzyy02dYzvBEITy4AIJA_TTv130JkIvzQIl-FI6e1lJNOrme4wRqxJFTBmvOA/exec";
     const APP_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyuwspiWzxRItdBNEh4rXkmUnY0W914I0CApzWAYNO0GtHWaOYovGAh96usIlr43sC5rA/exec";
 
@@ -228,7 +226,6 @@
         loadDataBySheetName(sheetName);
     }
 
-    // 🚀【JSONP API 精准秒拉特定柜号内页数据】
     function loadDataBySheetName(sheetName) {
         if (!sheetName) return;
         
@@ -540,6 +537,7 @@
         sendJsonpAction({ action: "delete", id: rowId });
     }
     
+    // 🚀【修改为指定的规范文件名格式：柜号-PUTAWAY-NAME-日期.csv】
     function exportCsv() {
         const op = document.getElementById('opName').value.trim() || "User", dateNow = new Date().toISOString().slice(0,10).replace(/-/g, "");
         let rawSplittedRows = []; 
@@ -646,15 +644,18 @@
             finalRows.push([r.po, r.sku, r.name, r.bsn, r.ssk, r.exp, r.qty, r.loc, r.date, r.rec, r.note, r.opUser]); 
         });
 
-        let containerNamePrefix = currentSelectedSheetName ? `${currentSelectedSheetName}_` : "";
+        // 💡 遵循最新标准导出文件名格式：柜号-PUTAWAY-NAME-日期.csv
+        let safeContainerName = currentSelectedSheetName ? currentSelectedSheetName : "UNKNOWN";
+        let exportFileName = `${safeContainerName}-PUTAWAY-${op}-${dateNow}.csv`;
+
         const csvContent = Papa.unparse(finalRows);
         const csvBlob = new Blob(["\ufeff" + csvContent], { type: 'text/csv;charset=utf-8;' });
-        const csvLink = document.createElement("a"); csvLink.href = URL.createObjectURL(csvBlob); csvLink.download = `Putway_${containerNamePrefix}${op}_${dateNow}.csv`; csvLink.click();
+        const csvLink = document.createElement("a"); csvLink.href = URL.createObjectURL(csvBlob); csvLink.download = exportFileName; csvLink.click();
 
-        let txtTitle = `==================================================\n   Warehouse Operations Audit Log (防误操追责日志) \n   当前导出操作员: [${op}]   柜号: [${currentSelectedSheetName}]   日期: [${dateNow}] \n==================================================\n\n`;
+        let txtTitle = `==================================================\n   Warehouse Operations Audit Log (防误操追责日志) \n   当前导出操作员: [${op}]   柜号: [${safeContainerName}]   日期: [${dateNow}] \n==================================================\n\n`;
         let txtBody = ""; if(auditLogPool.length === 0) { txtBody = "✨ 全场协同作业纯净。\n"; } else { auditLogPool.forEach((log, index) => { txtBody += `${index + 1}. ${log}\n`; }); }
         const txtBlob = new Blob([txtTitle + txtBody], { type: 'text/plain;charset=utf-8;' });
-        const txtLink = document.createElement("a"); txtLink.href = URL.createObjectURL(txtBlob); txtLink.download = `Audit_Log_${containerNamePrefix}${op}_${dateNow}.txt`; txtLink.click();
+        const txtLink = document.createElement("a"); txtLink.href = URL.createObjectURL(txtBlob); txtLink.download = `Audit_Log_${safeContainerName}_${op}_${dateNow}.txt`; txtLink.click();
     }
     
     function setupEnterKey() {
