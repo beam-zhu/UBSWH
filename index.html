@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Warehouse var.29.29 Standard File Naming Format</title>
+    <title>Warehouse var.29.30 Anti-Duplicate Guard</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
     <style>
         :root { --primary: #1890ff; --success: #52c41a; --danger: #ff4d4f; --extra: #b37feb; --bg: #f5f7fa; }
@@ -34,6 +34,7 @@
         .ready { color: var(--success); }
         .btn { height: 54px; border: none; border-radius: 10px; font-weight: bold; cursor: pointer; font-size: 18px; width: 100%; }
         .btn-save { background: var(--success); color: white; margin-top: 8px; }
+        .btn-save:disabled { background: #d9d9d9 !important; color: #8c8c8c !important; cursor: not-allowed; }
         .btn-export { background: #444; color: white; height: 48px; font-size: 14px; flex-shrink: 0; margin-top: 10px; }
         
         .table-wrap { flex: 1; overflow-y: auto; background: white; border-radius: 12px; border: 1px solid #e8e8e8; }
@@ -125,6 +126,9 @@
     let dailyActive = false, audioCtx = null, forceSKU = null;
     let isUserTyping = false;
     let currentSelectedSheetName = "";
+    
+    // 💡 防重复提交机制：保存上次提交的时间戳
+    let lastSubmitTime = 0;
 
     function unlockAudio() {
         if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -461,13 +465,36 @@
         tbody.appendChild(fragment);
     }
 
+    // 🚀【防重复提交保护的核心引擎】
     function addBatch() {
+        const now = Date.now();
+        // 💡 规则 1：1.5 秒内拒绝重复提交
+        if (now - lastSubmitTime < 1500) {
+            return;
+        }
+        lastSubmitTime = now;
+
+        const saveBtn = document.getElementById('saveBtn');
+        saveBtn.disabled = true;
+        saveBtn.innerText = "SAVING...";
+
         unlockAudio();
         let inputLv = document.getElementById('locIn').value.trim(); let upperLv = inputLv.toUpperCase();
         const op = document.getElementById('opName').value.trim();
-        if(!op) { alert("⚠️ 拒绝提交！请先在上方输入您的 Operator Name (操作员姓名)，以确保协同溯源安全。"); return; }
-        if(!inputLv) { return; }
-        if (setLoc.size > 0 && !setLoc.has(upperLv)) { alert(`库位无效！[${inputLv}] 不是合法的云端内置库位。`); return; }
+        if(!op) { 
+            alert("⚠️ 拒绝提交！请先在上方输入您的 Operator Name (操作员姓名)，以确保协同溯源安全。"); 
+            saveBtn.disabled = false; saveBtn.innerText = "SAVE ALL";
+            return; 
+        }
+        if(!inputLv) { 
+            saveBtn.disabled = false; saveBtn.innerText = "SAVE ALL";
+            return; 
+        }
+        if (setLoc.size > 0 && !setLoc.has(upperLv)) { 
+            alert(`库位无效！[${inputLv}] 不是合法的云端内置库位。`); 
+            saveBtn.disabled = false; saveBtn.innerText = "SAVE ALL";
+            return; 
+        }
 
         let finalCorrectLocation = dbLocMap[upperLv] ? dbLocMap[upperLv] : inputLv;
         let batchRowsForGAS = [], temporaryLocalBatch = [], mismatch = false;
@@ -479,7 +506,10 @@
             const sv = document.getElementById('s'+i).value.trim().toUpperCase(); const qv = parseFloat(document.getElementById('q'+i).value); if(!sv) continue;
             let inDaily = dbDailyList.some(d => d.sku === sv);
             if(dailyActive && !inDaily && forceSKU !== sv) { mismatch = true; forceSKU = sv; break; }
-            if(!qv || qv <= 0) { return; }
+            if(!qv || qv <= 0) { 
+                saveBtn.disabled = false; saveBtn.innerText = "SAVE ALL";
+                return; 
+            }
 
             let rowUniqueId = "ts_" + preciseIdTimestamp + "_" + i + "_" + Math.random().toString(36).substr(2, 4);
             let finalLongSku = dbMaster[sv] ? dbMaster[sv].b : sv; 
@@ -489,14 +519,32 @@
             temporaryLocalBatch.push({ id: rowUniqueId, _originSKU: sv, SKU: finalLongSku, Name: finalGoodsName, Quantity: qv, Location: finalCorrectLocation, FullLocation: "Patiki Warehouse: " + finalCorrectLocation, Date: todayStr, Operator: op });
         }
 
-        if(mismatch) { let b = document.getElementById('saveBtn'); b.innerText = "SKU NOT IN LIST! TAP AGAIN TO FORCE SAVE"; b.style.background = "orange"; setTimeout(() => { b.innerText = "SAVE ALL"; b.style.background = ""; forceSKU = null; }, 3000); return; }
-        if(batchRowsForGAS.length === 0) return;
+        if(mismatch) { 
+            saveBtn.innerText = "SKU NOT IN LIST! TAP AGAIN TO FORCE SAVE"; 
+            saveBtn.style.background = "orange"; 
+            saveBtn.disabled = false;
+            setTimeout(() => { saveBtn.innerText = "SAVE ALL"; saveBtn.style.background = ""; forceSKU = null; }, 3000); 
+            return; 
+        }
+        
+        if(batchRowsForGAS.length === 0) {
+            saveBtn.disabled = false; saveBtn.innerText = "SAVE ALL";
+            return;
+        }
 
         data = [...data, ...temporaryLocalBatch]; render();
         sendJsonpAction({ action: "insert", rowsData: JSON.stringify(batchRowsForGAS) });
 
         for(let i=1; i<=6; i++) { document.getElementById('s'+i).value = ""; document.getElementById('q'+i).value = ""; }
-        document.getElementById('locIn').value = ""; document.getElementById('s1').focus(); forceSKU = null;
+        document.getElementById('locIn').value = ""; 
+        document.getElementById('s1').focus(); 
+        forceSKU = null;
+
+        // 💡 提交成功后 1 秒解锁按钮
+        setTimeout(() => {
+            saveBtn.disabled = false;
+            saveBtn.innerText = "SAVE ALL";
+        }, 1000);
     }
 
     function updateNetworkRowQty(rowId, newQtyStr, oldQty) {
@@ -536,8 +584,7 @@
         data = data.filter(x => x.id !== rowId); render(); 
         sendJsonpAction({ action: "delete", id: rowId });
     }
-    
-    // 🚀【修改为指定的规范文件名格式：柜号-PUTAWAY-NAME-日期.csv】
+
     function exportCsv() {
         const op = document.getElementById('opName').value.trim() || "User", dateNow = new Date().toISOString().slice(0,10).replace(/-/g, "");
         let rawSplittedRows = []; 
@@ -644,7 +691,6 @@
             finalRows.push([r.po, r.sku, r.name, r.bsn, r.ssk, r.exp, r.qty, r.loc, r.date, r.rec, r.note, r.opUser]); 
         });
 
-        // 💡 遵循最新标准导出文件名格式：柜号-PUTAWAY-NAME-日期.csv
         let safeContainerName = currentSelectedSheetName ? currentSelectedSheetName : "UNKNOWN";
         let exportFileName = `${safeContainerName}-PUTAWAY-${op}-${dateNow}.csv`;
 
