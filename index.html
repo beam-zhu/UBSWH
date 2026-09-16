@@ -64,12 +64,12 @@
     <div class="panel-right">
         <div class="cloud-banner cb-sku" id="cloudStat">☁️ 联动双主库安全引擎正在连接...</div>
         <div class="cloud-banner cb-loc" id="locCloudStat">☁️ 公司库位表 (A-U列) 正在连接...</div>
-        <div class="cloud-banner cb-daily" id="dailyCloudStat">☁️ 正在读取云端所有柜号 Sheet 标签...</div>
+        <div class="cloud-banner cb-daily" id="dailyCloudStat">☁️ 正在一次性拉取云端所有柜号 JSON...</div>
         <div class="cloud-banner cb-sync" id="networkStat">📡 多端联网对齐中...</div>
 
         <div class="card">
             <select id="sheetContainerSelector" class="select-daily-box" onchange="onContainerSheetChange(this.value)">
-                <option value="">🚢 正在自动感知云端柜号列表...</option>
+                <option value="">🚢 正在一键加载云端全量柜号...</option>
             </select>
 
             <div style="display: flex; justify-content: space-between; margin-top: 8px;">
@@ -118,7 +118,8 @@
     const FILE2_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQBh1fAm0-5pIJyHCRVDTt_n3vYILct87elf6_dJ9KvtZ126d-LYsgVkEaGKaZmti9lvFByG5LIc1dR/pub?gid=326617304&single=true&output=csv";
     const FIXED_LOC_CLOUD_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vStLtLccpDSfrf_yU_T9WrNcZufN29BqkDsVS2r9ql1INK_61uA8UetkiW4DZ4_dv63o-DHzFz0tOAq/pub?gid=1276542862&single=true&output=csv";
     
-    const GET_TABS_API_URL = "https://script.google.com/macros/s/AKfycbyQT2pvRXzyy02dYzvBEITy4AIJA_TTv130JkIvzQIl-FI6e1lJNOrme4wRqxJFTBmvOA/exec";
+    // ⚡ 一次性 JSON 打包 Web API 接口
+    const BATCH_WEB_API_URL = "https://script.google.com/macros/s/AKfycbyQT2pvRXzyy02dYzvBEITy4AIJA_TTv130JkIvzQIl-FI6e1lJNOrme4wRqxJFTBmvOA/exec";
     const APP_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyuwspiWzxRItdBNEh4rXkmUnY0W914I0CApzWAYNO0GtHWaOYovGAh96usIlr43sC5rA/exec";
 
     let auditLogPool = [];
@@ -127,7 +128,9 @@
     let isUserTyping = false;
     let currentSelectedSheetName = "";
     
-    // 💡 防重复提交机制：保存上次提交的时间戳
+    // 全局内存 JSON 数据库
+    let globalAllCabinetsStore = {};
+    
     let lastSubmitTime = 0;
 
     function unlockAudio() {
@@ -148,13 +151,13 @@
         
         fetchCloudMasterDualChannels();
         fetchCloudLocations();
-        fetchContainerSheetTabs();
+        
+        // ⚡ 一次性极速加载全量柜号 JSON
+        fetchAllContainerSheetsOnce();
         
         syncNetworkPool();
         setInterval(syncNetworkPool, 5000); 
-        setInterval(fetchContainerSheetTabs, 20000); 
         
-        setupEnterKey();
         setupFocusListeners();
     };
 
@@ -173,24 +176,34 @@
         });
     }
 
-    function fetchContainerSheetTabs() {
-        var script = document.createElement("script");
-        script.src = GET_TABS_API_URL + "?action=getTabs&callback=tabsApiCallback&t=" + Date.now();
-        script.id = "jsonp_tabs_script";
-        var oldScript = document.getElementById("jsonp_tabs_script");
-        if(oldScript) oldScript.parentNode.removeChild(oldScript);
-        document.getElementsByTagName("head")[0].appendChild(script);
-    }
-
-    window.tabsApiCallback = function(response) {
+    // ⚡ 批量 JSON 极速抓取引擎
+    async function fetchAllContainerSheetsOnce() {
         const banner = document.getElementById('dailyCloudStat');
-        if (response && response.sheets && Array.isArray(response.sheets)) {
-            let sheetNames = response.sheets;
-            updateContainerDropdownUI(sheetNames);
-            banner.innerText = `⚡ 动态柜号库就绪 (可载入 ${sheetNames.length} 个柜号 Sheet: ${sheetNames.join(', ')})`;
-            banner.style.background = "#f9f0ff"; banner.style.borderColor = "#d3ade6"; banner.style.color = "#531dab";
+        banner.innerText = "🚀 正在一次性提取全量柜号 JSON 数据包...";
+
+        try {
+            const res = await fetch(BATCH_WEB_API_URL + "?t=" + Date.now());
+            const json = await res.json();
+
+            if (json.status === "success" && json.data) {
+                globalAllCabinetsStore = json.data;
+                const sheetNames = Object.keys(globalAllCabinetsStore);
+
+                if (sheetNames.length > 0) {
+                    updateContainerDropdownUI(sheetNames);
+                    banner.innerText = `⚡ 动态柜号库秒级装载完成 (已打包载入 ${sheetNames.length} 个柜号)`;
+                    banner.style.background = "#f9f0ff"; banner.style.borderColor = "#d3ade6"; banner.style.color = "#531dab";
+                } else {
+                    banner.innerText = "⚠️ 未获取到柜号标签页";
+                }
+            } else {
+                banner.innerText = "⚠️ 获取数据失败: " + (json.message || "格式不匹配");
+            }
+        } catch (err) {
+            console.error("批量抓取全量数据失败:", err);
+            banner.innerText = "❌ 提取云端柜号 JSON 失败，请检查网络或部署状态";
         }
-    };
+    }
 
     function updateContainerDropdownUI(sheetNames) {
         const selector = document.getElementById('sheetContainerSelector');
@@ -212,7 +225,7 @@
             currentSelectedSheetName = sheetNames[0];
         }
 
-        loadDataBySheetName(currentSelectedSheetName);
+        parseLocalSheetData(currentSelectedSheetName);
     }
 
     function onContainerSheetChange(sheetName) {
@@ -220,43 +233,37 @@
         currentSelectedSheetName = sheetName;
         localStorage.setItem('wh_selected_container_sheet', sheetName);
         
-        dbDailyList = [];
-        dailyActive = false;
-        
-        const banner = document.getElementById('dailyCloudStat');
-        banner.innerText = `🔄 正在穿透读取柜号 [${sheetName}] 专属数据中...`;
-        
-        render();
-        loadDataBySheetName(sheetName);
+        parseLocalSheetData(sheetName);
     }
 
-    function loadDataBySheetName(sheetName) {
-        if (!sheetName) return;
-        
-        var script = document.createElement("script");
-        script.src = GET_TABS_API_URL + "?sheet=" + encodeURIComponent(sheetName) + "&callback=sheetDataCallback&t=" + Date.now();
-        script.id = "jsonp_sheet_data_script";
-        var oldScript = document.getElementById("jsonp_sheet_data_script");
-        if(oldScript) oldScript.parentNode.removeChild(oldScript);
-        document.getElementsByTagName("head")[0].appendChild(script);
-    }
-
-    window.sheetDataCallback = function(response) {
+    // ⚡ 本地内存 0 毫秒秒切解析
+    function parseLocalSheetData(sheetName) {
         const banner = document.getElementById('dailyCloudStat');
         dbDailyList = [];
         dailyActive = false;
-        
-        if (response && response.rows && Array.isArray(response.rows)) {
-            response.rows.forEach((r, i) => {
-                dbDailyList.push({ po: r.po, sku: r.sku, plan: r.plan, idx: i });
-                dailyActive = true;
-            });
-            banner.innerText = `⚡ 柜号 [${response.sheetName}] 挂载成功 (精准载入 ${dbDailyList.length} 项计划项)`;
+
+        const rawRows = globalAllCabinetsStore[sheetName];
+
+        if (rawRows && Array.isArray(rawRows)) {
+            for (let i = 1; i < rawRows.length; i++) {
+                let row = rawRows[i];
+                if (!row || row.length === 0) continue;
+
+                let poVal = row[0] ? String(row[0]).trim() : "";
+                let skuVal = row[1] ? String(row[1]).trim().toUpperCase() : "";
+                let planVal = row[2] ? parseFloat(row[2]) || 0 : 0;
+
+                if (skuVal) {
+                    dbDailyList.push({ po: poVal, sku: skuVal, plan: planVal, idx: i });
+                    dailyActive = true;
+                }
+            }
+            banner.innerText = `⚡ 柜号 [${sheetName}] 挂载成功 (精准载入 ${dbDailyList.length} 项计划项)`;
         } else {
-            banner.innerText = `⚠️ 当前柜号未包含有效比对数据`;
+            banner.innerText = `⚠️ 柜号 [${sheetName}] 未找到有效比对数据`;
         }
         render();
-    };
+    }
 
     function fetchLocalTimeFormatted() {
         const t = new Date();
@@ -465,10 +472,8 @@
         tbody.appendChild(fragment);
     }
 
-    // 🚀【防重复提交保护的核心引擎】
     function addBatch() {
         const now = Date.now();
-        // 💡 规则 1：1.5 秒内拒绝重复提交
         if (now - lastSubmitTime < 1500) {
             return;
         }
@@ -540,7 +545,6 @@
         document.getElementById('s1').focus(); 
         forceSKU = null;
 
-        // 💡 提交成功后 1 秒解锁按钮
         setTimeout(() => {
             saveBtn.disabled = false;
             saveBtn.innerText = "SAVE ALL";
@@ -587,7 +591,6 @@
 
     function exportCsv() {
         const op = document.getElementById('opName').value.trim() || "User", dateNow = new Date().toISOString().slice(0,10).replace(/-/g, "");
-        let rawSplittedRows = []; 
         let scannedGroupsBySku = {};
         
         refreshHistoricalDataNames();
@@ -606,107 +609,26 @@
         
         let allSkus = new Set([...Object.keys(scannedGroupsBySku), ...Object.keys(dailyGroupsBySku)]);
 
-        allSkus.forEach(skuKey => {
-            let scannedPool = scannedGroupsBySku[skuKey] || []; 
-            let dailyBills = JSON.parse(JSON.stringify(dailyGroupsBySku[skuKey] || [])); 
-            
-            let latestMasterInfo = dbMaster[skuKey] || { b: skuKey, c: "N/A" };
+        let csvRows = [["SKU", "Full SKU", "Name", "Location", "Date", "Quantity", "Operator", "PO", "Plan Qty"]];
+        allSkus.forEach(sku => {
+            let scans = scannedGroupsBySku[sku] || [{ fullSku: dbMaster[sku] ? dbMaster[sku].b : sku, name: dbMaster[sku] ? dbMaster[sku].c : "N/A", loc: "N/A", date: getTodayDateStr(), qty: 0, operatorName: op }];
+            let plans = dailyGroupsBySku[sku] || [{ po: "N/A", plan: 0 }];
 
-            if (!dailyActive || dailyBills.length === 0) {
-                scannedPool.forEach(s => { 
-                    rawSplittedRows.push({ po: "EXTRA_SKU", sku: latestMasterInfo.b, name: latestMasterInfo.c, bsn: "", ssk: "", exp: "", qty: s.qty, loc: s.loc, date: s.date, rec: "TRUE", note: "NOT IN LIST", opUser: s.operatorName }); 
+            scans.forEach(s => {
+                plans.forEach(p => {
+                    csvRows.push([sku, s.fullSku, s.name, s.loc, s.date, s.qty, s.operatorName, p.po, p.plan]);
                 });
-                return;
-            }
-
-            let billIdx = 0;
-            for (let sIdx = 0; sIdx < scannedPool.length; sIdx++) {
-                let scanRow = scannedPool[sIdx]; 
-                let remScanQty = scanRow.qty; 
-                
-                while (remScanQty > 0 && billIdx < dailyBills.length) {
-                    let currentBill = dailyBills[billIdx]; 
-                    var remBillPlan = currentBill.plan; 
-                    if (remBillPlan <= 0) { billIdx++; continue; } 
-                    
-                    if (remScanQty >= remBillPlan) {
-                        rawSplittedRows.push({ po: currentBill.po, sku: latestMasterInfo.b, name: latestMasterInfo.c, bsn: "", ssk: "", exp: "", qty: remBillPlan, loc: scanRow.loc, date: scanRow.date, rec: "TRUE", note: "OK", opUser: scanRow.operatorName });
-                        remScanQty -= remBillPlan; 
-                        currentBill.plan = 0; 
-                        billIdx++; 
-                    } else {
-                        rawSplittedRows.push({ po: currentBill.po, sku: latestMasterInfo.b, name: latestMasterInfo.c, bsn: "", ssk: "", exp: "", qty: remScanQty, loc: scanRow.loc, date: scanRow.date, rec: "TRUE", note: "OK", opUser: scanRow.operatorName });
-                        currentBill.plan -= remScanQty; 
-                        remScanQty = 0; 
-                    }
-                }
-                
-                if (remScanQty > 0) { 
-                    rawSplittedRows.push({ po: "OVER_FLOW", sku: latestMasterInfo.b, name: latestMasterInfo.c, bsn: "", ssk: "", exp: "", qty: remScanQty, loc: scanRow.loc, date: scanRow.date, rec: "TRUE", note: "OVERFLOW", opUser: scanRow.operatorName }); 
-                }
-            }
-            
-            while (billIdx < dailyBills.length) {
-                let currentBill = dailyBills[billIdx];
-                if (currentBill.plan > 0) {
-                    const t = new Date(); const formattedDate = `${t.getFullYear()}${String(t.getMonth()+1).padStart(2,'0')}${String(t.getDate()).padStart(2,'0')}`;
-                    rawSplittedRows.push({ po: currentBill.po, sku: latestMasterInfo.b, name: latestMasterInfo.c, bsn: "", ssk: "", exp: "", qty: 0, loc: "—", date: formattedDate, rec: "FALSE", note: "SHORTAGE", opUser: "System" });
-                }
-                billIdx++;
-            }
+            });
         });
 
-        let compressedMap = {};
-        let finalRows = [["PO","SKU","Name","BatchSerialNumber","SupplierSKU","ExpiryDate_YYYYMMDD","Quantity","Location","DateReceived_YYYYMMDD","Received","Exception_Note","Operator"]];
-
-        rawSplittedRows.forEach((row) => {
-            if (row.qty > 0) {
-                let poMatrixKey = `${row.po.trim().toUpperCase()}##${row.sku.trim().toUpperCase()}##${row.loc.trim().toUpperCase()}`;
-                
-                if (compressedMap[poMatrixKey]) {
-                    compressedMap[poMatrixKey].qty += row.qty;
-                } else {
-                    compressedMap[poMatrixKey] = {
-                        po: row.po,
-                        sku: row.sku,
-                        name: row.name,
-                        bsn: row.bsn,
-                        ssk: row.ssk,
-                        exp: row.exp,
-                        qty: row.qty,
-                        loc: row.loc,
-                        date: row.date,
-                        rec: row.rec,
-                        note: row.note,
-                        opUser: row.opUser
-                    };
-                }
-            } else {
-                finalRows.push([row.po, row.sku, row.name, row.bsn, row.ssk, row.exp, row.qty, row.loc, row.date, row.rec, "SHORTAGE", row.opUser]);
-            }
-        });
-
-        Object.keys(compressedMap).forEach(key => { 
-            let r = compressedMap[key]; 
-            finalRows.push([r.po, r.sku, r.name, r.bsn, r.ssk, r.exp, r.qty, r.loc, r.date, r.rec, r.note, r.opUser]); 
-        });
-
-        let safeContainerName = currentSelectedSheetName ? currentSelectedSheetName : "UNKNOWN";
-        let exportFileName = `${safeContainerName}-PUTAWAY-${op}-${dateNow}.csv`;
-
-        const csvContent = Papa.unparse(finalRows);
-        const csvBlob = new Blob(["\ufeff" + csvContent], { type: 'text/csv;charset=utf-8;' });
-        const csvLink = document.createElement("a"); csvLink.href = URL.createObjectURL(csvBlob); csvLink.download = exportFileName; csvLink.click();
-
-        let txtTitle = `==================================================\n   Warehouse Operations Audit Log (防误操追责日志) \n   当前导出操作员: [${op}]   柜号: [${safeContainerName}]   日期: [${dateNow}] \n==================================================\n\n`;
-        let txtBody = ""; if(auditLogPool.length === 0) { txtBody = "✨ 全场协同作业纯净。\n"; } else { auditLogPool.forEach((log, index) => { txtBody += `${index + 1}. ${log}\n`; }); }
-        const txtBlob = new Blob([txtTitle + txtBody], { type: 'text/plain;charset=utf-8;' });
-        const txtLink = document.createElement("a"); txtLink.href = URL.createObjectURL(txtBlob); txtLink.download = `Audit_Log_${safeContainerName}_${op}_${dateNow}.txt`; txtLink.click();
-    }
-    
-    function setupEnterKey() {
-        const ins = Array.from(document.querySelectorAll('.panel-right input'));
-        ins.forEach((input, index) => { input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); (ins[index + 1] || ins[0]).focus(); if(input.id === 'locIn') addBatch(); } }); });
+        let csvContent = "data:text/csv;charset=utf-8,\uFEFF" + csvRows.map(e => e.map(cell => `"${cell}"`).join(",")).join("\n");
+        let encodedUri = encodeURI(csvContent);
+        let link = document.createElement("a");
+        link.setAttribute("href", encodedUri);
+        link.setAttribute("download", `Putaway_Export_${op}_${dateNow}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
     }
 </script>
 </body>
