@@ -36,6 +36,7 @@
         .btn-save { background: var(--success); color: white; margin-top: 8px; }
         .btn-save:disabled { background: #d9d9d9 !important; color: #8c8c8c !important; cursor: not-allowed; }
         .btn-export { background: #444; color: white; height: 48px; font-size: 14px; flex-shrink: 0; margin-top: 10px; }
+        .btn-lang { background: #fa8c16; color: white; border: none; border-radius: 6px; padding: 4px 10px; font-weight: bold; cursor: pointer; font-size: 12px; }
         
         .table-wrap { flex: 1; overflow-y: auto; background: white; border-radius: 12px; border: 1px solid #e8e8e8; }
         table { width: 100%; border-collapse: collapse; font-size: 12px; table-layout: fixed; }
@@ -62,6 +63,10 @@
 
 <div class="main-wrapper">
     <div class="panel-right">
+        <div style="display: flex; justify-content: flex-end; margin-bottom: 4px;">
+            <button class="btn-lang" onclick="toggleLanguage()" id="langToggleBtn">🌐 EN / 中文</button>
+        </div>
+
         <div class="cloud-banner cb-sku" id="cloudStat">☁️ 联动双主库安全引擎正在连接...</div>
         <div class="cloud-banner cb-loc" id="locCloudStat">☁️ 公司库位表 (A-U列) 正在连接...</div>
         <div class="cloud-banner cb-daily" id="dailyCloudStat">☁️ 正在一次性拉取云端所有柜号 JSON...</div>
@@ -69,12 +74,12 @@
 
         <div class="card">
             <select id="sheetContainerSelector" class="select-daily-box" onchange="onContainerSheetChange(this.value)">
-                <option value="">🚢 正在一键加载云端全量柜号...</option>
+                <option value="" id="optLoading">🚢 正在一键加载云端全量柜号...</option>
             </select>
 
             <div style="display: flex; justify-content: space-between; margin-top: 8px;">
-                <button onclick="clearScreenPureHistory()" style="font-size:10px; color:#1890ff; border:1px solid #1890ff; border-radius:4px; background:none; padding:5px; font-weight:bold;">[CLEAR SCREEN] (清空屏幕历史)</button>
-                <button onclick="recoverBackup()" style="font-size:10px; color:blue; border:1px solid blue; border-radius:4px; background:none; padding:5px; font-weight:bold;">[RECOVER BACKUP]</button>
+                <button onclick="clearScreenPureHistory()" id="btnClearScreen" style="font-size:10px; color:#1890ff; border:1px solid #1890ff; border-radius:4px; background:none; padding:5px; font-weight:bold;">[CLEAR SCREEN] (清空屏幕历史)</button>
+                <button onclick="recoverBackup()" id="btnRecoverBackup" style="font-size:10px; color:blue; border:1px solid blue; border-radius:4px; background:none; padding:5px; font-weight:bold;">[RECOVER BACKUP]</button>
             </div>
         </div>
 
@@ -99,17 +104,17 @@
             <table id="mainTable">
                 <thead>
                     <tr>
-                        <th style="width: 30%;">SKU</th>
-                        <th style="width: 25%;">Location</th>
-                        <th style="width: 18%;">Qty</th>
-                        <th style="width: 15%;">STATUS</th>
-                        <th style="width: 12%;">DEL</th>
+                        <th style="width: 30%;" id="thSKU">SKU</th>
+                        <th style="width: 25%;" id="thLoc">Location</th>
+                        <th style="width: 18%;" id="thQty">Qty</th>
+                        <th style="width: 15%;" id="thStatus">STATUS</th>
+                        <th style="width: 12%;" id="thDel">DEL</th>
                     </tr>
                 </thead>
                 <tbody></tbody>
             </table>
         </div>
-        <button class="btn btn-export" onclick="exportCsv()">EXPORT CSV</button>
+        <button class="btn btn-export" id="btnExport" onclick="exportCsv()">EXPORT CSV</button>
     </div>
 </div>
 
@@ -118,7 +123,6 @@
     const FILE2_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQBh1fAm0-5pIJyHCRVDTt_n3vYILct87elf6_dJ9KvtZ126d-LYsgVkEaGKaZmti9lvFByG5LIc1dR/pub?gid=326617304&single=true&output=csv";
     const FIXED_LOC_CLOUD_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vStLtLccpDSfrf_yU_T9WrNcZufN29BqkDsVS2r9ql1INK_61uA8UetkiW4DZ4_dv63o-DHzFz0tOAq/pub?gid=1276542862&single=true&output=csv";
     
-    // ⚡ 一次性 JSON 打包 Web API 接口
     const BATCH_WEB_API_URL = "https://script.google.com/macros/s/AKfycbyQT2pvRXzyy02dYzvBEITy4AIJA_TTv130JkIvzQIl-FI6e1lJNOrme4wRqxJFTBmvOA/exec";
     const APP_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyuwspiWzxRItdBNEh4rXkmUnY0W914I0CApzWAYNO0GtHWaOYovGAh96usIlr43sC5rA/exec";
 
@@ -127,11 +131,121 @@
     let dailyActive = false, audioCtx = null, forceSKU = null;
     let isUserTyping = false;
     let currentSelectedSheetName = "";
+    let currentLang = localStorage.getItem('wh_lang') || 'zh';
     
-    // 全局内存 JSON 数据库
     let globalAllCabinetsStore = {};
-    
     let lastSubmitTime = 0;
+
+    const i18n = {
+        zh: {
+            cloudConnecting: "☁️ 联动双主库安全引擎正在连接...",
+            cloudSuccess: "⚡ 双通道 SKU 动态活字典挂载完成！",
+            cloudError: "❌ 联合 SKU 库同步失败",
+            locConnecting: "☁️ 公司库位表 (A-U列) 正在连接...",
+            locSuccess: "⚡ 公司库位表 (A-U列) 同步成功！(已刷新: {count} 个)",
+            locCache: "📦 本地内置库位就绪 (已锁死: {count} 个库位联想)",
+            locError: "⚠️ 库位离线中",
+            dailyFetching: "🚀 正在一次性提取全量柜号 JSON 数据包...",
+            dailySuccess: "⚡ 动态柜号库秒级装载完成 (已打包载入 {count} 个柜号)",
+            dailyNoTabs: "⚠️ 未获取到柜号标签页",
+            dailyError: "❌ 提取云端柜号 JSON 失败，请检查网络或部署状态",
+            dailyLoaded: "⚡ 柜号 [{sheet}] 挂载成功 (精准载入 {count} 项计划项)",
+            dailyNoData: "⚠️ 柜号 [{sheet}] 未找到有效比对数据",
+            syncOnline: "📡 多端联网在线中 (今日已聚合流水: {count} 条)",
+            optLoading: "🚢 正在一键加载云端全量柜号...",
+            optContainer: "📦 柜号 / 工作表: [ {name} ]",
+            clearScreen: "[CLEAR SCREEN] (清空屏幕历史)",
+            recoverBackup: "[RECOVER BACKUP]",
+            opPlaceholder: "Operator Name (开工必填)",
+            locPlaceholder: "SCAN LOCATION (LOC)",
+            btnSave: "SAVE ALL",
+            btnSaving: "SAVING...",
+            btnExport: "EXPORT CSV",
+            thSKU: "SKU",
+            thLoc: "Location",
+            thQty: "Qty",
+            thStatus: "STATUS",
+            thDel: "DEL",
+            clearConfirm: "💡 屏幕历史清空确认：\n这会清空您当前手机屏幕上的所有显示框，方便您进行下一批扫描作业。\n⚠️ 注意：后台云端大总账 100% 受到隔离保护，不会受到任何影响。确定执行吗？",
+            clearDone: "✨ 屏幕历史已清理，新一轮扫描盘点无缝开始！",
+            recoverConfirm: "🔄 确认要恢复您今天录入的所有流水账目吗？\n这会解开本机的分段清屏滤镜，将属于今天的全部协同数据完好无损地拉回屏幕。",
+            recoverDone: "✨ 今日数据备份已完整召回恢复！",
+            opAlert: "⚠️ 拒绝提交！请先在上方输入您的 Operator Name (操作员姓名)，以确保协同溯源安全。",
+            locInvalid: "库位无效！[{loc}] 不是合法的云端内置库位。",
+            mismatchBtn: "SKU NOT IN LIST! TAP AGAIN TO FORCE SAVE",
+            qtyConfirm: "⚠️ 安全确认：\n您确定要将 SKU [{sku}] 的盘点数量从 [{oldQty}] 变更为 [{newQty}] 吗？",
+            delConfirm: "🚨 毁灭性删除警报！\n您正在试图彻底删除库位 [{loc}] 下的 SKU [{sku}]（数量:{qty}）！\n此操作将全网删除，确定执行吗？"
+        },
+        en: {
+            cloudConnecting: "☁️ Connecting Dual SKU Master Engine...",
+            cloudSuccess: "⚡ Dual SKU Master Dictionary Loaded!",
+            cloudError: "❌ Dual SKU Sync Failed",
+            locConnecting: "☁️ Connecting Location Table (Col A-U)...",
+            locSuccess: "⚡ Location Table Synced! ({count} locations)",
+            locCache: "📦 Local Location Cache Ready ({count} locations)",
+            locError: "⚠️ Location Table Offline",
+            dailyFetching: "🚀 Fetching All Container JSON Batch Data...",
+            dailySuccess: "⚡ Container DB Loaded in Seconds ({count} Containers)",
+            dailyNoTabs: "⚠️ No Container Sheets Found",
+            dailyError: "❌ Failed to Fetch Cloud Container JSON",
+            dailyLoaded: "⚡ Container [{sheet}] Mounted ({count} Items)",
+            dailyNoData: "⚠️ No Valid Plan Data in Container [{sheet}]",
+            syncOnline: "📡 Multi-Device Online (Today Logs: {count})",
+            optLoading: "🚢 Loading All Cloud Containers...",
+            optContainer: "📦 Container / Sheet: [ {name} ]",
+            clearScreen: "[CLEAR SCREEN]",
+            recoverBackup: "[RECOVER BACKUP]",
+            opPlaceholder: "Operator Name (Required)",
+            locPlaceholder: "SCAN LOCATION (LOC)",
+            btnSave: "SAVE ALL",
+            btnSaving: "SAVING...",
+            btnExport: "EXPORT CSV",
+            thSKU: "SKU",
+            thLoc: "Location",
+            thQty: "Qty",
+            thStatus: "STATUS",
+            thDel: "DEL",
+            clearConfirm: "💡 Clear Screen Confirmation:\nThis will clear current screen inputs for your next scan batch.\n⚠️ Note: Cloud master logs remain 100% safe. Proceed?",
+            clearDone: "✨ Screen cleared! Ready for new scan batch.",
+            recoverConfirm: "🔄 Confirm to recover today's entry history to screen?",
+            recoverDone: "✨ Today's backup restored to screen!",
+            opAlert: "⚠️ Submission Denied! Please enter Operator Name first.",
+            locInvalid: "Invalid Location! [{loc}] is not in the system location list.",
+            mismatchBtn: "SKU NOT IN LIST! TAP AGAIN TO FORCE SAVE",
+            qtyConfirm: "⚠️ Security Check:\nAre you sure to change SKU [{sku}] qty from [{oldQty}] to [{newQty}]?",
+            delConfirm: "🚨 Delete Warning!\nAre you sure to PERMANENTLY delete SKU [{sku}] (Qty:{qty}) at Location [{loc}]?"
+        }
+    };
+
+    function t(key, vars = {}) {
+        let str = (i18n[currentLang] && i18n[currentLang][key]) || i18n['zh'][key] || key;
+        for (let k in vars) { str = str.replace(`{${k}}`, vars[k]); }
+        return str;
+    }
+
+    function toggleLanguage() {
+        currentLang = currentLang === 'zh' ? 'en' : 'zh';
+        localStorage.setItem('wh_lang', currentLang);
+        applyLanguageUI();
+        if (currentSelectedSheetName) parseLocalSheetData(currentSelectedSheetName);
+    }
+
+    function applyLanguageUI() {
+        document.getElementById('btnClearScreen').innerText = t('clearScreen');
+        document.getElementById('btnRecoverBackup').innerText = t('recoverBackup');
+        document.getElementById('opName').placeholder = t('opPlaceholder');
+        document.getElementById('locIn').placeholder = t('locPlaceholder');
+        document.getElementById('saveBtn').innerText = t('btnSave');
+        document.getElementById('btnExport').innerText = t('btnExport');
+
+        document.getElementById('thSKU').innerText = t('thSKU');
+        document.getElementById('thLoc').innerText = t('thLoc');
+        document.getElementById('thQty').innerText = t('thQty');
+        document.getElementById('thStatus').innerText = t('thStatus');
+        document.getElementById('thDel').innerText = t('thDel');
+
+        document.getElementById('langToggleBtn').innerText = currentLang === 'zh' ? '🌐 English' : '🌐 中文';
+    }
 
     function unlockAudio() {
         if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -144,6 +258,7 @@
     }
 
     window.onload = () => {
+        applyLanguageUI();
         const op = localStorage.getItem('wh_v820_op'), cachedLocsText = localStorage.getItem('wh_v825_cached_locs'), localLogs = localStorage.getItem('wh_v828_audit_logs');
         if (op) document.getElementById('opName').value = op;
         if (cachedLocsText) { buildLocationsEngine(cachedLocsText, true); }
@@ -151,8 +266,6 @@
         
         fetchCloudMasterDualChannels();
         fetchCloudLocations();
-        
-        // ⚡ 一次性极速加载全量柜号 JSON
         fetchAllContainerSheetsOnce();
         
         syncNetworkPool();
@@ -176,10 +289,9 @@
         });
     }
 
-    // ⚡ 批量 JSON 极速抓取引擎
     async function fetchAllContainerSheetsOnce() {
         const banner = document.getElementById('dailyCloudStat');
-        banner.innerText = "🚀 正在一次性提取全量柜号 JSON 数据包...";
+        banner.innerText = t('dailyFetching');
 
         try {
             const res = await fetch(BATCH_WEB_API_URL + "?t=" + Date.now());
@@ -191,17 +303,17 @@
 
                 if (sheetNames.length > 0) {
                     updateContainerDropdownUI(sheetNames);
-                    banner.innerText = `⚡ 动态柜号库秒级装载完成 (已打包载入 ${sheetNames.length} 个柜号)`;
+                    banner.innerText = t('dailySuccess', { count: sheetNames.length });
                     banner.style.background = "#f9f0ff"; banner.style.borderColor = "#d3ade6"; banner.style.color = "#531dab";
                 } else {
-                    banner.innerText = "⚠️ 未获取到柜号标签页";
+                    banner.innerText = t('dailyNoTabs');
                 }
             } else {
-                banner.innerText = "⚠️ 获取数据失败: " + (json.message || "格式不匹配");
+                banner.innerText = t('dailyError');
             }
         } catch (err) {
-            console.error("批量抓取全量数据失败:", err);
-            banner.innerText = "❌ 提取云端柜号 JSON 失败，请检查网络或部署状态";
+            console.error("Fetch batch error:", err);
+            banner.innerText = t('dailyError');
         }
     }
 
@@ -213,7 +325,7 @@
         sheetNames.forEach(name => {
             let opt = document.createElement('option');
             opt.value = name;
-            opt.innerText = `📦 柜号 / 工作表: [ ${name} ]`;
+            opt.innerText = t('optContainer', { name: name });
             selector.appendChild(opt);
         });
 
@@ -236,7 +348,6 @@
         parseLocalSheetData(sheetName);
     }
 
-    // ⚡ 本地内存 0 毫秒秒切解析
     function parseLocalSheetData(sheetName) {
         const banner = document.getElementById('dailyCloudStat');
         dbDailyList = [];
@@ -258,9 +369,9 @@
                     dailyActive = true;
                 }
             }
-            banner.innerText = `⚡ 柜号 [${sheetName}] 挂载成功 (精准载入 ${dbDailyList.length} 项计划项)`;
+            banner.innerText = t('dailyLoaded', { sheet: sheetName, count: dbDailyList.length });
         } else {
-            banner.innerText = `⚠️ 柜号 [${sheetName}] 未找到有效比对数据`;
+            banner.innerText = t('dailyNoData', { sheet: sheetName });
         }
         render();
     }
@@ -295,7 +406,7 @@
             requestAnimationFrame(() => { render(); });
         }
         
-        netBanner.innerText = `📡 多端联网在线中 (今日已聚合流水: ${data.length} 条)`;
+        netBanner.innerText = t('syncOnline', { count: data.length });
         netBanner.style.background = "#f6ffed"; netBanner.style.borderColor = "#b7eb8f"; netBanner.style.color = "#52c41a";
     };
 
@@ -311,9 +422,10 @@
 
     function fetchCloudLocations() {
         const banner = document.getElementById('locCloudStat');
+        banner.innerText = t('locConnecting');
         fetch(FIXED_LOC_CLOUD_URL).then(res => res.text()).then(txt => {
             if (txt && txt.trim().length > 10) { localStorage.setItem('wh_v825_cached_locs', txt); buildLocationsEngine(txt, false); }
-        }).catch(err => { banner.innerText = "⚠️ 库位离线中"; });
+        }).catch(err => { banner.innerText = t('locError'); });
     }
 
     function buildLocationsEngine(text, isOfflineCache) {
@@ -337,20 +449,21 @@
         dl.appendChild(fragment);
 
         const banner = document.getElementById('locCloudStat');
-        if (isOfflineCache) { banner.innerText = `📦 本地内置库位就绪 (已锁死: ${validCount} 个库位联想)`; } 
-        else { banner.innerText = `⚡ 公司库位表 (A-U列) 同步成功！(已刷新: ${validCount} 个)`; banner.style.background = "#f6ffed"; banner.style.borderColor = "#b7eb8f"; banner.style.color = "#52c41a"; }
+        if (isOfflineCache) { banner.innerText = t('locCache', { count: validCount }); } 
+        else { banner.innerText = t('locSuccess', { count: validCount }); banner.style.background = "#f6ffed"; banner.style.borderColor = "#b7eb8f"; banner.style.color = "#52c41a"; }
     }
 
     function fetchCloudMasterDualChannels() {
         const banner = document.getElementById('cloudStat');
+        banner.innerText = t('cloudConnecting');
         Promise.all([
             fetch(FILE1_URL).then(res => res.text()),
             fetch(FILE2_URL).then(res => res.text())
         ]).then(([txt1, txt2]) => {
             parseDualSKUMaster(txt1, txt2);
-            banner.innerText = "⚡ 双通道 SKU 动态活字典挂载完成！";
+            banner.innerText = t('cloudSuccess');
             banner.style.background = "#f6ffed"; banner.style.borderColor = "#b7eb8f"; banner.style.color = "#52c41a";
-        }).catch(err => { banner.innerText = "❌ 联合 SKU 库同步失败"; });
+        }).catch(err => { banner.innerText = t('cloudError'); });
     }
 
     function parseDualSKUMaster(csv1, csv2) {
@@ -399,20 +512,20 @@
     function saveLocalNameOnly() { localStorage.setItem('wh_v820_op', document.getElementById('opName').value); }
 
     function clearScreenPureHistory() {
-        if(confirm("💡 屏幕历史清空确认：\n这会清空您当前手机屏幕上的所有显示框，方便您进行下一批扫描作业。\n⚠️ 注意：后台云端大总账 100% 受到隔离保护，不会受到任何影响。确定执行吗？")) {
+        if(confirm(t('clearConfirm'))) {
             localStorage.setItem("wh_screen_clear_timestamp", Date.now().toString());
             for(let i=1; i<=6; i++) { document.getElementById('s'+i).value = ""; document.getElementById('q'+i).value = ""; }
             document.getElementById('locIn').value = "";
             render();
-            alert("✨ 屏幕历史已清理，新一轮扫描盘点无缝开始！");
+            alert(t('clearDone'));
         }
     }
 
     function recoverBackup() {
-        if(confirm("🔄 确认要恢复您今天录入的所有流水账目吗？\n这会解开本机的分段清屏滤镜，将属于今天的全部协同数据完好无损地拉回屏幕。")) {
+        if(confirm(t('recoverConfirm'))) {
             localStorage.setItem("wh_screen_clear_timestamp", "0");
             syncNetworkPool(); 
-            alert("✨ 今日数据备份已完整召回恢复！");
+            alert(t('recoverDone'));
         }
     }
 
@@ -481,23 +594,23 @@
 
         const saveBtn = document.getElementById('saveBtn');
         saveBtn.disabled = true;
-        saveBtn.innerText = "SAVING...";
+        saveBtn.innerText = t('btnSaving');
 
         unlockAudio();
         let inputLv = document.getElementById('locIn').value.trim(); let upperLv = inputLv.toUpperCase();
         const op = document.getElementById('opName').value.trim();
         if(!op) { 
-            alert("⚠️ 拒绝提交！请先在上方输入您的 Operator Name (操作员姓名)，以确保协同溯源安全。"); 
-            saveBtn.disabled = false; saveBtn.innerText = "SAVE ALL";
+            alert(t('opAlert')); 
+            saveBtn.disabled = false; saveBtn.innerText = t('btnSave');
             return; 
         }
         if(!inputLv) { 
-            saveBtn.disabled = false; saveBtn.innerText = "SAVE ALL";
+            saveBtn.disabled = false; saveBtn.innerText = t('btnSave');
             return; 
         }
         if (setLoc.size > 0 && !setLoc.has(upperLv)) { 
-            alert(`库位无效！[${inputLv}] 不是合法的云端内置库位。`); 
-            saveBtn.disabled = false; saveBtn.innerText = "SAVE ALL";
+            alert(t('locInvalid', { loc: inputLv })); 
+            saveBtn.disabled = false; saveBtn.innerText = t('btnSave');
             return; 
         }
 
@@ -512,7 +625,7 @@
             let inDaily = dbDailyList.some(d => d.sku === sv);
             if(dailyActive && !inDaily && forceSKU !== sv) { mismatch = true; forceSKU = sv; break; }
             if(!qv || qv <= 0) { 
-                saveBtn.disabled = false; saveBtn.innerText = "SAVE ALL";
+                saveBtn.disabled = false; saveBtn.innerText = t('btnSave');
                 return; 
             }
 
@@ -525,15 +638,15 @@
         }
 
         if(mismatch) { 
-            saveBtn.innerText = "SKU NOT IN LIST! TAP AGAIN TO FORCE SAVE"; 
+            saveBtn.innerText = t('mismatchBtn'); 
             saveBtn.style.background = "orange"; 
             saveBtn.disabled = false;
-            setTimeout(() => { saveBtn.innerText = "SAVE ALL"; saveBtn.style.background = ""; forceSKU = null; }, 3000); 
+            setTimeout(() => { saveBtn.innerText = t('btnSave'); saveBtn.style.background = ""; forceSKU = null; }, 3000); 
             return; 
         }
         
         if(batchRowsForGAS.length === 0) {
-            saveBtn.disabled = false; saveBtn.innerText = "SAVE ALL";
+            saveBtn.disabled = false; saveBtn.innerText = t('btnSave');
             return;
         }
 
@@ -547,7 +660,7 @@
 
         setTimeout(() => {
             saveBtn.disabled = false;
-            saveBtn.innerText = "SAVE ALL";
+            saveBtn.innerText = t('btnSave');
         }, 1000);
     }
 
@@ -557,13 +670,13 @@
             var targetRow = data.find(x => x.id === rowId);
             if (!targetRow) return;
 
-            if (!confirm(`⚠️ 安全确认：\n您确定要将 SKU [${targetRow._originSKU}] 的盘点数量从 [${oldQty}] 变更为 [${n}] 吗？`)) {
+            if (!confirm(t('qtyConfirm', { sku: targetRow._originSKU, oldQty: oldQty, newQty: n }))) {
                 render(); 
                 return;
             }
 
             let op = document.getElementById('opName').value.trim() || "Unknown Operator";
-            auditLogPool.push(`${fetchLocalTimeFormatted()} 操作员 [${op}] 调整了库位 [${targetRow.Location}] 的数据 ➔ SKU: [${targetRow._originSKU}], 数量从 [${oldQty}] 变更为 [${n}]`);
+            auditLogPool.push(`${fetchLocalTimeFormatted()} Operator [${op}] updated Loc [${targetRow.Location}] SKU: [${targetRow._originSKU}], Qty: [${oldQty}] -> [${n}]`);
             localStorage.setItem('wh_v828_audit_logs', JSON.stringify(auditLogPool));
             
             targetRow.Quantity = n; render(); 
@@ -577,12 +690,12 @@
         var targetRow = data.find(x => x.id === rowId);
         if (!targetRow) return;
 
-        if (!confirm(`🚨 毁灭性删除警报！\n您正在试图彻底删除库位 [${targetRow.Location}] 下的 SKU [${targetRow._originSKU}]（数量:${targetRow.Quantity}）！\n此操作将全网删除，确定执行吗？`)) {
+        if (!confirm(t('delConfirm', { loc: targetRow.Location, sku: targetRow._originSKU, qty: targetRow.Quantity }))) {
             return; 
         }
 
         let op = document.getElementById('opName').value.trim() || "Unknown Operator";
-        auditLogPool.push(`${fetchLocalTimeFormatted()} 🔴警报：操作员 [${op}] 删除了整行物理记录 ➔ 移除库位: [${targetRow.Location}], 受影响SKU: [${targetRow._originSKU}], 数量: [${targetRow.Quantity}]`);
+        auditLogPool.push(`${fetchLocalTimeFormatted()} 🔴ALERT: Operator [${op}] deleted row -> Loc: [${targetRow.Location}], SKU: [${targetRow._originSKU}], Qty: [${targetRow.Quantity}]`);
         localStorage.setItem('wh_v828_audit_logs', JSON.stringify(auditLogPool));
         
         data = data.filter(x => x.id !== rowId); render(); 
