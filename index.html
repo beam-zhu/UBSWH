@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Warehouse v29.32-PO-SPLIT-FIX</title>
+    <title>Warehouse v29.33-ROW-PO-SPLIT</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
     <style>
         :root { --primary: #1890ff; --success: #52c41a; --danger: #ff4d4f; --extra: #b37feb; --bg: #f5f7fa; }
@@ -65,7 +65,7 @@
 <div class="main-wrapper">
     <div class="panel-right">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
-            <div class="ver-tag">Ver: v29.32-PO-SPLIT-FIX</div>
+            <div class="ver-tag">Ver: v29.33-ROW-PO-SPLIT</div>
             <button class="btn-lang" onclick="toggleLanguage()" id="langToggleBtn">🌐 EN / 中文</button>
         </div>
 
@@ -764,7 +764,7 @@
 
         let activeScopeData = getFilteredActiveData();
 
-        // 样表标准表头
+        // 样表标准 12 列表头
         const headers = [
             'PO', 
             'SKU', 
@@ -782,106 +782,104 @@
 
         let csvRows = [headers];
 
-        // 1. 汇总当前已上架的每一个 SKU 的总盘点数量与基本信息
-        let scannedMap = {};
-        activeScopeData.forEach(d => {
-            let skuKey = d._originSKU;
-            if (!scannedMap[skuKey]) {
-                scannedMap[skuKey] = {
-                    totalQty: 0,
-                    fullSku: d.SKU || d._originSKU,
-                    name: d.Name || "N/A",
-                    location: d.FullLocation ? d.FullLocation : ("Patiki Warehouse: " + d.Location),
-                    operator: d.Operator || op,
-                    date: d.Date || getTodayDateStr()
-                };
-            }
-            scannedMap[skuKey].totalQty += d.Quantity;
-        });
-
-        // 2. 将柜号计划表 (dbDailyList) 按照 SKU 进行分组
-        let dailyPoMap = {};
+        // 1. 初始化每个 SKU 在各 PO 中的计划量配额池
+        // poQuotaPool 结构: { "9635": [ { po: "PO-01876", remPlan: 2, totalPlan: 2 }, { po: "PO-01926", remPlan: 6, totalPlan: 6 } ] }
+        let poQuotaPool = {};
         dbDailyList.forEach(item => {
             let skuKey = item.sku;
-            if (!dailyPoMap[skuKey]) {
-                dailyPoMap[skuKey] = [];
+            if (!poQuotaPool[skuKey]) {
+                poQuotaPool[skuKey] = [];
             }
-            dailyPoMap[skuKey].push({ po: item.po, planQty: item.plan });
+            poQuotaPool[skuKey].push({
+                po: item.po,
+                remPlan: item.plan,
+                totalPlan: item.plan
+            });
         });
 
-        // 3. 遍历实盘数据，按照柜号计划中的各个 PO 计划量依次扣减拆减
-        Object.keys(scannedMap).forEach(skuKey => {
-            let itemData = scannedMap[skuKey];
-            let remainingScanned = itemData.totalQty;
-            let poPlans = dailyPoMap[skuKey];
+        // 2. 逐笔遍历实盘录入记录（保持真实库位），在 PO 配额池中按顺序扣减归属
+        activeScopeData.forEach(row => {
+            let skuKey = row._originSKU;
+            let unassignedQty = row.Quantity;
+            let fullSku = row.SKU || row._originSKU;
+            let goodsName = row.Name || "N/A";
+            let fullLocation = row.FullLocation ? row.FullLocation : ("Patiki Warehouse: " + row.Location);
+            let rowOperator = row.Operator || op;
+            let rowDate = row.Date || getTodayDateStr();
 
-            if (poPlans && poPlans.length > 0) {
-                // 依据 PO 计划配额逐个拆分分配
-                for (let i = 0; i < poPlans.length; i++) {
-                    let poInfo = poPlans[i];
-                    if (remainingScanned <= 0) break;
+            let poList = poQuotaPool[skuKey];
 
-                    let currentPoQty = Math.min(poInfo.planQty, remainingScanned);
-                    remainingScanned -= currentPoQty;
+            if (poList && poList.length > 0) {
+                // 遍历该 SKU 的各个 PO，依次扣减配额
+                for (let i = 0; i < poList.length; i++) {
+                    let poObj = poList[i];
+                    if (unassignedQty <= 0) break;
 
-                    csvRows.push([
-                        poInfo.po,                              // PO
-                        itemData.fullSku,                       // SKU
-                        itemData.name,                          // Name
-                        "",                                     // BatchSerialNumber
-                        "",                                     // SupplierSKU
-                        "",                                     // ExpiryDate_YYYYMMDD
-                        currentPoQty,                           // Quantity (按PO配额拆分后的数量)
-                        itemData.location,                      // Location
-                        itemData.date,                          // DateReceived_YYYYMMDD
-                        "TRUE",                                 // Received
-                        "OK",                                   // Exception_Note
-                        itemData.operator                       // Operator
-                    ]);
+                    if (poObj.remPlan > 0) {
+                        let takeQty = Math.min(poObj.remPlan, unassignedQty);
+                        poObj.remPlan -= takeQty;
+                        unassignedQty -= takeQty;
+
+                        csvRows.push([
+                            poObj.po,               // PO
+                            fullSku,                // SKU
+                            goodsName,              // Name
+                            "",                     // BatchSerialNumber
+                            "",                     // SupplierSKU
+                            "",                     // ExpiryDate_YYYYMMDD
+                            takeQty,                // Quantity (当前库位下分给该PO的数量)
+                            fullLocation,           // Location (保留真实库位)
+                            rowDate,                // DateReceived_YYYYMMDD
+                            "TRUE",                 // Received
+                            "OK",                   // Exception_Note
+                            rowOperator             // Operator
+                        ]);
+                    }
                 }
 
-                // 如果实盘数量超过计划总量，超出的部分归入最后一个 PO 并标注 EXT
-                if (remainingScanned > 0) {
-                    let lastPo = poPlans[poPlans.length - 1].po;
+                // 如果该笔盘点记录扣完所有 PO 计划配额后还有剩余（超盘）
+                if (unassignedQty > 0) {
+                    let lastPo = poList[poList.length - 1].po || "N/A";
                     csvRows.push([
                         lastPo,
-                        itemData.fullSku,
-                        itemData.name,
+                        fullSku,
+                        goodsName,
                         "",
                         "",
                         "",
-                        remainingScanned,
-                        itemData.location,
-                        itemData.date,
+                        unassignedQty,
+                        fullLocation,
+                        rowDate,
                         "TRUE",
                         "EXT",
-                        itemData.operator
+                        rowOperator
                     ]);
                 }
             } else {
                 // 计划外全新的 SKU (EXT)
                 csvRows.push([
                     "N/A",
-                    itemData.fullSku,
-                    itemData.name,
+                    fullSku,
+                    goodsName,
                     "",
                     "",
                     "",
-                    remainingScanned,
-                    itemData.location,
-                    itemData.date,
+                    unassignedQty,
+                    fullLocation,
+                    rowDate,
                     "TRUE",
                     "EXT",
-                    itemData.operator
+                    rowOperator
                 ]);
             }
         });
 
+        // 3. 生成 CSV 字符串并下载盘点数据表
         let dataCsvContent = csvRows.map(e => e.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(",")).join("\n");
         const dataFileName = getFormattedFileName(false);
         saveCsvFile(dataCsvContent, dataFileName);
 
-        // 同步导出 LOG 日志文件
+        // 4. 同步导出 LOG 日志文件
         if (auditLogPool && auditLogPool.length > 0) {
             const logHeaders = ['Timestamp', 'Operator', 'Cabinet', 'Action', 'Detail'];
             let logRows = [logHeaders];
