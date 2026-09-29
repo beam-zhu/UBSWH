@@ -379,27 +379,31 @@
     }
 
     function updateContainerDropdownUI(sheetNames) {
-        const selector = document.getElementById('sheetContainerSelector');
-        let savedSelected = localStorage.getItem('wh_selected_container_sheet') || sheetNames[0];
-        
-        selector.innerHTML = "";
-        sheetNames.forEach(name => {
-            let opt = document.createElement('option');
-            opt.value = name;
-            opt.innerText = t('optContainer', { name: name });
-            selector.appendChild(opt);
-        });
+    const selector = document.getElementById('sheetContainerSelector');
+    let savedSelected = localStorage.getItem('wh_selected_container_sheet') || "";
+    
+    selector.innerHTML = "";
+    
+    // 💡 1. 插入顶部的“空值”选项
+    let emptyOpt = document.createElement('option');
+    emptyOpt.value = "";
+    emptyOpt.innerText = "📦 -- 不指定柜号 (仅按日期汇总) --";
+    selector.appendChild(emptyOpt);
 
-        if (sheetNames.includes(savedSelected)) {
-            selector.value = savedSelected;
-            currentSelectedSheetName = savedSelected;
-        } else if (sheetNames.length > 0) {
-            selector.value = sheetNames[0];
-            currentSelectedSheetName = sheetNames[0];
-        }
+    // 2. 插入真实的柜号选项
+    sheetNames.forEach(name => {
+        let opt = document.createElement('option');
+        opt.value = name;
+        opt.innerText = t('optContainer', { name: name });
+        selector.appendChild(opt);
+    });
 
-        parseLocalSheetData(currentSelectedSheetName);
-    }
+    // 保持用户之前的选择状态
+    selector.value = savedSelected;
+    currentSelectedSheetName = savedSelected;
+
+    parseLocalSheetData(currentSelectedSheetName);
+}
 
     function onContainerSheetChange(sheetName) {
         if (!sheetName) return;
@@ -783,12 +787,17 @@
     }
 
     function getFormattedFileName() {
-        const op = document.getElementById('opName').value.trim() || "User";
-        const cabinet = currentSelectedSheetName || "Q0059";
-        const selectedDateVal = document.getElementById('workDatePicker').value;
-        const dateStr = selectedDateVal ? selectedDateVal.replace(/-/g, "") : getFormattedDateStr();
-        return `${cabinet}-PUTAWAY-${op}-${dateStr}.csv`;
+    const op = document.getElementById('opName').value.trim() || "User";
+    const selectedDateVal = document.getElementById('workDatePicker').value;
+    const dateStr = selectedDateVal ? selectedDateVal.replace(/-/g, "") : getFormattedDateStr();
+    
+    // 💡 如果选择了具体的柜号，文件名带有柜号前缀；如果选择“不指定柜号”，则忽略柜号
+    if (currentSelectedSheetName && currentSelectedSheetName.trim() !== "") {
+        return `${currentSelectedSheetName}-PUTAWAY-${op}-${dateStr}.csv`;
+    } else {
+        return `PUTAWAY-${op}-${dateStr}.csv`;
     }
+}
 
     function saveCsvFile(csvContent, fileName) {
         const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
