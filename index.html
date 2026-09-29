@@ -247,27 +247,30 @@
     function toggleLanguage() {
         currentLang = currentLang === 'zh' ? 'en' : 'zh';
         localStorage.setItem('wh_lang', currentLang);
-        applyLanguageUI();
+        ;
         if (currentSelectedSheetName) parseLocalSheetData(currentSelectedSheetName);
     }
 
     function applyLanguageUI() {
-        document.getElementById('btnClearScreen').innerText = t('clearScreen');
-        document.getElementById('btnRecoverBackup').innerText = t('recoverBackup');
-        document.getElementById('opName').placeholder = t('opPlaceholder');
-        document.getElementById('locIn').placeholder = t('locPlaceholder');
-        document.getElementById('saveBtn').innerText = t('btnSave');
-        document.getElementById('btnExport').innerText = t('btnExport');
-        document.getElementById('btnExportLog').innerText = t('btnExportLog');
+    document.getElementById('btnClearScreen').innerText = t('clearScreen');
+    document.getElementById('btnRecoverBackup').innerText = t('recoverBackup');
+    document.getElementById('opName').placeholder = t('opPlaceholder');
+    document.getElementById('locIn').placeholder = t('locPlaceholder');
+    document.getElementById('saveBtn').innerText = t('btnSave');
+    document.getElementById('btnExport').innerText = t('btnExport');
+    
+    // 💡 关键修复：用 optional chaining (?.) 防护，即使按钮在页面上被删除了也不会报错崩溃！
+    const btnLog = document.getElementById('btnExportLog');
+    if (btnLog) btnLog.innerText = t('btnExportLog');
 
-        document.getElementById('thSKU').innerText = t('thSKU');
-        document.getElementById('thLoc').innerText = t('thLoc');
-        document.getElementById('thQty').innerText = t('thQty');
-        document.getElementById('thStatus').innerText = t('thStatus');
-        document.getElementById('thDel').innerText = t('thDel');
+    document.getElementById('thSKU').innerText = t('thSKU');
+    document.getElementById('thLoc').innerText = t('thLoc');
+    document.getElementById('thQty').innerText = t('thQty');
+    document.getElementById('thStatus').innerText = t('thStatus');
+    document.getElementById('thDel').innerText = t('thDel');
 
-        document.getElementById('langToggleBtn').innerText = currentLang === 'zh' ? '🌐 English' : '🌐 中文';
-    }
+    document.getElementById('langToggleBtn').innerText = currentLang === 'zh' ? '🌐 English' : '🌐 中文';
+}
 
     function unlockAudio() {
         if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
