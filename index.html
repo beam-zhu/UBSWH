@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Warehouse var.29.30 Anti-Duplicate Guard</title>
+    <title>Warehouse v29.32-PO-SPLIT-FIX</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
     <style>
         :root { --primary: #1890ff; --success: #52c41a; --danger: #ff4d4f; --extra: #b37feb; --bg: #f5f7fa; }
@@ -57,13 +57,15 @@
         .cb-loc { background: #feffe6; border: 1px solid #fffb8f; color: #614700; }
         .cb-sync { background: #f6ffed; border: 1px solid #b7eb8f; color: #52c41a; }
         .cb-daily { background: #f9f0ff; border: 1px solid #d3ade6; color: #531dab; }
+        .ver-tag { font-size: 10px; color: #8c8c8c; text-align: right; margin-bottom: 2px; }
     </style>
 </head>
 <body onclick="unlockAudio()">
 
 <div class="main-wrapper">
     <div class="panel-right">
-        <div style="display: flex; justify-content: flex-end; margin-bottom: 4px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+            <div class="ver-tag">Ver: v29.32-PO-SPLIT-FIX</div>
             <button class="btn-lang" onclick="toggleLanguage()" id="langToggleBtn">🌐 EN / 中文</button>
         </div>
 
@@ -762,7 +764,7 @@
 
         let activeScopeData = getFilteredActiveData();
 
-        // 精准对齐样表的 12 列表头
+        // 样表标准表头
         const headers = [
             'PO', 
             'SKU', 
@@ -779,32 +781,100 @@
         ];
 
         let csvRows = [headers];
-        
+
+        // 1. 汇总当前已上架的每一个 SKU 的总盘点数量与基本信息
+        let scannedMap = {};
         activeScopeData.forEach(d => {
-            // 匹配 PO 柜号信息
-            let matchingPlan = dbDailyList.find(p => p.sku === d._originSKU);
-            let poVal = matchingPlan ? matchingPlan.po : "N/A";
-            
-            // 匹配异常说明 (Exception Note)
-            let exceptionNote = matchingPlan ? "OK" : "EXT";
+            let skuKey = d._originSKU;
+            if (!scannedMap[skuKey]) {
+                scannedMap[skuKey] = {
+                    totalQty: 0,
+                    fullSku: d.SKU || d._originSKU,
+                    name: d.Name || "N/A",
+                    location: d.FullLocation ? d.FullLocation : ("Patiki Warehouse: " + d.Location),
+                    operator: d.Operator || op,
+                    date: d.Date || getTodayDateStr()
+                };
+            }
+            scannedMap[skuKey].totalQty += d.Quantity;
+        });
 
-            // 格式化 Location（优先使用包含仓库前缀的 FullLocation，无则拼接）
-            let fullLocationStr = d.FullLocation ? d.FullLocation : ("Patiki Warehouse: " + d.Location);
+        // 2. 将柜号计划表 (dbDailyList) 按照 SKU 进行分组
+        let dailyPoMap = {};
+        dbDailyList.forEach(item => {
+            let skuKey = item.sku;
+            if (!dailyPoMap[skuKey]) {
+                dailyPoMap[skuKey] = [];
+            }
+            dailyPoMap[skuKey].push({ po: item.po, planQty: item.plan });
+        });
 
-            csvRows.push([
-                poVal,                                      // PO
-                d.SKU || d._originSKU,                       // SKU (全称长代码)
-                d.Name || "N/A",                            // Name (品名)
-                "",                                         // BatchSerialNumber (留空)
-                "",                                         // SupplierSKU (留空)
-                "",                                         // ExpiryDate_YYYYMMDD (留空)
-                d.Quantity,                                 // Quantity (数量)
-                fullLocationStr,                            // Location (完整库位字符串)
-                d.Date || getTodayDateStr(),                // DateReceived_YYYYMMDD (8位日期)
-                "TRUE",                                     // Received (固定 TRUE)
-                exceptionNote,                              // Exception_Note (OK 或 EXT)
-                d.Operator || op                            // Operator
-            ]);
+        // 3. 遍历实盘数据，按照柜号计划中的各个 PO 计划量依次扣减拆减
+        Object.keys(scannedMap).forEach(skuKey => {
+            let itemData = scannedMap[skuKey];
+            let remainingScanned = itemData.totalQty;
+            let poPlans = dailyPoMap[skuKey];
+
+            if (poPlans && poPlans.length > 0) {
+                // 依据 PO 计划配额逐个拆分分配
+                for (let i = 0; i < poPlans.length; i++) {
+                    let poInfo = poPlans[i];
+                    if (remainingScanned <= 0) break;
+
+                    let currentPoQty = Math.min(poInfo.planQty, remainingScanned);
+                    remainingScanned -= currentPoQty;
+
+                    csvRows.push([
+                        poInfo.po,                              // PO
+                        itemData.fullSku,                       // SKU
+                        itemData.name,                          // Name
+                        "",                                     // BatchSerialNumber
+                        "",                                     // SupplierSKU
+                        "",                                     // ExpiryDate_YYYYMMDD
+                        currentPoQty,                           // Quantity (按PO配额拆分后的数量)
+                        itemData.location,                      // Location
+                        itemData.date,                          // DateReceived_YYYYMMDD
+                        "TRUE",                                 // Received
+                        "OK",                                   // Exception_Note
+                        itemData.operator                       // Operator
+                    ]);
+                }
+
+                // 如果实盘数量超过计划总量，超出的部分归入最后一个 PO 并标注 EXT
+                if (remainingScanned > 0) {
+                    let lastPo = poPlans[poPlans.length - 1].po;
+                    csvRows.push([
+                        lastPo,
+                        itemData.fullSku,
+                        itemData.name,
+                        "",
+                        "",
+                        "",
+                        remainingScanned,
+                        itemData.location,
+                        itemData.date,
+                        "TRUE",
+                        "EXT",
+                        itemData.operator
+                    ]);
+                }
+            } else {
+                // 计划外全新的 SKU (EXT)
+                csvRows.push([
+                    "N/A",
+                    itemData.fullSku,
+                    itemData.name,
+                    "",
+                    "",
+                    "",
+                    remainingScanned,
+                    itemData.location,
+                    itemData.date,
+                    "TRUE",
+                    "EXT",
+                    itemData.operator
+                ]);
+            }
         });
 
         let dataCsvContent = csvRows.map(e => e.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(",")).join("\n");
