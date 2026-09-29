@@ -763,26 +763,36 @@
         document.body.removeChild(link);
     }
 
-    function exportLogCsvOnly() {
+function exportLogTxtOnly() {
         const op = document.getElementById('opName').value.trim() || "User";
-        const logHeaders = ['Timestamp', 'Operator', 'Cabinet', 'Action', 'Detail'];
-        let logRows = [logHeaders];
+        const cabinet = currentSelectedSheetName || "Q0059";
+        const dateStr = getTodayDateStr();
+        const logFileName = `${cabinet}-PUTAWAY-${op}-${dateStr}_LOG.txt`;
 
+        let txtLines = [];
         if (auditLogPool && auditLogPool.length > 0) {
             auditLogPool.forEach(log => {
                 if (typeof log === 'object') {
-                    logRows.push([log.Timestamp || '', log.Operator || op, log.Cabinet || '', log.Action || '', log.Detail || '']);
+                    txtLines.push(`[${log.Timestamp || ''}] [${log.Operator || op}] [Cabinet: ${log.Cabinet || ''}] [Action: ${log.Action || ''}] - ${log.Detail || ''}`);
                 } else {
-                    logRows.push(['', op, currentSelectedSheetName || '', 'LOG', log]);
+                    txtLines.push(`[${new Date().toLocaleString()}] [${op}] ${log}`);
                 }
             });
         } else {
-            logRows.push([new Date().toLocaleString(), op, currentSelectedSheetName || '', 'INFO', 'No operation modifications recorded in this session']);
+            txtLines.push(`[${new Date().toLocaleString()}] [${op}] No operation modifications recorded in this session.`);
         }
 
-        let logCsvContent = logRows.map(e => e.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(",")).join("\n");
-        const logFileName = getFormattedFileName(true);
-        saveCsvFile(logCsvContent, logFileName);
+        let txtContent = txtLines.join("\r\n"); // Windows \r\n 换行符
+        
+        // 加入 "\uFEFF" (UTF-8 BOM Header)，确保 Scanner 和记事本打开不会乱码
+        const blob = new Blob(["\uFEFF" + txtContent], { type: 'text/plain;charset=utf-8;' });
+        
+        const link = document.createElement("a");
+        link.href = URL.createObjectURL(blob);
+        link.setAttribute("download", logFileName);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
     }
 
     function exportCsv() {
@@ -903,7 +913,7 @@
 
         // 4. 解决浏览器拦截：同时尝试触发 Log 文件下载，并保留面板上的专属按钮供用户手动点击
         setTimeout(() => {
-            exportLogCsvOnly();
+            exportLogTxtOnly();
         }, 600);
     }
 </script>
