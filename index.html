@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Warehouse v29.34-LOG-FIX</title>
+    <title>Warehouse v29.35-DATE-FIX</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
     <style>
         :root { --primary: #1890ff; --success: #52c41a; --danger: #ff4d4f; --extra: #b37feb; --bg: #f5f7fa; }
@@ -27,16 +27,19 @@
         .select-daily-box {
             height: 46px; font-size: 15px; font-weight: bold; color: #1890ff;
             background: #e6f7ff; border: 2px solid #91d5ff; border-radius: 8px;
-            cursor: pointer; text-align: center;
+            cursor: pointer; text-align: center; margin-bottom: 8px;
         }
 
-        .status-tag { font-size: 10px; font-weight: bold; color: #bfbfbf; margin-top: 2px; word-break: break-all; padding: 0 4px; text-align: center; }
-        .ready { color: var(--success); }
+        .date-picker-box {
+            height: 40px; font-size: 14px; font-weight: bold; color: #333;
+            background: #fff; border: 1px solid #d9d9d9; border-radius: 6px;
+            text-align: center; margin-bottom: 8px;
+        }
+
         .btn { height: 54px; border: none; border-radius: 10px; font-weight: bold; cursor: pointer; font-size: 18px; width: 100%; }
         .btn-save { background: var(--success); color: white; margin-top: 8px; }
         .btn-save:disabled { background: #d9d9d9 !important; color: #8c8c8c !important; cursor: not-allowed; }
         .btn-export { background: #444; color: white; height: 48px; font-size: 14px; flex-shrink: 0; margin-top: 10px; }
-        .btn-log-export { background: #722ed1; color: white; height: 38px; font-size: 13px; flex-shrink: 0; margin-top: 6px; }
         .btn-lang { background: #fa8c16; color: white; border: none; border-radius: 6px; padding: 4px 10px; font-weight: bold; cursor: pointer; font-size: 12px; }
         
         .table-wrap { flex: 1; overflow-y: auto; background: white; border-radius: 12px; border: 1px solid #e8e8e8; }
@@ -66,7 +69,7 @@
 <div class="main-wrapper">
     <div class="panel-right">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
-            <div class="ver-tag">Ver: v29.34-LOG-FIX</div>
+            <div class="ver-tag">Ver: v29.35-DATE-FIX</div>
             <button class="btn-lang" onclick="toggleLanguage()" id="langToggleBtn">🌐 EN / 中文</button>
         </div>
 
@@ -76,11 +79,18 @@
         <div class="cloud-banner cb-sync" id="networkStat">📡 多端联网对齐中...</div>
 
         <div class="card">
+            <!-- 柜号选择 -->
             <select id="sheetContainerSelector" class="select-daily-box" onchange="onContainerSheetChange(this.value)">
                 <option value="" id="optLoading">🚢 正在一键加载云端全量柜号...</option>
             </select>
 
-            <div style="display: flex; justify-content: space-between; margin-top: 8px;">
+            <!-- 增加日期选择与恢复控件 -->
+            <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 6px;">
+                <label style="font-size: 12px; font-weight: bold; white-space: nowrap;">📅 工作日期:</label>
+                <input type="date" id="workDatePicker" class="date-picker-box" style="margin-bottom:0;" onchange="onDateChange(this.value)">
+            </div>
+
+            <div style="display: flex; justify-content: space-between; margin-top: 4px;">
                 <button onclick="clearScreenPureHistory()" id="btnClearScreen" style="font-size:10px; color:#1890ff; border:1px solid #1890ff; border-radius:4px; background:none; padding:5px; font-weight:bold;">[CLEAR SCREEN] (清空屏幕历史)</button>
                 <button onclick="recoverBackup()" id="btnRecoverBackup" style="font-size:10px; color:blue; border:1px solid blue; border-radius:4px; background:none; padding:5px; font-weight:bold;">[RECOVER BACKUP]</button>
             </div>
@@ -130,7 +140,7 @@
     const APP_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyuwspiWzxRItdBNEh4rXkmUnY0W914I0CApzWAYNO0GtHWaOYovGAh96usIlr43sC5rA/exec";
 
     let auditLogPool = [];
-    let dbMaster = {}, dbDailyList = [], setLoc = new Set(), dbLocMap = {}, data = [];
+    let dbMaster = {}, dbDailyList = [], setLoc = new Set(), dbLocMap = {}, data = [], rawNetworkPool = [];
     let dailyActive = false, audioCtx = null, forceSKU = null;
     let isUserTyping = false;
     let currentSelectedSheetName = "";
@@ -154,7 +164,7 @@
             dailyError: "❌ 提取云端柜号 JSON 失败，请检查网络或部署状态",
             dailyLoaded: "⚡ 柜号 [{sheet}] 挂载成功 (精准载入 {count} 项计划项)",
             dailyNoData: "⚠️ 柜号 [{sheet}] 未找到有效比对数据",
-            syncOnline: "📡 多端联网在线中 (今日已聚合流水: {count} 条)",
+            syncOnline: "📡 多端联网在线中 (已匹配当前分类: {count} 条流水)",
             optLoading: "🚢 正在一键加载云端全量柜号...",
             optContainer: "📦 柜号 / 工作表: [ {name} ]",
             clearScreen: "[CLEAR SCREEN] (清空屏幕历史)",
@@ -164,21 +174,20 @@
             btnSave: "SAVE ALL",
             btnSaving: "SAVING...",
             btnExport: "EXPORT DATA CSV",
-            btnExportLog: "📋 单独导出操作日志 txt",
             thSKU: "SKU",
             thLoc: "Location",
             thQty: "Qty",
             thStatus: "STATUS",
             thDel: "DEL",
-            clearConfirm: "💡 屏幕历史清空确认：\n这会清空您当前手机屏幕上的所有显示框，方便您进行下一批扫描作业。\n⚠️ 注意：后台云端大总账 100% 受到隔离保护，不会受到任何影响。确定执行吗？",
-            clearDone: "✨ 屏幕历史已清理，新一轮扫描盘点无缝开始！",
-            recoverConfirm: "🔄 确认要恢复您今天录入的所有流水账目吗？\n这会解开本机的分段清屏滤镜，将属于今天的全部协同数据完好无损地拉回屏幕。",
-            recoverDone: "✨ 今日数据备份已完整召回恢复！",
-            opAlert: "⚠️ 拒绝提交！请先在上方输入您的 Operator Name (操作员姓名)，以确保协同溯源安全。",
+            clearConfirm: "💡 屏幕历史清空确认：\n这会清空当前显示的视图。云端大总账 100% 安全受保护。确定执行吗？",
+            clearDone: "✨ 屏幕视图已重置，无缝开始！",
+            recoverConfirm: "🔄 确认要根据选择的【日期 + 柜号】重新同步云端备份流水吗？",
+            recoverDone: "✨ 指定日期的备份数据已成功拉回恢复！",
+            opAlert: "⚠️ 拒绝提交！请先在上方输入您的 Operator Name (操作员姓名)。",
             locInvalid: "库位无效！[{loc}] 不是合法的云端内置库位。",
             mismatchBtn: "SKU NOT IN LIST! TAP AGAIN TO FORCE SAVE",
             qtyConfirm: "⚠️ 安全确认：\n您确定要将 SKU [{sku}] 的盘点数量从 [{oldQty}] 变更至 [{newQty}] 吗？",
-            delConfirm: "🚨 毁灭性删除警报！\n您正在试图彻底删除库位 [{loc}] 下的 SKU [{sku}]（数量:{qty}）！\n此操作将全网删除，确定执行吗？"
+            delConfirm: "🚨 彻底删除警报！\n您确定要在后台库彻底删除库位 [{loc}] 下的 SKU [{sku}]（数量:{qty}）吗？"
         },
         en: {
             cloudConnecting: "☁️ Connecting Dual SKU Master Engine...",
@@ -194,7 +203,7 @@
             dailyError: "❌ Failed to Fetch Cloud Container JSON",
             dailyLoaded: "⚡ Container [{sheet}] Mounted ({count} Items)",
             dailyNoData: "⚠️ No Valid Plan Data in Container [{sheet}]",
-            syncOnline: "📡 Multi-Device Online (Today Logs: {count})",
+            syncOnline: "📡 Multi-Device Online (Matched Logs: {count})",
             optLoading: "🚢 Loading All Cloud Containers...",
             optContainer: "📦 Container / Sheet: [ {name} ]",
             clearScreen: "[CLEAR SCREEN]",
@@ -204,21 +213,20 @@
             btnSave: "SAVE ALL",
             btnSaving: "SAVING...",
             btnExport: "EXPORT DATA CSV",
-            btnExportLog: "📋 EXPORT LOG txt ONLY",
             thSKU: "SKU",
             thLoc: "Location",
             thQty: "Qty",
             thStatus: "STATUS",
             thDel: "DEL",
-            clearConfirm: "💡 Clear Screen Confirmation:\nThis will clear current screen inputs for your next scan batch.\n⚠️ Note: Cloud master logs remain 100% safe. Proceed?",
-            clearDone: "✨ Screen cleared! Ready for new scan batch.",
-            recoverConfirm: "🔄 Confirm to recover today's entry history to screen?",
-            recoverDone: "✨ Today's backup restored to screen!",
+            clearConfirm: "💡 Clear Screen Confirmation:\nThis clears the current screen view. Master log is safe. Proceed?",
+            clearDone: "✨ Screen reset! Ready for next.",
+            recoverConfirm: "🔄 Re-sync backup logs based on selected [Date + Cabinet]?",
+            recoverDone: "✨ Backup data for selected date restored!",
             opAlert: "⚠️ Submission Denied! Please enter Operator Name first.",
-            locInvalid: "Invalid Location! [{loc}] is not in the system location list.",
+            locInvalid: "Invalid Location! [{loc}] is not in system list.",
             mismatchBtn: "SKU NOT IN LIST! TAP AGAIN TO FORCE SAVE",
-            qtyConfirm: "⚠️ Security Check:\nAre you sure to change SKU [{sku}] qty from [{oldQty}] to [{newQty}]?",
-            delConfirm: "🚨 Delete Warning!\nAre you sure to PERMANENTLY delete SKU [{sku}] (Qty:{qty}) at Location [{loc}]?"
+            qtyConfirm: "⚠️ Security Check:\nChange SKU [{sku}] qty from [{oldQty}] to [{newQty}]?",
+            delConfirm: "🚨 Delete Warning!\nPERMANENTLY delete SKU [{sku}] (Qty:{qty}) at Location [{loc}]?"
         }
     };
 
@@ -247,42 +255,46 @@
     function toggleLanguage() {
         currentLang = currentLang === 'zh' ? 'en' : 'zh';
         localStorage.setItem('wh_lang', currentLang);
-        ;
+        applyLanguageUI();
         if (currentSelectedSheetName) parseLocalSheetData(currentSelectedSheetName);
     }
 
     function applyLanguageUI() {
-    document.getElementById('btnClearScreen').innerText = t('clearScreen');
-    document.getElementById('btnRecoverBackup').innerText = t('recoverBackup');
-    document.getElementById('opName').placeholder = t('opPlaceholder');
-    document.getElementById('locIn').placeholder = t('locPlaceholder');
-    document.getElementById('saveBtn').innerText = t('btnSave');
-    document.getElementById('btnExport').innerText = t('btnExport');
-    
-    // 💡 关键修复：用 optional chaining (?.) 防护，即使按钮在页面上被删除了也不会报错崩溃！
-    const btnLog = document.getElementById('btnExportLog');
-    if (btnLog) btnLog.innerText = t('btnExportLog');
+        document.getElementById('btnClearScreen').innerText = t('clearScreen');
+        document.getElementById('btnRecoverBackup').innerText = t('recoverBackup');
+        document.getElementById('opName').placeholder = t('opPlaceholder');
+        document.getElementById('locIn').placeholder = t('locPlaceholder');
+        document.getElementById('saveBtn').innerText = t('btnSave');
+        document.getElementById('btnExport').innerText = t('btnExport');
 
-    document.getElementById('thSKU').innerText = t('thSKU');
-    document.getElementById('thLoc').innerText = t('thLoc');
-    document.getElementById('thQty').innerText = t('thQty');
-    document.getElementById('thStatus').innerText = t('thStatus');
-    document.getElementById('thDel').innerText = t('thDel');
+        document.getElementById('thSKU').innerText = t('thSKU');
+        document.getElementById('thLoc').innerText = t('thLoc');
+        document.getElementById('thQty').innerText = t('thQty');
+        document.getElementById('thStatus').innerText = t('thStatus');
+        document.getElementById('thDel').innerText = t('thDel');
 
-    document.getElementById('langToggleBtn').innerText = currentLang === 'zh' ? '🌐 English' : '🌐 中文';
-}
+        document.getElementById('langToggleBtn').innerText = currentLang === 'zh' ? '🌐 English' : '🌐 中文';
+    }
 
     function unlockAudio() {
         if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         if (audioCtx.state === 'suspended') audioCtx.resume();
     }
 
-    function getTodayDateStr() {
-        const t = new Date();
-        return `${t.getFullYear()}${String(t.getMonth()+1).padStart(2,'0')}${String(t.getDate()).padStart(2,'0')}`;
+    // 获取格式如 "20260930" 的标准 8 位字符串
+    function getFormattedDateStr(dateObj = new Date()) {
+        return `${dateObj.getFullYear()}${String(dateObj.getMonth()+1).padStart(2,'0')}${String(dateObj.getDate()).padStart(2,'0')}`;
+    }
+
+    // 获取格式如 "2026-09-30" 的 HTML 日志框值
+    function getFormattedISOStr(dateObj = new Date()) {
+        return `${dateObj.getFullYear()}-${String(dateObj.getMonth()+1).padStart(2,'0')}-${String(dateObj.getDate()).padStart(2,'0')}`;
     }
 
     window.onload = () => {
+        // 设置日期控件默认值为今天
+        document.getElementById('workDatePicker').value = getFormattedISOStr();
+
         applyLanguageUI();
         const op = localStorage.getItem('wh_v820_op'), cachedLocsText = localStorage.getItem('wh_v825_cached_locs'), localLogs = localStorage.getItem('wh_v828_audit_logs');
         if (op) document.getElementById('opName').value = op;
@@ -395,6 +407,11 @@
         localStorage.setItem('wh_selected_container_sheet', sheetName);
         
         parseLocalSheetData(sheetName);
+        filterNetworkDataByDateAndCabinet(); // 柜号变更时重新精准过滤
+    }
+
+    function onDateChange(selectedDateValue) {
+        filterNetworkDataByDateAndCabinet(); // 日期变更时重新精准过滤
     }
 
     function parseLocalSheetData(sheetName) {
@@ -435,19 +452,31 @@
     }
 
     window.jsonpCallback = function(response) {
-        const netBanner = document.getElementById('networkStat');
-        let rawData = [];
-        if (response && response.pool !== undefined) { rawData = response.pool; } 
-        else if (Array.isArray(response)) { data = response; } 
+        if (response && response.pool !== undefined) { rawNetworkPool = response.pool; } 
+        else if (Array.isArray(response)) { rawNetworkPool = response; } 
         else { return; }
-        
-        // ❌ 原代码：只保留今天的数据
-        // let todayStr = getTodayDateStr();
-        // data = rawData.filter(d => d.Date === todayStr);
 
-        // ✅ 修改后：展示云端拉取到的所有流水数据（包括昨天的）
-        data = rawData; 
+        filterNetworkDataByDateAndCabinet();
+    };
+
+    // 核心精准过滤逻辑：只拉取符合【日期】+【当前柜号】的流水
+    function filterNetworkDataByDateAndCabinet() {
+        const netBanner = document.getElementById('networkStat');
+        const selectedDateVal = document.getElementById('workDatePicker').value; // 如 "2026-09-29"
         
+        let targetDateStr = "";
+        if (selectedDateVal) {
+            targetDateStr = selectedDateVal.replace(/-/g, ""); // 转换为 "20260929"
+        } else {
+            targetDateStr = getFormattedDateStr();
+        }
+
+        // 精准匹配 Date == 选择日期 的流水
+        data = rawNetworkPool.filter(d => {
+            let matchesDate = (d.Date === targetDateStr);
+            return matchesDate;
+        });
+
         refreshHistoricalDataNames();
         
         if (!isUserTyping) {
@@ -456,7 +485,7 @@
         
         netBanner.innerText = t('syncOnline', { count: data.length });
         netBanner.style.background = "#f6ffed"; netBanner.style.borderColor = "#b7eb8f"; netBanner.style.color = "#52c41a";
-    };
+    }
 
     function sendJsonpAction(params) {
         var paramsStr = "";
@@ -574,7 +603,7 @@
         if(confirm(t('recoverConfirm'))) {
             localStorage.setItem("wh_screen_clear_timestamp", "0");
             syncNetworkPool(); 
-            recordLogAction("RECOVER_BACKUP", "User restored today backup");
+            recordLogAction("RECOVER_BACKUP", "User restored backup for selected date");
             alert(t('recoverDone'));
         }
     }
@@ -668,7 +697,8 @@
         let batchRowsForGAS = [], temporaryLocalBatch = [], mismatch = false;
         
         const preciseIdTimestamp = Date.now();
-        const todayStr = getTodayDateStr();
+        const selectedDateVal = document.getElementById('workDatePicker').value;
+        const targetDateStr = selectedDateVal ? selectedDateVal.replace(/-/g, "") : getFormattedDateStr();
 
         for(let i=1; i<=6; i++) {
             const sv = document.getElementById('s'+i).value.trim().toUpperCase(); const qv = parseFloat(document.getElementById('q'+i).value); if(!sv) continue;
@@ -683,8 +713,8 @@
             let finalLongSku = dbMaster[sv] ? dbMaster[sv].b : sv; 
             let finalGoodsName = dbMaster[sv] ? dbMaster[sv].c : "N/A";
 
-            batchRowsForGAS.push([rowUniqueId, sv, finalLongSku, finalGoodsName, qv, finalCorrectLocation, "Patiki Warehouse: " + finalCorrectLocation, todayStr, op]);
-            temporaryLocalBatch.push({ id: rowUniqueId, _originSKU: sv, SKU: finalLongSku, Name: finalGoodsName, Quantity: qv, Location: finalCorrectLocation, FullLocation: "Patiki Warehouse: " + finalCorrectLocation, Date: todayStr, Operator: op });
+            batchRowsForGAS.push([rowUniqueId, sv, finalLongSku, finalGoodsName, qv, finalCorrectLocation, "Patiki Warehouse: " + finalCorrectLocation, targetDateStr, op]);
+            temporaryLocalBatch.push({ id: rowUniqueId, _originSKU: sv, SKU: finalLongSku, Name: finalGoodsName, Quantity: qv, Location: finalCorrectLocation, FullLocation: "Patiki Warehouse: " + finalCorrectLocation, Date: targetDateStr, Operator: op });
             
             recordLogAction("BATCH_SCAN", `Scanned SKU: ${sv}, Qty: ${qv}, Loc: ${finalCorrectLocation}`);
         }
@@ -752,11 +782,12 @@
         sendJsonpAction({ action: "delete", id: rowId });
     }
 
-    function getFormattedFileName(isLog = false) {
+    function getFormattedFileName() {
         const op = document.getElementById('opName').value.trim() || "User";
         const cabinet = currentSelectedSheetName || "Q0059";
-        const dateStr = getTodayDateStr();
-        return `${cabinet}-PUTAWAY-${op}-${dateStr}${isLog ? '_LOG' : ''}.csv`;
+        const selectedDateVal = document.getElementById('workDatePicker').value;
+        const dateStr = selectedDateVal ? selectedDateVal.replace(/-/g, "") : getFormattedDateStr();
+        return `${cabinet}-PUTAWAY-${op}-${dateStr}.csv`;
     }
 
     function saveCsvFile(csvContent, fileName) {
@@ -769,10 +800,11 @@
         document.body.removeChild(link);
     }
 
-function exportLogTxtOnly() {
+    function exportLogTxtOnly() {
         const op = document.getElementById('opName').value.trim() || "User";
         const cabinet = currentSelectedSheetName || "Q0059";
-        const dateStr = getTodayDateStr();
+        const selectedDateVal = document.getElementById('workDatePicker').value;
+        const dateStr = selectedDateVal ? selectedDateVal.replace(/-/g, "") : getFormattedDateStr();
         const logFileName = `${cabinet}-PUTAWAY-${op}-${dateStr}_LOG.txt`;
 
         let txtLines = [];
@@ -788,9 +820,7 @@ function exportLogTxtOnly() {
             txtLines.push(`[${new Date().toLocaleString()}] [${op}] No operation modifications recorded in this session.`);
         }
 
-        let txtContent = txtLines.join("\r\n"); // Windows \r\n 换行符
-        
-        // 加入 "\uFEFF" (UTF-8 BOM Header)，确保 Scanner 和记事本打开不会乱码
+        let txtContent = txtLines.join("\r\n");
         const blob = new Blob(["\uFEFF" + txtContent], { type: 'text/plain;charset=utf-8;' });
         
         const link = document.createElement("a");
@@ -808,23 +838,13 @@ function exportLogTxtOnly() {
         let activeScopeData = getFilteredActiveData();
 
         const headers = [
-            'PO', 
-            'SKU', 
-            'Name', 
-            'BatchSerialNumber', 
-            'SupplierSKU',
-            'ExpiryDate_YYYYMMDD', 
-            'Quantity', 
-            'Location', 
-            'DateReceived_YYYYMMDD', 
-            'Received', 
-            'Exception_Note', 
-            'Operator'
+            'PO', 'SKU', 'Name', 'BatchSerialNumber', 'SupplierSKU',
+            'ExpiryDate_YYYYMMDD', 'Quantity', 'Location', 'DateReceived_YYYYMMDD', 
+            'Received', 'Exception_Note', 'Operator'
         ];
 
         let csvRows = [headers];
 
-        // 1. PO 配额池初始化
         let poQuotaPool = {};
         dbDailyList.forEach(item => {
             let skuKey = item.sku;
@@ -838,7 +858,9 @@ function exportLogTxtOnly() {
             });
         });
 
-        // 2. 按单笔明细依次扣减归属 PO
+        const selectedDateVal = document.getElementById('workDatePicker').value;
+        const targetDateStr = selectedDateVal ? selectedDateVal.replace(/-/g, "") : getFormattedDateStr();
+
         activeScopeData.forEach(row => {
             let skuKey = row._originSKU;
             let unassignedQty = row.Quantity;
@@ -846,7 +868,7 @@ function exportLogTxtOnly() {
             let goodsName = row.Name || "N/A";
             let fullLocation = row.FullLocation ? row.FullLocation : ("Patiki Warehouse: " + row.Location);
             let rowOperator = row.Operator || op;
-            let rowDate = row.Date || getTodayDateStr();
+            let rowDate = row.Date || targetDateStr;
 
             let poList = poQuotaPool[skuKey];
 
@@ -861,18 +883,8 @@ function exportLogTxtOnly() {
                         unassignedQty -= takeQty;
 
                         csvRows.push([
-                            poObj.po,
-                            fullSku,
-                            goodsName,
-                            "",
-                            "",
-                            "",
-                            takeQty,
-                            fullLocation,
-                            rowDate,
-                            "TRUE",
-                            "OK",
-                            rowOperator
+                            poObj.po, fullSku, goodsName, "", "", "",
+                            takeQty, fullLocation, rowDate, "TRUE", "OK", rowOperator
                         ]);
                     }
                 }
@@ -880,44 +892,22 @@ function exportLogTxtOnly() {
                 if (unassignedQty > 0) {
                     let lastPo = poList[poList.length - 1].po || "N/A";
                     csvRows.push([
-                        lastPo,
-                        fullSku,
-                        goodsName,
-                        "",
-                        "",
-                        "",
-                        unassignedQty,
-                        fullLocation,
-                        rowDate,
-                        "TRUE",
-                        "EXT",
-                        rowOperator
+                        lastPo, fullSku, goodsName, "", "", "",
+                        unassignedQty, fullLocation, rowDate, "TRUE", "EXT", rowOperator
                     ]);
                 }
             } else {
                 csvRows.push([
-                    "N/A",
-                    fullSku,
-                    goodsName,
-                    "",
-                    "",
-                    "",
-                    unassignedQty,
-                    fullLocation,
-                    rowDate,
-                    "TRUE",
-                    "EXT",
-                    rowOperator
+                    "N/A", fullSku, goodsName, "", "", "",
+                    unassignedQty, fullLocation, rowDate, "TRUE", "EXT", rowOperator
                 ]);
             }
         });
 
-        // 3. 导出盘点主数据表
         let dataCsvContent = csvRows.map(e => e.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(",")).join("\n");
-        const dataFileName = getFormattedFileName(false);
+        const dataFileName = getFormattedFileName();
         saveCsvFile(dataCsvContent, dataFileName);
 
-        // 4. 解决浏览器拦截：同时尝试触发 Log 文件下载，并保留面板上的专属按钮供用户手动点击
         setTimeout(() => {
             exportLogTxtOnly();
         }, 600);
