@@ -173,7 +173,7 @@
             opAlert: "⚠️ 拒绝提交！请先在上方输入您的 Operator Name (操作员姓名)，以确保协同溯源安全。",
             locInvalid: "库位无效！[{loc}] 不是合法的云端内置库位。",
             mismatchBtn: "SKU NOT IN LIST! TAP AGAIN TO FORCE SAVE",
-            qtyConfirm: "⚠️ 安全确认：\n您确定要将 SKU [{sku}] 的盘点数量从 [{oldQty}] 变更为 [{newQty}] 吗？",
+            qtyConfirm: "⚠️ 安全确认：\n您确定要将 SKU [{sku}] 的盘点数量从 [{oldQty}] 变更至 [{newQty}] 吗？",
             delConfirm: "🚨 毁灭性删除警报！\n您正在试图彻底删除库位 [{loc}] 下的 SKU [{sku}]（数量:{qty}）！\n此操作将全网删除，确定执行吗？"
         },
         en: {
@@ -223,6 +223,22 @@
         return str;
     }
 
+    function recordLogAction(actionType, detail) {
+        const now = new Date();
+        const timeStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')} ${now.toTimeString().split(' ')[0]}`;
+        const op = document.getElementById('opName').value.trim() || "User";
+        const cabinet = currentSelectedSheetName || "UNKNOWN";
+        
+        auditLogPool.push({
+            "Timestamp": timeStr,
+            "Operator": op,
+            "Cabinet": cabinet,
+            "Action": actionType,
+            "Detail": detail
+        });
+        localStorage.setItem('wh_v828_audit_logs', JSON.stringify(auditLogPool));
+    }
+
     function toggleLanguage() {
         currentLang = currentLang === 'zh' ? 'en' : 'zh';
         localStorage.setItem('wh_lang', currentLang);
@@ -262,7 +278,9 @@
         const op = localStorage.getItem('wh_v820_op'), cachedLocsText = localStorage.getItem('wh_v825_cached_locs'), localLogs = localStorage.getItem('wh_v828_audit_logs');
         if (op) document.getElementById('opName').value = op;
         if (cachedLocsText) { buildLocationsEngine(cachedLocsText, true); }
-        if (localLogs) { auditLogPool = JSON.parse(localLogs); }
+        if (localLogs) {
+            try { auditLogPool = JSON.parse(localLogs); } catch(e) { auditLogPool = []; }
+        }
         
         fetchCloudMasterDualChannels();
         fetchCloudLocations();
@@ -271,13 +289,16 @@
         syncNetworkPool();
         setInterval(syncNetworkPool, 5000); 
         
-        setupFocusListeners();
+        setupFocusAndEnterListeners();
     };
 
-    function setupFocusListeners() {
+    function setupFocusAndEnterListeners() {
         const inputs = document.querySelectorAll('input');
         inputs.forEach(input => {
-            input.addEventListener('focus', () => { isUserTyping = true; });
+            input.addEventListener('focus', () => { 
+                isUserTyping = true; 
+                input.select(); 
+            });
             input.addEventListener('blur', () => { 
                 setTimeout(() => {
                     const activeElement = document.activeElement;
@@ -286,6 +307,25 @@
                     }
                 }, 300);
             });
+        });
+
+        document.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter') {
+                const inputsArr = Array.from(document.querySelectorAll('input:not([type="hidden"]):not([disabled])'));
+                const activeElement = document.activeElement;
+                const currentIndex = inputsArr.indexOf(activeElement);
+
+                if (currentIndex !== -1) {
+                    e.preventDefault();
+                    if (currentIndex < inputsArr.length - 1) {
+                        inputsArr[currentIndex + 1].focus();
+                        inputsArr[currentIndex + 1].select();
+                    } else {
+                        const saveBtn = document.getElementById('saveBtn');
+                        if (saveBtn) saveBtn.click();
+                    }
+                }
+            }
         });
     }
 
@@ -374,11 +414,6 @@
             banner.innerText = t('dailyNoData', { sheet: sheetName });
         }
         render();
-    }
-
-    function fetchLocalTimeFormatted() {
-        const t = new Date();
-        return `[${t.getFullYear()}-${String(t.getMonth()+1).padStart(2,'0')}-${String(t.getDate()).padStart(2,'0')} ${String(t.getHours()).padStart(2,'0')}:${String(t.getMinutes()).padStart(2,'0')}:${String(t.getSeconds()).padStart(2,'0')}]`;
     }
 
     function syncNetworkPool() {
@@ -516,6 +551,7 @@
             localStorage.setItem("wh_screen_clear_timestamp", Date.now().toString());
             for(let i=1; i<=6; i++) { document.getElementById('s'+i).value = ""; document.getElementById('q'+i).value = ""; }
             document.getElementById('locIn').value = "";
+            recordLogAction("CLEAR_SCREEN", "User cleared screen input history");
             render();
             alert(t('clearDone'));
         }
@@ -525,6 +561,7 @@
         if(confirm(t('recoverConfirm'))) {
             localStorage.setItem("wh_screen_clear_timestamp", "0");
             syncNetworkPool(); 
+            recordLogAction("RECOVER_BACKUP", "User restored today backup");
             alert(t('recoverDone'));
         }
     }
@@ -635,6 +672,8 @@
 
             batchRowsForGAS.push([rowUniqueId, sv, finalLongSku, finalGoodsName, qv, finalCorrectLocation, "Patiki Warehouse: " + finalCorrectLocation, todayStr, op]);
             temporaryLocalBatch.push({ id: rowUniqueId, _originSKU: sv, SKU: finalLongSku, Name: finalGoodsName, Quantity: qv, Location: finalCorrectLocation, FullLocation: "Patiki Warehouse: " + finalCorrectLocation, Date: todayStr, Operator: op });
+            
+            recordLogAction("BATCH_SCAN", `Scanned SKU: ${sv}, Qty: ${qv}, Loc: ${finalCorrectLocation}`);
         }
 
         if(mismatch) { 
@@ -676,8 +715,7 @@
             }
 
             let op = document.getElementById('opName').value.trim() || "Unknown Operator";
-            auditLogPool.push(`${fetchLocalTimeFormatted()} Operator [${op}] updated Loc [${targetRow.Location}] SKU: [${targetRow._originSKU}], Qty: [${oldQty}] -> [${n}]`);
-            localStorage.setItem('wh_v828_audit_logs', JSON.stringify(auditLogPool));
+            recordLogAction("UPDATE_QTY", `Operator [${op}] updated Loc [${targetRow.Location}] SKU: [${targetRow._originSKU}], Qty: [${oldQty}] -> [${n}]`);
             
             targetRow.Quantity = n; render(); 
             sendJsonpAction({ action: "updateQty", id: rowId, quantity: n });
@@ -695,53 +733,104 @@
         }
 
         let op = document.getElementById('opName').value.trim() || "Unknown Operator";
-        auditLogPool.push(`${fetchLocalTimeFormatted()} 🔴ALERT: Operator [${op}] deleted row -> Loc: [${targetRow.Location}], SKU: [${targetRow._originSKU}], Qty: [${targetRow.Quantity}]`);
-        localStorage.setItem('wh_v828_audit_logs', JSON.stringify(auditLogPool));
+        recordLogAction("DELETE_ROW", `Operator [${op}] deleted row -> Loc: [${targetRow.Location}], SKU: [${targetRow._originSKU}], Qty: [${targetRow.Quantity}]`);
         
         data = data.filter(x => x.id !== rowId); render(); 
         sendJsonpAction({ action: "delete", id: rowId });
     }
 
-    function exportCsv() {
-        const op = document.getElementById('opName').value.trim() || "User", dateNow = new Date().toISOString().slice(0,10).replace(/-/g, "");
-        let scannedGroupsBySku = {};
-        
-        refreshHistoricalDataNames();
+    function getFormattedFileName(isLog = false) {
+        const op = document.getElementById('opName').value.trim() || "User";
+        const cabinet = currentSelectedSheetName || "Q0059";
+        const dateStr = getTodayDateStr();
+        return `${cabinet}-PUTAWAY-${op}-${dateStr}${isLog ? '_LOG' : ''}.csv`;
+    }
 
-        let activeScopeData = getFilteredActiveData();
-        activeScopeData.forEach(d => {
-            if (!scannedGroupsBySku[d._originSKU]) scannedGroupsBySku[d._originSKU] = [];
-            scannedGroupsBySku[d._originSKU].push({ fullSku: d.SKU, name: d.Name, loc: d.FullLocation, date: d.Date, qty: d.Quantity, operatorName: d.Operator || "Unknown" });
-        });
-
-        let dailyGroupsBySku = {}; 
-        dbDailyList.forEach(d => { 
-            if (!dailyGroupsBySku[d.sku]) dailyGroupsBySku[d.sku] = []; 
-            dailyGroupsBySku[d.sku].push({ po: d.po, plan: d.plan }); 
-        });
-        
-        let allSkus = new Set([...Object.keys(scannedGroupsBySku), ...Object.keys(dailyGroupsBySku)]);
-
-        let csvRows = [["SKU", "Full SKU", "Name", "Location", "Date", "Quantity", "Operator", "PO", "Plan Qty"]];
-        allSkus.forEach(sku => {
-            let scans = scannedGroupsBySku[sku] || [{ fullSku: dbMaster[sku] ? dbMaster[sku].b : sku, name: dbMaster[sku] ? dbMaster[sku].c : "N/A", loc: "N/A", date: getTodayDateStr(), qty: 0, operatorName: op }];
-            let plans = dailyGroupsBySku[sku] || [{ po: "N/A", plan: 0 }];
-
-            scans.forEach(s => {
-                plans.forEach(p => {
-                    csvRows.push([sku, s.fullSku, s.name, s.loc, s.date, s.qty, s.operatorName, p.po, p.plan]);
-                });
-            });
-        });
-
-        let csvContent = "data:text/csv;charset=utf-8,\uFEFF" + csvRows.map(e => e.map(cell => `"${cell}"`).join(",")).join("\n");
-        let encodedUri = encodeURI(csvContent);
-        let link = document.createElement("a");
-        link.setAttribute("href", encodedUri);
-        link.setAttribute("download", `Putaway_Export_${op}_${dateNow}.csv`);
+    function saveCsvFile(csvContent, fileName) {
+        const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement("a");
+        link.href = URL.createObjectURL(blob);
+        link.setAttribute("download", fileName);
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
+    }
+
+    function exportCsv() {
+        const op = document.getElementById('opName').value.trim() || "User";
+        refreshHistoricalDataNames();
+
+        let activeScopeData = getFilteredActiveData();
+
+        // 精准对齐样表的 12 列表头
+        const headers = [
+            'PO', 
+            'SKU', 
+            'Name', 
+            'BatchSerialNumber', 
+            'SupplierSKU',
+            'ExpiryDate_YYYYMMDD', 
+            'Quantity', 
+            'Location', 
+            'DateReceived_YYYYMMDD', 
+            'Received', 
+            'Exception_Note', 
+            'Operator'
+        ];
+
+        let csvRows = [headers];
+        
+        activeScopeData.forEach(d => {
+            // 匹配 PO 柜号信息
+            let matchingPlan = dbDailyList.find(p => p.sku === d._originSKU);
+            let poVal = matchingPlan ? matchingPlan.po : "N/A";
+            
+            // 匹配异常说明 (Exception Note)
+            let exceptionNote = matchingPlan ? "OK" : "EXT";
+
+            // 格式化 Location（优先使用包含仓库前缀的 FullLocation，无则拼接）
+            let fullLocationStr = d.FullLocation ? d.FullLocation : ("Patiki Warehouse: " + d.Location);
+
+            csvRows.push([
+                poVal,                                      // PO
+                d.SKU || d._originSKU,                       // SKU (全称长代码)
+                d.Name || "N/A",                            // Name (品名)
+                "",                                         // BatchSerialNumber (留空)
+                "",                                         // SupplierSKU (留空)
+                "",                                         // ExpiryDate_YYYYMMDD (留空)
+                d.Quantity,                                 // Quantity (数量)
+                fullLocationStr,                            // Location (完整库位字符串)
+                d.Date || getTodayDateStr(),                // DateReceived_YYYYMMDD (8位日期)
+                "TRUE",                                     // Received (固定 TRUE)
+                exceptionNote,                              // Exception_Note (OK 或 EXT)
+                d.Operator || op                            // Operator
+            ]);
+        });
+
+        let dataCsvContent = csvRows.map(e => e.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(",")).join("\n");
+        const dataFileName = getFormattedFileName(false);
+        saveCsvFile(dataCsvContent, dataFileName);
+
+        // 同步导出 LOG 日志文件
+        if (auditLogPool && auditLogPool.length > 0) {
+            const logHeaders = ['Timestamp', 'Operator', 'Cabinet', 'Action', 'Detail'];
+            let logRows = [logHeaders];
+
+            auditLogPool.forEach(log => {
+                if (typeof log === 'object') {
+                    logRows.push([log.Timestamp || '', log.Operator || op, log.Cabinet || '', log.Action || '', log.Detail || '']);
+                } else {
+                    logRows.push(['', op, currentSelectedSheetName || '', 'LOG', log]);
+                }
+            });
+
+            let logCsvContent = logRows.map(e => e.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(",")).join("\n");
+            const logFileName = getFormattedFileName(true);
+
+            setTimeout(() => {
+                saveCsvFile(logCsvContent, logFileName);
+            }, 500);
+        }
     }
 </script>
 </body>
