@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Warehouse v29.33-ROW-PO-SPLIT</title>
+    <title>Warehouse v29.34-LOG-FIX</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
     <style>
         :root { --primary: #1890ff; --success: #52c41a; --danger: #ff4d4f; --extra: #b37feb; --bg: #f5f7fa; }
@@ -36,6 +36,7 @@
         .btn-save { background: var(--success); color: white; margin-top: 8px; }
         .btn-save:disabled { background: #d9d9d9 !important; color: #8c8c8c !important; cursor: not-allowed; }
         .btn-export { background: #444; color: white; height: 48px; font-size: 14px; flex-shrink: 0; margin-top: 10px; }
+        .btn-log-export { background: #722ed1; color: white; height: 38px; font-size: 13px; flex-shrink: 0; margin-top: 6px; }
         .btn-lang { background: #fa8c16; color: white; border: none; border-radius: 6px; padding: 4px 10px; font-weight: bold; cursor: pointer; font-size: 12px; }
         
         .table-wrap { flex: 1; overflow-y: auto; background: white; border-radius: 12px; border: 1px solid #e8e8e8; }
@@ -65,7 +66,7 @@
 <div class="main-wrapper">
     <div class="panel-right">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
-            <div class="ver-tag">Ver: v29.33-ROW-PO-SPLIT</div>
+            <div class="ver-tag">Ver: v29.34-LOG-FIX</div>
             <button class="btn-lang" onclick="toggleLanguage()" id="langToggleBtn">🌐 EN / 中文</button>
         </div>
 
@@ -116,7 +117,8 @@
                 <tbody></tbody>
             </table>
         </div>
-        <button class="btn btn-export" id="btnExport" onclick="exportCsv()">EXPORT CSV</button>
+        <button class="btn btn-export" id="btnExport" onclick="exportCsv()">EXPORT DATA CSV</button>
+        <button class="btn btn-log-export" id="btnExportLog" onclick="exportLogCsvOnly()">📋 EXPORT LOG CSV ONLY</button>
     </div>
 </div>
 
@@ -162,7 +164,8 @@
             locPlaceholder: "SCAN LOCATION (LOC)",
             btnSave: "SAVE ALL",
             btnSaving: "SAVING...",
-            btnExport: "EXPORT CSV",
+            btnExport: "EXPORT DATA CSV",
+            btnExportLog: "📋 单独导出操作日志 CSV",
             thSKU: "SKU",
             thLoc: "Location",
             thQty: "Qty",
@@ -201,7 +204,8 @@
             locPlaceholder: "SCAN LOCATION (LOC)",
             btnSave: "SAVE ALL",
             btnSaving: "SAVING...",
-            btnExport: "EXPORT CSV",
+            btnExport: "EXPORT DATA CSV",
+            btnExportLog: "📋 EXPORT LOG CSV ONLY",
             thSKU: "SKU",
             thLoc: "Location",
             thQty: "Qty",
@@ -255,6 +259,7 @@
         document.getElementById('locIn').placeholder = t('locPlaceholder');
         document.getElementById('saveBtn').innerText = t('btnSave');
         document.getElementById('btnExport').innerText = t('btnExport');
+        document.getElementById('btnExportLog').innerText = t('btnExportLog');
 
         document.getElementById('thSKU').innerText = t('thSKU');
         document.getElementById('thLoc').innerText = t('thLoc');
@@ -758,13 +763,34 @@
         document.body.removeChild(link);
     }
 
+    function exportLogCsvOnly() {
+        const op = document.getElementById('opName').value.trim() || "User";
+        const logHeaders = ['Timestamp', 'Operator', 'Cabinet', 'Action', 'Detail'];
+        let logRows = [logHeaders];
+
+        if (auditLogPool && auditLogPool.length > 0) {
+            auditLogPool.forEach(log => {
+                if (typeof log === 'object') {
+                    logRows.push([log.Timestamp || '', log.Operator || op, log.Cabinet || '', log.Action || '', log.Detail || '']);
+                } else {
+                    logRows.push(['', op, currentSelectedSheetName || '', 'LOG', log]);
+                }
+            });
+        } else {
+            logRows.push([new Date().toLocaleString(), op, currentSelectedSheetName || '', 'INFO', 'No operation modifications recorded in this session']);
+        }
+
+        let logCsvContent = logRows.map(e => e.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(",")).join("\n");
+        const logFileName = getFormattedFileName(true);
+        saveCsvFile(logCsvContent, logFileName);
+    }
+
     function exportCsv() {
         const op = document.getElementById('opName').value.trim() || "User";
         refreshHistoricalDataNames();
 
         let activeScopeData = getFilteredActiveData();
 
-        // 样表标准 12 列表头
         const headers = [
             'PO', 
             'SKU', 
@@ -782,8 +808,7 @@
 
         let csvRows = [headers];
 
-        // 1. 初始化每个 SKU 在各 PO 中的计划量配额池
-        // poQuotaPool 结构: { "9635": [ { po: "PO-01876", remPlan: 2, totalPlan: 2 }, { po: "PO-01926", remPlan: 6, totalPlan: 6 } ] }
+        // 1. PO 配额池初始化
         let poQuotaPool = {};
         dbDailyList.forEach(item => {
             let skuKey = item.sku;
@@ -797,7 +822,7 @@
             });
         });
 
-        // 2. 逐笔遍历实盘录入记录（保持真实库位），在 PO 配额池中按顺序扣减归属
+        // 2. 按单笔明细依次扣减归属 PO
         activeScopeData.forEach(row => {
             let skuKey = row._originSKU;
             let unassignedQty = row.Quantity;
@@ -810,7 +835,6 @@
             let poList = poQuotaPool[skuKey];
 
             if (poList && poList.length > 0) {
-                // 遍历该 SKU 的各个 PO，依次扣减配额
                 for (let i = 0; i < poList.length; i++) {
                     let poObj = poList[i];
                     if (unassignedQty <= 0) break;
@@ -821,23 +845,22 @@
                         unassignedQty -= takeQty;
 
                         csvRows.push([
-                            poObj.po,               // PO
-                            fullSku,                // SKU
-                            goodsName,              // Name
-                            "",                     // BatchSerialNumber
-                            "",                     // SupplierSKU
-                            "",                     // ExpiryDate_YYYYMMDD
-                            takeQty,                // Quantity (当前库位下分给该PO的数量)
-                            fullLocation,           // Location (保留真实库位)
-                            rowDate,                // DateReceived_YYYYMMDD
-                            "TRUE",                 // Received
-                            "OK",                   // Exception_Note
-                            rowOperator             // Operator
+                            poObj.po,
+                            fullSku,
+                            goodsName,
+                            "",
+                            "",
+                            "",
+                            takeQty,
+                            fullLocation,
+                            rowDate,
+                            "TRUE",
+                            "OK",
+                            rowOperator
                         ]);
                     }
                 }
 
-                // 如果该笔盘点记录扣完所有 PO 计划配额后还有剩余（超盘）
                 if (unassignedQty > 0) {
                     let lastPo = poList[poList.length - 1].po || "N/A";
                     csvRows.push([
@@ -856,7 +879,6 @@
                     ]);
                 }
             } else {
-                // 计划外全新的 SKU (EXT)
                 csvRows.push([
                     "N/A",
                     fullSku,
@@ -874,31 +896,15 @@
             }
         });
 
-        // 3. 生成 CSV 字符串并下载盘点数据表
+        // 3. 导出盘点主数据表
         let dataCsvContent = csvRows.map(e => e.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(",")).join("\n");
         const dataFileName = getFormattedFileName(false);
         saveCsvFile(dataCsvContent, dataFileName);
 
-        // 4. 同步导出 LOG 日志文件
-        if (auditLogPool && auditLogPool.length > 0) {
-            const logHeaders = ['Timestamp', 'Operator', 'Cabinet', 'Action', 'Detail'];
-            let logRows = [logHeaders];
-
-            auditLogPool.forEach(log => {
-                if (typeof log === 'object') {
-                    logRows.push([log.Timestamp || '', log.Operator || op, log.Cabinet || '', log.Action || '', log.Detail || '']);
-                } else {
-                    logRows.push(['', op, currentSelectedSheetName || '', 'LOG', log]);
-                }
-            });
-
-            let logCsvContent = logRows.map(e => e.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(",")).join("\n");
-            const logFileName = getFormattedFileName(true);
-
-            setTimeout(() => {
-                saveCsvFile(logCsvContent, logFileName);
-            }, 500);
-        }
+        // 4. 解决浏览器拦截：同时尝试触发 Log 文件下载，并保留面板上的专属按钮供用户手动点击
+        setTimeout(() => {
+            exportLogCsvOnly();
+        }, 600);
     }
 </script>
 </body>
