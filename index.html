@@ -441,8 +441,12 @@
         else if (Array.isArray(response)) { data = response; } 
         else { return; }
         
-        let todayStr = getTodayDateStr();
-        data = rawData.filter(d => d.Date === todayStr);
+        // ❌ 原代码：只保留今天的数据
+        // let todayStr = getTodayDateStr();
+        // data = rawData.filter(d => d.Date === todayStr);
+
+        // ✅ 修改后：展示云端拉取到的所有流水数据（包括昨天的）
+        data = rawData; 
         
         refreshHistoricalDataNames();
         
