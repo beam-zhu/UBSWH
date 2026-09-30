@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Warehouse v29.35-DATE-FIX</title>
+    <title>Warehouse v29.36-MULTI-SYNC-RESTORED</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
     <style>
         :root { --primary: #1890ff; --success: #52c41a; --danger: #ff4d4f; --extra: #b37feb; --bg: #f5f7fa; }
@@ -69,22 +69,22 @@
 <div class="main-wrapper">
     <div class="panel-right">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
-            <div class="ver-tag">Ver: v29.35-DATE-FIX</div>
+            <div class="ver-tag">Ver: v29.36-MULTI-SYNC-RESTORED</div>
             <button class="btn-lang" onclick="toggleLanguage()" id="langToggleBtn">🌐 EN / 中文</button>
         </div>
 
         <div class="cloud-banner cb-sku" id="cloudStat">☁️ 联动双主库安全引擎正在连接...</div>
         <div class="cloud-banner cb-loc" id="locCloudStat">☁️ 公司库位表 (A-U列) 正在连接...</div>
         <div class="cloud-banner cb-daily" id="dailyCloudStat">☁️ 正在一次性拉取云端所有柜号 JSON...</div>
-        <div class="cloud-banner cb-sync" id="networkStat">📡 多端联网对齐中...</div>
+        <div class="cloud-banner cb-sync" id="networkStat">📡 多端联网实时对齐中...</div>
 
         <div class="card">
-            <!-- 柜号选择 -->
+            <!-- 柜号选择（带不指定柜号空选项） -->
             <select id="sheetContainerSelector" class="select-daily-box" onchange="onContainerSheetChange(this.value)">
                 <option value="" id="optLoading">🚢 正在一键加载云端全量柜号...</option>
             </select>
 
-            <!-- 增加日期选择与恢复控件 -->
+            <!-- 日期选择控件 -->
             <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 6px;">
                 <label style="font-size: 12px; font-weight: bold; white-space: nowrap;">📅 工作日期:</label>
                 <input type="date" id="workDatePicker" class="date-picker-box" style="margin-bottom:0;" onchange="onDateChange(this.value)">
@@ -163,8 +163,8 @@
             dailyNoTabs: "⚠️ 未获取到柜号标签页",
             dailyError: "❌ 提取云端柜号 JSON 失败，请检查网络或部署状态",
             dailyLoaded: "⚡ 柜号 [{sheet}] 挂载成功 (精准载入 {count} 项计划项)",
-            dailyNoData: "⚠️ 柜号 [{sheet}] 未找到有效比对数据",
-            syncOnline: "📡 多端联网在线中 (已匹配当前分类: {count} 条流水)",
+            dailyNoData: "⚠️ 未选择柜号或柜号内无有效比对数据",
+            syncOnline: "📡 多端协同联网实时同步中 (已对齐当前视图: {count} 条流水)",
             optLoading: "🚢 正在一键加载云端全量柜号...",
             optContainer: "📦 柜号 / 工作表: [ {name} ]",
             clearScreen: "[CLEAR SCREEN] (清空屏幕历史)",
@@ -181,13 +181,13 @@
             thDel: "DEL",
             clearConfirm: "💡 屏幕历史清空确认：\n这会清空当前显示的视图。云端大总账 100% 安全受保护。确定执行吗？",
             clearDone: "✨ 屏幕视图已重置，无缝开始！",
-            recoverConfirm: "🔄 确认要根据选择的【日期 + 柜号】重新同步云端备份流水吗？",
-            recoverDone: "✨ 指定日期的备份数据已成功拉回恢复！",
+            recoverConfirm: "🔄 确认要根据选择的【日期 + 柜号】重新同步云端多设备备份流水吗？",
+            recoverDone: "✨ 指定日期的全网多设备协同数据已成功拉回恢复！",
             opAlert: "⚠️ 拒绝提交！请先在上方输入您的 Operator Name (操作员姓名)。",
             locInvalid: "库位无效！[{loc}] 不是合法的云端内置库位。",
             mismatchBtn: "SKU NOT IN LIST! TAP AGAIN TO FORCE SAVE",
             qtyConfirm: "⚠️ 安全确认：\n您确定要将 SKU [{sku}] 的盘点数量从 [{oldQty}] 变更至 [{newQty}] 吗？",
-            delConfirm: "🚨 彻底删除警报！\n您确定要在后台库彻底删除库位 [{loc}] 下的 SKU [{sku}]（数量:{qty}）吗？"
+            delConfirm: "🚨 彻底删除警报！\n您确定要在云端数据库彻底删除库位 [{loc}] 下的 SKU [{sku}]（数量:{qty}）吗？"
         },
         en: {
             cloudConnecting: "☁️ Connecting Dual SKU Master Engine...",
@@ -202,8 +202,8 @@
             dailyNoTabs: "⚠️ No Container Sheets Found",
             dailyError: "❌ Failed to Fetch Cloud Container JSON",
             dailyLoaded: "⚡ Container [{sheet}] Mounted ({count} Items)",
-            dailyNoData: "⚠️ No Valid Plan Data in Container [{sheet}]",
-            syncOnline: "📡 Multi-Device Online (Matched Logs: {count})",
+            dailyNoData: "⚠️ No Container Selected or No Valid Plan Data",
+            syncOnline: "📡 Multi-Device Live Synced (Matched Logs: {count})",
             optLoading: "🚢 Loading All Cloud Containers...",
             optContainer: "📦 Container / Sheet: [ {name} ]",
             clearScreen: "[CLEAR SCREEN]",
@@ -240,7 +240,7 @@
         const now = new Date();
         const timeStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')} ${now.toTimeString().split(' ')[0]}`;
         const op = document.getElementById('opName').value.trim() || "User";
-        const cabinet = currentSelectedSheetName || "UNKNOWN";
+        const cabinet = currentSelectedSheetName || "GLOBAL";
         
         auditLogPool.push({
             "Timestamp": timeStr,
@@ -281,18 +281,15 @@
         if (audioCtx.state === 'suspended') audioCtx.resume();
     }
 
-    // 获取格式如 "20260930" 的标准 8 位字符串
     function getFormattedDateStr(dateObj = new Date()) {
         return `${dateObj.getFullYear()}${String(dateObj.getMonth()+1).padStart(2,'0')}${String(dateObj.getDate()).padStart(2,'0')}`;
     }
 
-    // 获取格式如 "2026-09-30" 的 HTML 日志框值
     function getFormattedISOStr(dateObj = new Date()) {
         return `${dateObj.getFullYear()}-${String(dateObj.getMonth()+1).padStart(2,'0')}-${String(dateObj.getDate()).padStart(2,'0')}`;
     }
 
     window.onload = () => {
-        // 设置日期控件默认值为今天
         document.getElementById('workDatePicker').value = getFormattedISOStr();
 
         applyLanguageUI();
@@ -307,6 +304,7 @@
         fetchCloudLocations();
         fetchAllContainerSheetsOnce();
         
+        // 开启多设备轮询同步机制
         syncNetworkPool();
         setInterval(syncNetworkPool, 5000); 
         
@@ -379,49 +377,52 @@
     }
 
     function updateContainerDropdownUI(sheetNames) {
-    const selector = document.getElementById('sheetContainerSelector');
-    let savedSelected = localStorage.getItem('wh_selected_container_sheet') || "";
-    
-    selector.innerHTML = "";
-    
-    // 💡 1. 插入顶部的“空值”选项
-    let emptyOpt = document.createElement('option');
-    emptyOpt.value = "";
-    emptyOpt.innerText = "📦 -- 不指定柜号 (仅按日期汇总) --";
-    selector.appendChild(emptyOpt);
+        const selector = document.getElementById('sheetContainerSelector');
+        let savedSelected = localStorage.getItem('wh_selected_container_sheet') || "";
+        
+        selector.innerHTML = "";
+        
+        // 顶部空值（不限定柜号）
+        let emptyOpt = document.createElement('option');
+        emptyOpt.value = "";
+        emptyOpt.innerText = "📦 -- 不指定柜号 (仅按日期汇总/多设备同步) --";
+        selector.appendChild(emptyOpt);
 
-    // 2. 插入真实的柜号选项
-    sheetNames.forEach(name => {
-        let opt = document.createElement('option');
-        opt.value = name;
-        opt.innerText = t('optContainer', { name: name });
-        selector.appendChild(opt);
-    });
+        sheetNames.forEach(name => {
+            let opt = document.createElement('option');
+            opt.value = name;
+            opt.innerText = t('optContainer', { name: name });
+            selector.appendChild(opt);
+        });
 
-    // 保持用户之前的选择状态
-    selector.value = savedSelected;
-    currentSelectedSheetName = savedSelected;
+        selector.value = savedSelected;
+        currentSelectedSheetName = savedSelected;
 
-    parseLocalSheetData(currentSelectedSheetName);
-}
+        parseLocalSheetData(currentSelectedSheetName);
+    }
 
     function onContainerSheetChange(sheetName) {
-        if (!sheetName) return;
         currentSelectedSheetName = sheetName;
         localStorage.setItem('wh_selected_container_sheet', sheetName);
         
         parseLocalSheetData(sheetName);
-        filterNetworkDataByDateAndCabinet(); // 柜号变更时重新精准过滤
+        filterNetworkDataByDateAndCabinet();
     }
 
     function onDateChange(selectedDateValue) {
-        filterNetworkDataByDateAndCabinet(); // 日期变更时重新精准过滤
+        filterNetworkDataByDateAndCabinet();
     }
 
     function parseLocalSheetData(sheetName) {
         const banner = document.getElementById('dailyCloudStat');
         dbDailyList = [];
         dailyActive = false;
+
+        if (!sheetName || sheetName.trim() === "") {
+            banner.innerText = t('dailyNoData');
+            render();
+            return;
+        }
 
         const rawRows = globalAllCabinetsStore[sheetName];
 
@@ -446,6 +447,7 @@
         render();
     }
 
+    // 核心多设备轮询实现
     function syncNetworkPool() {
         var script = document.createElement("script");
         script.src = APP_SCRIPT_URL + (APP_SCRIPT_URL.includes("?") ? "&" : "?") + "t=" + Date.now();
@@ -463,22 +465,14 @@
         filterNetworkDataByDateAndCabinet();
     };
 
-    // 核心精准过滤逻辑：只拉取符合【日期】+【当前柜号】的流水
     function filterNetworkDataByDateAndCabinet() {
         const netBanner = document.getElementById('networkStat');
-        const selectedDateVal = document.getElementById('workDatePicker').value; // 如 "2026-09-29"
+        const selectedDateVal = document.getElementById('workDatePicker').value;
         
-        let targetDateStr = "";
-        if (selectedDateVal) {
-            targetDateStr = selectedDateVal.replace(/-/g, ""); // 转换为 "20260929"
-        } else {
-            targetDateStr = getFormattedDateStr();
-        }
+        let targetDateStr = selectedDateVal ? selectedDateVal.replace(/-/g, "") : getFormattedDateStr();
 
-        // 精准匹配 Date == 选择日期 的流水
         data = rawNetworkPool.filter(d => {
-            let matchesDate = (d.Date === targetDateStr);
-            return matchesDate;
+            return d.Date === targetDateStr;
         });
 
         refreshHistoricalDataNames();
@@ -737,6 +731,7 @@
         }
 
         data = [...data, ...temporaryLocalBatch]; render();
+        // 发送数据给云端，实现多设备即时广播
         sendJsonpAction({ action: "insert", rowsData: JSON.stringify(batchRowsForGAS) });
 
         for(let i=1; i<=6; i++) { document.getElementById('s'+i).value = ""; document.getElementById('q'+i).value = ""; }
@@ -765,6 +760,7 @@
             recordLogAction("UPDATE_QTY", `Operator [${op}] updated Loc [${targetRow.Location}] SKU: [${targetRow._originSKU}], Qty: [${oldQty}] -> [${n}]`);
             
             targetRow.Quantity = n; render(); 
+            // 实时推送云端修改
             sendJsonpAction({ action: "updateQty", id: rowId, quantity: n });
         }
     }
@@ -783,21 +779,21 @@
         recordLogAction("DELETE_ROW", `Operator [${op}] deleted row -> Loc: [${targetRow.Location}], SKU: [${targetRow._originSKU}], Qty: [${targetRow.Quantity}]`);
         
         data = data.filter(x => x.id !== rowId); render(); 
+        // 实时推送云端删除
         sendJsonpAction({ action: "delete", id: rowId });
     }
 
     function getFormattedFileName() {
-    const op = document.getElementById('opName').value.trim() || "User";
-    const selectedDateVal = document.getElementById('workDatePicker').value;
-    const dateStr = selectedDateVal ? selectedDateVal.replace(/-/g, "") : getFormattedDateStr();
-    
-    // 💡 如果选择了具体的柜号，文件名带有柜号前缀；如果选择“不指定柜号”，则忽略柜号
-    if (currentSelectedSheetName && currentSelectedSheetName.trim() !== "") {
-        return `${currentSelectedSheetName}-PUTAWAY-${op}-${dateStr}.csv`;
-    } else {
-        return `PUTAWAY-${op}-${dateStr}.csv`;
+        const op = document.getElementById('opName').value.trim() || "User";
+        const selectedDateVal = document.getElementById('workDatePicker').value;
+        const dateStr = selectedDateVal ? selectedDateVal.replace(/-/g, "") : getFormattedDateStr();
+        
+        if (currentSelectedSheetName && currentSelectedSheetName.trim() !== "") {
+            return `${currentSelectedSheetName}-PUTAWAY-${op}-${dateStr}.csv`;
+        } else {
+            return `PUTAWAY-${op}-${dateStr}.csv`;
+        }
     }
-}
 
     function saveCsvFile(csvContent, fileName) {
         const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -811,10 +807,10 @@
 
     function exportLogTxtOnly() {
         const op = document.getElementById('opName').value.trim() || "User";
-        const cabinet = currentSelectedSheetName || "Q0059";
+        const cabinet = currentSelectedSheetName || "GLOBAL";
         const selectedDateVal = document.getElementById('workDatePicker').value;
         const dateStr = selectedDateVal ? selectedDateVal.replace(/-/g, "") : getFormattedDateStr();
-        const logFileName = `${cabinet}-PUTAWAY-${op}-${dateStr}_LOG.txt`;
+        const logFileName = `${cabinet.trim() !== "" ? cabinet + '-' : ''}PUTAWAY-${op}-${dateStr}_LOG.txt`;
 
         let txtLines = [];
         if (auditLogPool && auditLogPool.length > 0) {
