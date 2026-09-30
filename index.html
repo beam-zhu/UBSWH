@@ -467,12 +467,16 @@
 
     function filterNetworkDataByDateAndCabinet() {
         const netBanner = document.getElementById('networkStat');
-        const selectedDateVal = document.getElementById('workDatePicker').value;
+        const selectedDateVal = document.getElementById('workDatePicker').value; // HTML 选中的日期
         
-        let targetDateStr = selectedDateVal ? selectedDateVal.replace(/-/g, "") : getFormattedDateStr();
+        // 1. 将选择的日期统一清洗为 8 位纯数字，如 "20261001"
+        let targetDigits = selectedDateVal ? selectedDateVal.replace(/\D/g, "") : getFormattedDateStr();
 
+        // 2. 兼容性清洗过滤：将云端 d.Date 也统一清洗为 8 位纯数字再比对
         data = rawNetworkPool.filter(d => {
-            return d.Date === targetDateStr;
+            if (!d || !d.Date) return false;
+            let cloudDateDigits = String(d.Date).replace(/\D/g, ""); // 去除斜杠、横线等非数字字符
+            return cloudDateDigits === targetDigits;
         });
 
         refreshHistoricalDataNames();
@@ -481,7 +485,8 @@
             requestAnimationFrame(() => { render(); });
         }
         
-        netBanner.innerText = t('syncOnline', { count: data.length });
+        // 3. 增强状态栏显示：清楚展示“当前日期匹配条数”和“云端大总账总条数”
+        netBanner.innerText = `📡 多端协同联网实时同步中 (当前日期: ${data.length} 条 | 云端大总账共: ${rawNetworkPool.length} 条)`;
         netBanner.style.background = "#f6ffed"; netBanner.style.borderColor = "#b7eb8f"; netBanner.style.color = "#52c41a";
     }
 
