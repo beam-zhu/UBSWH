@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Warehouse v29.36-MULTI-SYNC-RESTORED</title>
+    <title>Warehouse v29.37-STRICT-TODAY-SAVE</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
     <style>
         :root { --primary: #1890ff; --success: #52c41a; --danger: #ff4d4f; --extra: #b37feb; --bg: #f5f7fa; }
@@ -28,12 +28,6 @@
             height: 46px; font-size: 15px; font-weight: bold; color: #1890ff;
             background: #e6f7ff; border: 2px solid #91d5ff; border-radius: 8px;
             cursor: pointer; text-align: center; margin-bottom: 8px;
-        }
-
-        .date-picker-box {
-            height: 40px; font-size: 14px; font-weight: bold; color: #333;
-            background: #fff; border: 1px solid #d9d9d9; border-radius: 6px;
-            text-align: center; margin-bottom: 8px;
         }
 
         .btn { height: 54px; border: none; border-radius: 10px; font-weight: bold; cursor: pointer; font-size: 18px; width: 100%; }
@@ -69,26 +63,20 @@
 <div class="main-wrapper">
     <div class="panel-right">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
-            <div class="ver-tag">Ver: v29.36-MULTI-SYNC-RESTORED</div>
+            <div class="ver-tag">Ver: v29.37-STRICT-TODAY-SAVE</div>
             <button class="btn-lang" onclick="toggleLanguage()" id="langToggleBtn">🌐 EN / 中文</button>
         </div>
 
         <div class="cloud-banner cb-sku" id="cloudStat">☁️ 联动双主库安全引擎正在连接...</div>
         <div class="cloud-banner cb-loc" id="locCloudStat">☁️ 公司库位表 (A-U列) 正在连接...</div>
         <div class="cloud-banner cb-daily" id="dailyCloudStat">☁️ 正在一次性拉取云端所有柜号 JSON...</div>
-        <div class="cloud-banner cb-sync" id="networkStat">📡 多端联网实时对齐中...</div>
+        <div class="cloud-banner cb-sync" id="networkStat">📡 多端协同联网实时同步中...</div>
 
         <div class="card">
-            <!-- 柜号选择（带不指定柜号空选项） -->
+            <!-- 柜号选择 (带空选项) -->
             <select id="sheetContainerSelector" class="select-daily-box" onchange="onContainerSheetChange(this.value)">
                 <option value="" id="optLoading">🚢 正在一键加载云端全量柜号...</option>
             </select>
-
-            <!-- 日期选择控件 -->
-            <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 6px;">
-                <label style="font-size: 12px; font-weight: bold; white-space: nowrap;">📅 工作日期:</label>
-                <input type="date" id="workDatePicker" class="date-picker-box" style="margin-bottom:0;" onchange="onDateChange(this.value)">
-            </div>
 
             <div style="display: flex; justify-content: space-between; margin-top: 4px;">
                 <button onclick="clearScreenPureHistory()" id="btnClearScreen" style="font-size:10px; color:#1890ff; border:1px solid #1890ff; border-radius:4px; background:none; padding:5px; font-weight:bold;">[CLEAR SCREEN] (清空屏幕历史)</button>
@@ -145,7 +133,8 @@
     let isUserTyping = false;
     let currentSelectedSheetName = "";
     let currentLang = localStorage.getItem('wh_lang') || 'zh';
-    
+    let currentFilterDateDigits = getFormattedDateStr(); // 默认过滤器指向今天系统日期
+
     let globalAllCabinetsStore = {};
     let lastSubmitTime = 0;
 
@@ -163,7 +152,7 @@
             dailyNoTabs: "⚠️ 未获取到柜号标签页",
             dailyError: "❌ 提取云端柜号 JSON 失败，请检查网络或部署状态",
             dailyLoaded: "⚡ 柜号 [{sheet}] 挂载成功 (精准载入 {count} 项计划项)",
-            dailyNoData: "⚠️ 未选择柜号或柜号内无有效比对数据",
+            dailyNoData: "⚠️️ 未选择柜号或柜号内无有效比对数据",
             syncOnline: "📡 多端协同联网实时同步中 (已对齐当前视图: {count} 条流水)",
             optLoading: "🚢 正在一键加载云端全量柜号...",
             optContainer: "📦 柜号 / 工作表: [ {name} ]",
@@ -181,7 +170,7 @@
             thDel: "DEL",
             clearConfirm: "💡 屏幕历史清空确认：\n这会清空当前显示的视图。云端大总账 100% 安全受保护。确定执行吗？",
             clearDone: "✨ 屏幕视图已重置，无缝开始！",
-            recoverConfirm: "🔄 确认要根据选择的【日期 + 柜号】重新同步云端多设备备份流水吗？",
+            recoverConfirm: "🔄 确认要同步调取云端备份流水吗？",
             recoverDone: "✨ 指定日期的全网多设备协同数据已成功拉回恢复！",
             opAlert: "⚠️ 拒绝提交！请先在上方输入您的 Operator Name (操作员姓名)。",
             locInvalid: "库位无效！[{loc}] 不是合法的云端内置库位。",
@@ -193,7 +182,7 @@
             cloudConnecting: "☁️ Connecting Dual SKU Master Engine...",
             cloudSuccess: "⚡ Dual SKU Master Dictionary Loaded!",
             cloudError: "❌ Dual SKU Sync Failed",
-            locConnecting: "☁️ Connecting Location Table (Col A-U)...",
+            locConnecting: "☁️️ Connecting Location Table (Col A-U)...",
             locSuccess: "⚡ Location Table Synced! ({count} locations)",
             locCache: "📦 Local Location Cache Ready ({count} locations)",
             locError: "⚠️ Location Table Offline",
@@ -220,7 +209,7 @@
             thDel: "DEL",
             clearConfirm: "💡 Clear Screen Confirmation:\nThis clears the current screen view. Master log is safe. Proceed?",
             clearDone: "✨ Screen reset! Ready for next.",
-            recoverConfirm: "🔄 Re-sync backup logs based on selected [Date + Cabinet]?",
+            recoverConfirm: "🔄 Re-sync backup logs based on date?",
             recoverDone: "✨ Backup data for selected date restored!",
             opAlert: "⚠️ Submission Denied! Please enter Operator Name first.",
             locInvalid: "Invalid Location! [{loc}] is not in system list.",
@@ -290,8 +279,6 @@
     }
 
     window.onload = () => {
-        document.getElementById('workDatePicker').value = getFormattedISOStr();
-
         applyLanguageUI();
         const op = localStorage.getItem('wh_v820_op'), cachedLocsText = localStorage.getItem('wh_v825_cached_locs'), localLogs = localStorage.getItem('wh_v828_audit_logs');
         if (op) document.getElementById('opName').value = op;
@@ -304,7 +291,6 @@
         fetchCloudLocations();
         fetchAllContainerSheetsOnce();
         
-        // 开启多设备轮询同步机制
         syncNetworkPool();
         setInterval(syncNetworkPool, 5000); 
         
@@ -382,7 +368,6 @@
         
         selector.innerHTML = "";
         
-        // 顶部空值（不限定柜号）
         let emptyOpt = document.createElement('option');
         emptyOpt.value = "";
         emptyOpt.innerText = "📦 -- 不指定柜号 (仅按日期汇总/多设备同步) --";
@@ -406,11 +391,7 @@
         localStorage.setItem('wh_selected_container_sheet', sheetName);
         
         parseLocalSheetData(sheetName);
-        filterNetworkDataByDateAndCabinet();
-    }
-
-    function onDateChange(selectedDateValue) {
-        filterNetworkDataByDateAndCabinet();
+        filterNetworkDataByCurrentDate();
     }
 
     function parseLocalSheetData(sheetName) {
@@ -447,7 +428,6 @@
         render();
     }
 
-    // 核心多设备轮询实现
     function syncNetworkPool() {
         var script = document.createElement("script");
         script.src = APP_SCRIPT_URL + (APP_SCRIPT_URL.includes("?") ? "&" : "?") + "t=" + Date.now();
@@ -462,21 +442,16 @@
         else if (Array.isArray(response)) { rawNetworkPool = response; } 
         else { return; }
 
-        filterNetworkDataByDateAndCabinet();
+        filterNetworkDataByCurrentDate();
     };
 
-    function filterNetworkDataByDateAndCabinet() {
+    function filterNetworkDataByCurrentDate() {
         const netBanner = document.getElementById('networkStat');
-        const selectedDateVal = document.getElementById('workDatePicker').value; // HTML 选中的日期
         
-        // 1. 将选择的日期统一清洗为 8 位纯数字，如 "20261001"
-        let targetDigits = selectedDateVal ? selectedDateVal.replace(/\D/g, "") : getFormattedDateStr();
-
-        // 2. 兼容性清洗过滤：将云端 d.Date 也统一清洗为 8 位纯数字再比对
         data = rawNetworkPool.filter(d => {
             if (!d || !d.Date) return false;
-            let cloudDateDigits = String(d.Date).replace(/\D/g, ""); // 去除斜杠、横线等非数字字符
-            return cloudDateDigits === targetDigits;
+            let cloudDateDigits = String(d.Date).replace(/\D/g, "");
+            return cloudDateDigits === currentFilterDateDigits;
         });
 
         refreshHistoricalDataNames();
@@ -485,8 +460,7 @@
             requestAnimationFrame(() => { render(); });
         }
         
-        // 3. 增强状态栏显示：清楚展示“当前日期匹配条数”和“云端大总账总条数”
-        netBanner.innerText = `📡 多端协同联网实时同步中 (当前日期: ${data.length} 条 | 云端大总账共: ${rawNetworkPool.length} 条)`;
+        netBanner.innerText = `📡 多端协同联网实时同步中 (当前视图 [${currentFilterDateDigits}]: ${data.length} 条 | 云端大总账: ${rawNetworkPool.length} 条)`;
         netBanner.style.background = "#f6ffed"; netBanner.style.borderColor = "#b7eb8f"; netBanner.style.color = "#52c41a";
     }
 
@@ -602,11 +576,18 @@
         }
     }
 
+    // 专属的恢复历史记录逻辑，仅在点击恢复时选择/确认日期
     function recoverBackup() {
-        if(confirm(t('recoverConfirm'))) {
+        const todayISO = getFormattedISOStr();
+        let inputDate = prompt("🔄 请输入需要恢复/调取数据的历史日期 (格式: YYYY-MM-DD):", todayISO);
+        
+        if (inputDate !== null && inputDate.trim() !== "") {
             localStorage.setItem("wh_screen_clear_timestamp", "0");
-            syncNetworkPool(); 
-            recordLogAction("RECOVER_BACKUP", "User restored backup for selected date");
+            currentFilterDateDigits = inputDate.replace(/\D/g, "");
+            
+            filterNetworkDataByCurrentDate();
+            
+            recordLogAction("RECOVER_BACKUP", `User restored backup for date: ${currentFilterDateDigits}`);
             alert(t('recoverDone'));
         }
     }
@@ -667,6 +648,7 @@
         tbody.appendChild(fragment);
     }
 
+    // 扫码提交：强行绑定当前的实际系统当天日期
     function addBatch() {
         const now = Date.now();
         if (now - lastSubmitTime < 1500) {
@@ -700,8 +682,8 @@
         let batchRowsForGAS = [], temporaryLocalBatch = [], mismatch = false;
         
         const preciseIdTimestamp = Date.now();
-        const selectedDateVal = document.getElementById('workDatePicker').value;
-        const targetDateStr = selectedDateVal ? selectedDateVal.replace(/-/g, "") : getFormattedDateStr();
+        // 🔒 扫码上传强制锁定真正的系统当天日期，决不依赖任何用户输入
+        const todayRealDateStr = getFormattedDateStr(); 
 
         for(let i=1; i<=6; i++) {
             const sv = document.getElementById('s'+i).value.trim().toUpperCase(); const qv = parseFloat(document.getElementById('q'+i).value); if(!sv) continue;
@@ -716,8 +698,8 @@
             let finalLongSku = dbMaster[sv] ? dbMaster[sv].b : sv; 
             let finalGoodsName = dbMaster[sv] ? dbMaster[sv].c : "N/A";
 
-            batchRowsForGAS.push([rowUniqueId, sv, finalLongSku, finalGoodsName, qv, finalCorrectLocation, "Patiki Warehouse: " + finalCorrectLocation, targetDateStr, op]);
-            temporaryLocalBatch.push({ id: rowUniqueId, _originSKU: sv, SKU: finalLongSku, Name: finalGoodsName, Quantity: qv, Location: finalCorrectLocation, FullLocation: "Patiki Warehouse: " + finalCorrectLocation, Date: targetDateStr, Operator: op });
+            batchRowsForGAS.push([rowUniqueId, sv, finalLongSku, finalGoodsName, qv, finalCorrectLocation, "Patiki Warehouse: " + finalCorrectLocation, todayRealDateStr, op]);
+            temporaryLocalBatch.push({ id: rowUniqueId, _originSKU: sv, SKU: finalLongSku, Name: finalGoodsName, Quantity: qv, Location: finalCorrectLocation, FullLocation: "Patiki Warehouse: " + finalCorrectLocation, Date: todayRealDateStr, Operator: op });
             
             recordLogAction("BATCH_SCAN", `Scanned SKU: ${sv}, Qty: ${qv}, Loc: ${finalCorrectLocation}`);
         }
@@ -735,8 +717,12 @@
             return;
         }
 
-        data = [...data, ...temporaryLocalBatch]; render();
-        // 发送数据给云端，实现多设备即时广播
+        // 如果当前视角的过滤器恰好是今天，实时渲染到界面
+        if (currentFilterDateDigits === todayRealDateStr) {
+            data = [...data, ...temporaryLocalBatch]; 
+            render();
+        }
+        
         sendJsonpAction({ action: "insert", rowsData: JSON.stringify(batchRowsForGAS) });
 
         for(let i=1; i<=6; i++) { document.getElementById('s'+i).value = ""; document.getElementById('q'+i).value = ""; }
@@ -765,7 +751,6 @@
             recordLogAction("UPDATE_QTY", `Operator [${op}] updated Loc [${targetRow.Location}] SKU: [${targetRow._originSKU}], Qty: [${oldQty}] -> [${n}]`);
             
             targetRow.Quantity = n; render(); 
-            // 实时推送云端修改
             sendJsonpAction({ action: "updateQty", id: rowId, quantity: n });
         }
     }
@@ -784,19 +769,16 @@
         recordLogAction("DELETE_ROW", `Operator [${op}] deleted row -> Loc: [${targetRow.Location}], SKU: [${targetRow._originSKU}], Qty: [${targetRow.Quantity}]`);
         
         data = data.filter(x => x.id !== rowId); render(); 
-        // 实时推送云端删除
         sendJsonpAction({ action: "delete", id: rowId });
     }
 
     function getFormattedFileName() {
         const op = document.getElementById('opName').value.trim() || "User";
-        const selectedDateVal = document.getElementById('workDatePicker').value;
-        const dateStr = selectedDateVal ? selectedDateVal.replace(/-/g, "") : getFormattedDateStr();
         
         if (currentSelectedSheetName && currentSelectedSheetName.trim() !== "") {
-            return `${currentSelectedSheetName}-PUTAWAY-${op}-${dateStr}.csv`;
+            return `${currentSelectedSheetName}-PUTAWAY-${op}-${currentFilterDateDigits}.csv`;
         } else {
-            return `PUTAWAY-${op}-${dateStr}.csv`;
+            return `PUTAWAY-${op}-${currentFilterDateDigits}.csv`;
         }
     }
 
@@ -813,9 +795,7 @@
     function exportLogTxtOnly() {
         const op = document.getElementById('opName').value.trim() || "User";
         const cabinet = currentSelectedSheetName || "GLOBAL";
-        const selectedDateVal = document.getElementById('workDatePicker').value;
-        const dateStr = selectedDateVal ? selectedDateVal.replace(/-/g, "") : getFormattedDateStr();
-        const logFileName = `${cabinet.trim() !== "" ? cabinet + '-' : ''}PUTAWAY-${op}-${dateStr}_LOG.txt`;
+        const logFileName = `${cabinet.trim() !== "" ? cabinet + '-' : ''}PUTAWAY-${op}-${currentFilterDateDigits}_LOG.txt`;
 
         let txtLines = [];
         if (auditLogPool && auditLogPool.length > 0) {
@@ -868,9 +848,6 @@
             });
         });
 
-        const selectedDateVal = document.getElementById('workDatePicker').value;
-        const targetDateStr = selectedDateVal ? selectedDateVal.replace(/-/g, "") : getFormattedDateStr();
-
         activeScopeData.forEach(row => {
             let skuKey = row._originSKU;
             let unassignedQty = row.Quantity;
@@ -878,7 +855,7 @@
             let goodsName = row.Name || "N/A";
             let fullLocation = row.FullLocation ? row.FullLocation : ("Patiki Warehouse: " + row.Location);
             let rowOperator = row.Operator || op;
-            let rowDate = row.Date || targetDateStr;
+            let rowDate = row.Date || currentFilterDateDigits;
 
             let poList = poQuotaPool[skuKey];
 
