@@ -821,7 +821,7 @@
         document.body.removeChild(link);
     }
 
-    function exportCsv() {
+function exportCsv() {
         const op = document.getElementById('opName').value.trim() || "User";
         refreshHistoricalDataNames();
 
@@ -832,8 +832,6 @@
             'ExpiryDate_YYYYMMDD', 'Quantity', 'Location', 'DateReceived_YYYYMMDD', 
             'Received', 'Exception_Note', 'Operator'
         ];
-
-        let csvRows = [headers];
 
         let poQuotaPool = {};
         dbDailyList.forEach(item => {
@@ -847,6 +845,9 @@
                 totalPlan: item.plan
             });
         });
+
+        // 1. 先进行 PO 额度匹配拆分，生成初步未合并的行记录数据
+        let unmergedRows = [];
 
         activeScopeData.forEach(row => {
             let skuKey = row._originSKU;
@@ -869,26 +870,84 @@
                         poObj.remPlan -= takeQty;
                         unassignedQty -= takeQty;
 
-                        csvRows.push([
-                            poObj.po, fullSku, goodsName, "", "", "",
-                            takeQty, fullLocation, rowDate, "TRUE", "OK", rowOperator
-                        ]);
+                        unmergedRows.push({
+                            po: poObj.po,
+                            sku: fullSku,
+                            name: goodsName,
+                            batch: "",
+                            supplierSku: "",
+                            expiry: "",
+                            qty: takeQty,
+                            loc: fullLocation,
+                            date: rowDate,
+                            received: "TRUE",
+                            note: "OK",
+                            op: rowOperator
+                        });
                     }
                 }
 
                 if (unassignedQty > 0) {
                     let lastPo = poList[poList.length - 1].po || "N/A";
-                    csvRows.push([
-                        lastPo, fullSku, goodsName, "", "", "",
-                        unassignedQty, fullLocation, rowDate, "TRUE", "EXT", rowOperator
-                    ]);
+                    unmergedRows.push({
+                        po: lastPo,
+                        sku: fullSku,
+                        name: goodsName,
+                        batch: "",
+                        supplierSku: "",
+                        expiry: "",
+                        qty: unassignedQty,
+                        loc: fullLocation,
+                        date: rowDate,
+                        received: "TRUE",
+                        note: "EXT",
+                        op: rowOperator
+                    });
                 }
             } else {
-                csvRows.push([
-                    "N/A", fullSku, goodsName, "", "", "",
-                    unassignedQty, fullLocation, rowDate, "TRUE", "EXT", rowOperator
-                ]);
+                unmergedRows.push({
+                    po: "N/A",
+                    sku: fullSku,
+                    name: goodsName,
+                    batch: "",
+                    supplierSku: "",
+                    expiry: "",
+                    qty: unassignedQty,
+                    loc: fullLocation,
+                    date: rowDate,
+                    received: "TRUE",
+                    note: "EXT",
+                    op: rowOperator
+                });
             }
+        });
+
+        // 2. 💡 关键修改：按 (PO + SKU + Location + Note + Date) 进行同类别合并数量
+        let mergedMap = new Map();
+
+        unmergedRows.forEach(item => {
+            // 生成唯一哈希 Key
+            let key = `${item.po}||${item.sku}||${item.loc}||${item.note}||${item.date}||${item.op}`;
+
+            if (mergedMap.has(key)) {
+                // 存在相同组合，数量直接累加
+                let existing = mergedMap.get(key);
+                existing.qty += item.qty;
+            } else {
+                // 新建记录
+                mergedMap.set(key, { ...item });
+            }
+        });
+
+        // 3. 构建最终导出的 CSV 行数组
+        let csvRows = [headers];
+
+        mergedMap.forEach(r => {
+            csvRows.push([
+                r.po, r.sku, r.name, r.batch, r.supplierSku,
+                r.expiry, r.qty, r.loc, r.date,
+                r.received, r.note, r.op
+            ]);
         });
 
         let dataCsvContent = csvRows.map(e => e.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(",")).join("\n");
