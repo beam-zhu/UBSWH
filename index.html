@@ -115,7 +115,7 @@
                 <tbody></tbody>
             </table>
         </div>
-        <button class="btn btn-export" id="btnExport" onclick="exportCsv()">EXPORT DATA CSV</button>
+        <button class="btn btn-export" id="btnExport" onclick="()">EXPORT DATA CSV</button>
     </div>
 </div>
 
@@ -833,9 +833,15 @@ function exportCsv() {
             'Received', 'Exception_Note', 'Operator'
         ];
 
+        // 1. 构建 PO 配额池
         let poQuotaPool = {};
+        let defaultFallbackPo = "N/A"; // 默认保底 PO
+
         dbDailyList.forEach(item => {
             let skuKey = item.sku;
+            if (item.po && item.po !== "") {
+                defaultFallbackPo = item.po; // 提取当前柜号计划中的默认 PO
+            }
             if (!poQuotaPool[skuKey]) {
                 poQuotaPool[skuKey] = [];
             }
@@ -846,9 +852,14 @@ function exportCsv() {
             });
         });
 
-        // 1. 先进行 PO 额度匹配拆分，生成初步未合并的行记录数据
+        // 如果用户选择了具体的柜号，优先以柜号作为异常件的保底 PO
+        if (currentSelectedSheetName && currentSelectedSheetName.trim() !== "") {
+            defaultFallbackPo = currentSelectedSheetName;
+        }
+
         let unmergedRows = [];
 
+        // 2. 逐行匹配与拆分
         activeScopeData.forEach(row => {
             let skuKey = row._originSKU;
             let unassignedQty = row.Quantity;
@@ -857,9 +868,12 @@ function exportCsv() {
             let fullLocation = row.FullLocation ? row.FullLocation : ("Patiki Warehouse: " + row.Location);
             let rowOperator = row.Operator || op;
             let rowDate = row.Date || currentFilterDateDigits;
+            // 获取该行数据原本携带的 PO（如果有），否则使用柜号保底 PO
+            let rowOriginalPo = row.PO || defaultFallbackPo;
 
             let poList = poQuotaPool[skuKey];
 
+            // 情况 A：正常 SKU，且在计划表内有配额
             if (poList && poList.length > 0) {
                 for (let i = 0; i < poList.length; i++) {
                     let poObj = poList[i];
@@ -871,7 +885,7 @@ function exportCsv() {
                         unassignedQty -= takeQty;
 
                         unmergedRows.push({
-                            po: poObj.po,
+                            po: poObj.po || rowOriginalPo,
                             sku: fullSku,
                             name: goodsName,
                             batch: "",
@@ -887,8 +901,9 @@ function exportCsv() {
                     }
                 }
 
+                // 配额扣完后还有剩余的超发部分 (EXT)
                 if (unassignedQty > 0) {
-                    let lastPo = poList[poList.length - 1].po || "N/A";
+                    let lastPo = poList[poList.length - 1].po || rowOriginalPo;
                     unmergedRows.push({
                         po: lastPo,
                         sku: fullSku,
@@ -904,9 +919,11 @@ function exportCsv() {
                         op: rowOperator
                     });
                 }
-            } else {
+            } 
+            // 情况 B：不在计划表内的特殊/异常 SKU (例如 $Receiving Issues)
+            else {
                 unmergedRows.push({
-                    po: "N/A",
+                    po: rowOriginalPo, // 强制保留关联 PO，不再丢失！
                     sku: fullSku,
                     name: goodsName,
                     batch: "",
@@ -916,30 +933,27 @@ function exportCsv() {
                     loc: fullLocation,
                     date: rowDate,
                     received: "TRUE",
-                    note: "EXT",
+                    note: "EXT", // 标记为异常/额外项
                     op: rowOperator
                 });
             }
         });
 
-        // 2. 💡 关键修改：按 (PO + SKU + Location + Note + Date) 进行同类别合并数量
+        // 3. 按 (PO + SKU + Location + Note + Date) 进行同 PO 合并
         let mergedMap = new Map();
 
         unmergedRows.forEach(item => {
-            // 生成唯一哈希 Key
             let key = `${item.po}||${item.sku}||${item.loc}||${item.note}||${item.date}||${item.op}`;
 
             if (mergedMap.has(key)) {
-                // 存在相同组合，数量直接累加
                 let existing = mergedMap.get(key);
                 existing.qty += item.qty;
             } else {
-                // 新建记录
                 mergedMap.set(key, { ...item });
             }
         });
 
-        // 3. 构建最终导出的 CSV 行数组
+        // 4. 输出为 CSV 格式
         let csvRows = [headers];
 
         mergedMap.forEach(r => {
