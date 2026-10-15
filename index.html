@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Warehouse v29.37-STRICT-TODAY-SAVE</title>
+    <title>Warehouse v29.38-EXPORT-MERGE-FIX</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
     <style>
         :root { --primary: #1890ff; --success: #52c41a; --danger: #ff4d4f; --extra: #b37feb; --bg: #f5f7fa; }
@@ -63,7 +63,7 @@
 <div class="main-wrapper">
     <div class="panel-right">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
-            <div class="ver-tag">Ver: v29.37-STRICT-TODAY-SAVE</div>
+            <div class="ver-tag">Ver: v29.38-EXPORT-MERGE-FIX</div>
             <button class="btn-lang" onclick="toggleLanguage()" id="langToggleBtn">🌐 EN / 中文</button>
         </div>
 
@@ -73,7 +73,7 @@
         <div class="cloud-banner cb-sync" id="networkStat">📡 多端协同联网实时同步中...</div>
 
         <div class="card">
-            <!-- 柜号选择 (带空选项) -->
+            <!-- 柜号选择 -->
             <select id="sheetContainerSelector" class="select-daily-box" onchange="onContainerSheetChange(this.value)">
                 <option value="" id="optLoading">🚢 正在一键加载云端全量柜号...</option>
             </select>
@@ -115,7 +115,7 @@
                 <tbody></tbody>
             </table>
         </div>
-        <button class="btn btn-export" id="btnExport" onclick="()">EXPORT DATA CSV</button>
+        <button class="btn btn-export" id="btnExport" onclick="exportCsv()">EXPORT DATA CSV</button>
     </div>
 </div>
 
@@ -133,7 +133,7 @@
     let isUserTyping = false;
     let currentSelectedSheetName = "";
     let currentLang = localStorage.getItem('wh_lang') || 'zh';
-    let currentFilterDateDigits = getFormattedDateStr(); // 默认过滤器指向今天系统日期
+    let currentFilterDateDigits = getFormattedDateStr();
 
     let globalAllCabinetsStore = {};
     let lastSubmitTime = 0;
@@ -152,7 +152,7 @@
             dailyNoTabs: "⚠️ 未获取到柜号标签页",
             dailyError: "❌ 提取云端柜号 JSON 失败，请检查网络或部署状态",
             dailyLoaded: "⚡ 柜号 [{sheet}] 挂载成功 (精准载入 {count} 项计划项)",
-            dailyNoData: "⚠️️ 未选择柜号或柜号内无有效比对数据",
+            dailyNoData: "⚠️ 未选择柜号或柜号内无有效比对数据",
             syncOnline: "📡 多端协同联网实时同步中 (已对齐当前视图: {count} 条流水)",
             optLoading: "🚢 正在一键加载云端全量柜号...",
             optContainer: "📦 柜号 / 工作表: [ {name} ]",
@@ -182,7 +182,7 @@
             cloudConnecting: "☁️ Connecting Dual SKU Master Engine...",
             cloudSuccess: "⚡ Dual SKU Master Dictionary Loaded!",
             cloudError: "❌ Dual SKU Sync Failed",
-            locConnecting: "☁️️ Connecting Location Table (Col A-U)...",
+            locConnecting: "☁️ Connecting Location Table (Col A-U)...",
             locSuccess: "⚡ Location Table Synced! ({count} locations)",
             locCache: "📦 Local Location Cache Ready ({count} locations)",
             locError: "⚠️ Location Table Offline",
@@ -576,7 +576,6 @@
         }
     }
 
-    // 专属的恢复历史记录逻辑，仅在点击恢复时选择/确认日期
     function recoverBackup() {
         const todayISO = getFormattedISOStr();
         let inputDate = prompt("🔄 请输入需要恢复/调取数据的历史日期 (格式: YYYY-MM-DD):", todayISO);
@@ -648,7 +647,6 @@
         tbody.appendChild(fragment);
     }
 
-    // 扫码提交：强行绑定当前的实际系统当天日期
     function addBatch() {
         const now = Date.now();
         if (now - lastSubmitTime < 1500) {
@@ -682,7 +680,6 @@
         let batchRowsForGAS = [], temporaryLocalBatch = [], mismatch = false;
         
         const preciseIdTimestamp = Date.now();
-        // 🔒 扫码上传强制锁定真正的系统当天日期，决不依赖任何用户输入
         const todayRealDateStr = getFormattedDateStr(); 
 
         for(let i=1; i<=6; i++) {
@@ -717,7 +714,6 @@
             return;
         }
 
-        // 如果当前视角的过滤器恰好是今天，实时渲染到界面
         if (currentFilterDateDigits === todayRealDateStr) {
             data = [...data, ...temporaryLocalBatch]; 
             render();
@@ -774,28 +770,39 @@
 
     function getFormattedFileName() {
         const op = document.getElementById('opName').value.trim() || "User";
+        const dateStr = (typeof currentFilterDateDigits !== 'undefined' && currentFilterDateDigits) 
+                        ? currentFilterDateDigits 
+                        : getFormattedDateStr();
         
         if (currentSelectedSheetName && currentSelectedSheetName.trim() !== "") {
-            return `${currentSelectedSheetName}-PUTAWAY-${op}-${currentFilterDateDigits}.csv`;
+            return `${currentSelectedSheetName.trim()}-PUTAWAY-${op}-${dateStr}.csv`;
         } else {
-            return `PUTAWAY-${op}-${currentFilterDateDigits}.csv`;
+            return `PUTAWAY-${op}-${dateStr}.csv`;
         }
     }
 
     function saveCsvFile(csvContent, fileName) {
-        const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
-        const link = document.createElement("a");
-        link.href = URL.createObjectURL(blob);
-        link.setAttribute("download", fileName);
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
+        try {
+            const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement("a");
+            link.href = URL.createObjectURL(blob);
+            link.setAttribute("download", fileName);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        } catch (e) {
+            console.error("CSV Download Error:", e);
+            alert("下载 CSV 文件时出错: " + e.message);
+        }
     }
 
     function exportLogTxtOnly() {
         const op = document.getElementById('opName').value.trim() || "User";
         const cabinet = currentSelectedSheetName || "GLOBAL";
-        const logFileName = `${cabinet.trim() !== "" ? cabinet + '-' : ''}PUTAWAY-${op}-${currentFilterDateDigits}_LOG.txt`;
+        const dateStr = (typeof currentFilterDateDigits !== 'undefined' && currentFilterDateDigits) 
+                        ? currentFilterDateDigits 
+                        : getFormattedDateStr();
+        const logFileName = `${cabinet.trim() !== "" ? cabinet.trim() + '-' : ''}PUTAWAY-${op}-${dateStr}_LOG.txt`;
 
         let txtLines = [];
         if (auditLogPool && auditLogPool.length > 0) {
@@ -821,90 +828,116 @@
         document.body.removeChild(link);
     }
 
-function exportCsv() {
-        const op = document.getElementById('opName').value.trim() || "User";
-        refreshHistoricalDataNames();
+    function exportCsv() {
+        try {
+            const op = document.getElementById('opName').value.trim() || "User";
+            
+            if (typeof refreshHistoricalDataNames === 'function') {
+                refreshHistoricalDataNames();
+            }
 
-        let activeScopeData = getFilteredActiveData();
+            let activeScopeData = (typeof getFilteredActiveData === 'function') 
+                                ? getFilteredActiveData() 
+                                : data;
 
-        const headers = [
-            'PO', 'SKU', 'Name', 'BatchSerialNumber', 'SupplierSKU',
-            'ExpiryDate_YYYYMMDD', 'Quantity', 'Location', 'DateReceived_YYYYMMDD', 
-            'Received', 'Exception_Note', 'Operator'
-        ];
+            if (!activeScopeData || activeScopeData.length === 0) {
+                alert("⚠️ 当前视图没有可以导出的数据！");
+                return;
+            }
 
-        // 1. 构建 PO 配额池
-        let poQuotaPool = {};
-        let defaultFallbackPo = "N/A";
+            const headers = [
+                'PO', 'SKU', 'Name', 'BatchSerialNumber', 'SupplierSKU',
+                'ExpiryDate_YYYYMMDD', 'Quantity', 'Location', 'DateReceived_YYYYMMDD', 
+                'Received', 'Exception_Note', 'Operator'
+            ];
 
-        if (Array.isArray(dbDailyList)) {
-            dbDailyList.forEach(item => {
-                let skuKey = item.sku;
-                if (item.po && String(item.po).trim() !== "") {
-                    defaultFallbackPo = String(item.po).trim();
-                }
-                if (!poQuotaPool[skuKey]) {
-                    poQuotaPool[skuKey] = [];
-                }
-                poQuotaPool[skuKey].push({
-                    po: item.po || defaultFallbackPo,
-                    remPlan: item.plan,
-                    totalPlan: item.plan
+            // 1. 构建 PO 配额池
+            let poQuotaPool = {};
+            let defaultFallbackPo = "N/A";
+
+            if (typeof dbDailyList !== 'undefined' && Array.isArray(dbDailyList)) {
+                dbDailyList.forEach(item => {
+                    let skuKey = item.sku;
+                    if (item.po && String(item.po).trim() !== "") {
+                        defaultFallbackPo = String(item.po).trim();
+                    }
+                    if (!poQuotaPool[skuKey]) {
+                        poQuotaPool[skuKey] = [];
+                    }
+                    poQuotaPool[skuKey].push({
+                        po: item.po || defaultFallbackPo,
+                        remPlan: Number(item.plan) || 0,
+                        totalPlan: Number(item.plan) || 0
+                    });
                 });
-            });
-        }
+            }
 
-        if (currentSelectedSheetName && currentSelectedSheetName.trim() !== "") {
-            defaultFallbackPo = currentSelectedSheetName.trim();
-        }
+            if (currentSelectedSheetName && currentSelectedSheetName.trim() !== "") {
+                defaultFallbackPo = currentSelectedSheetName.trim();
+            }
 
-        let unmergedRows = [];
+            let unmergedRows = [];
 
-        // 2. 逐行匹配与拆分
-        activeScopeData.forEach(row => {
-            let skuKey = row._originSKU || "";
-            let unassignedQty = Number(row.Quantity) || 0;
-            let fullSku = row.SKU || row._originSKU || "";
-            let goodsName = row.Name || "N/A";
-            let fullLocation = row.FullLocation ? row.FullLocation : ("Patiki Warehouse: " + (row.Location || ""));
-            let rowOperator = row.Operator || op;
-            let rowDate = row.Date || currentFilterDateDigits;
-            let rowOriginalPo = row.PO || defaultFallbackPo;
+            // 2. 逐行匹配与 PO 额度拆分
+            activeScopeData.forEach(row => {
+                let skuKey = row._originSKU || "";
+                let unassignedQty = Number(row.Quantity) || 0;
+                let fullSku = row.SKU || row._originSKU || "";
+                let goodsName = row.Name || "N/A";
+                let fullLocation = row.FullLocation ? row.FullLocation : ("Patiki Warehouse: " + (row.Location || ""));
+                let rowOperator = row.Operator || op;
+                let rowDate = row.Date || (typeof currentFilterDateDigits !== 'undefined' ? currentFilterDateDigits : getFormattedDateStr());
+                let rowOriginalPo = row.PO || defaultFallbackPo;
 
-            let poList = poQuotaPool[skuKey];
+                let poList = poQuotaPool[skuKey];
 
-            // 情况 A：正常 SKU，且在计划表内有配额
-            if (poList && poList.length > 0) {
-                for (let i = 0; i < poList.length; i++) {
-                    let poObj = poList[i];
-                    if (unassignedQty <= 0) break;
+                if (poList && poList.length > 0) {
+                    for (let i = 0; i < poList.length; i++) {
+                        let poObj = poList[i];
+                        if (unassignedQty <= 0) break;
 
-                    if (poObj.remPlan > 0) {
-                        let takeQty = Math.min(poObj.remPlan, unassignedQty);
-                        poObj.remPlan -= takeQty;
-                        unassignedQty -= takeQty;
+                        if (poObj.remPlan > 0) {
+                            let takeQty = Math.min(poObj.remPlan, unassignedQty);
+                            poObj.remPlan -= takeQty;
+                            unassignedQty -= takeQty;
 
+                            unmergedRows.push({
+                                po: poObj.po || rowOriginalPo,
+                                sku: fullSku,
+                                name: goodsName,
+                                batch: "",
+                                supplierSku: "",
+                                expiry: "",
+                                qty: takeQty,
+                                loc: fullLocation,
+                                date: rowDate,
+                                received: "TRUE",
+                                note: "OK",
+                                op: rowOperator
+                            });
+                        }
+                    }
+
+                    if (unassignedQty > 0) {
+                        let lastPo = poList[poList.length - 1].po || rowOriginalPo;
                         unmergedRows.push({
-                            po: poObj.po || rowOriginalPo,
+                            po: lastPo,
                             sku: fullSku,
                             name: goodsName,
                             batch: "",
                             supplierSku: "",
                             expiry: "",
-                            qty: takeQty,
+                            qty: unassignedQty,
                             loc: fullLocation,
                             date: rowDate,
                             received: "TRUE",
-                            note: "OK",
+                            note: "EXT",
                             op: rowOperator
                         });
                     }
-                }
-
-                if (unassignedQty > 0) {
-                    let lastPo = poList[poList.length - 1].po || rowOriginalPo;
+                } else {
                     unmergedRows.push({
-                        po: lastPo,
+                        po: rowOriginalPo,
                         sku: fullSku,
                         name: goodsName,
                         batch: "",
@@ -918,65 +951,54 @@ function exportCsv() {
                         op: rowOperator
                     });
                 }
-            } 
-            // 情况 B：不在计划表内的特殊/异常 SKU (例如 $Receiving Issues)
-            else {
-                unmergedRows.push({
-                    po: rowOriginalPo,
-                    sku: fullSku,
-                    name: goodsName,
-                    batch: "",
-                    supplierSku: "",
-                    expiry: "",
-                    qty: unassignedQty,
-                    loc: fullLocation,
-                    date: rowDate,
-                    received: "TRUE",
-                    note: "EXT",
-                    op: rowOperator
-                });
-            }
-        });
+            });
 
-        // 3. 按 (PO + SKU + Location + Note + Date) 进行同 PO 聚合合并
-        let mergedMap = new Map();
+            // 3. 同 PO + 同 SKU + 同 Location 自动汇总合并
+            let mergedMap = new Map();
 
-        unmergedRows.forEach(item => {
-            let poStr = String(item.po || "").trim();
-            let skuStr = String(item.sku || "").trim();
-            let locStr = String(item.loc || "").trim();
-            let noteStr = String(item.note || "").trim();
-            let dateStr = String(item.date || "").trim();
-            let opStr = String(item.op || "").trim();
+            unmergedRows.forEach(item => {
+                let poStr = String(item.po || "").trim();
+                let skuStr = String(item.sku || "").trim();
+                let locStr = String(item.loc || "").trim();
+                let noteStr = String(item.note || "").trim();
+                let dateStr = String(item.date || "").trim();
+                let opStr = String(item.op || "").trim();
 
-            let key = `${poStr}||${skuStr}||${locStr}||${noteStr}||${dateStr}||${opStr}`;
+                let key = `${poStr}||${skuStr}||${locStr}||${noteStr}||${dateStr}||${opStr}`;
 
-            if (mergedMap.has(key)) {
-                let existing = mergedMap.get(key);
-                existing.qty = (Number(existing.qty) || 0) + (Number(item.qty) || 0);
-            } else {
-                mergedMap.set(key, { ...item, qty: Number(item.qty) || 0 });
-            }
-        });
+                if (mergedMap.has(key)) {
+                    let existing = mergedMap.get(key);
+                    existing.qty = (Number(existing.qty) || 0) + (Number(item.qty) || 0);
+                } else {
+                    mergedMap.set(key, { ...item, qty: Number(item.qty) || 0 });
+                }
+            });
 
-        // 4. 构建导出内容
-        let csvRows = [headers];
+            // 4. 生成 CSV 并输出
+            let csvRows = [headers];
 
-        mergedMap.forEach(r => {
-            csvRows.push([
-                r.po, r.sku, r.name, r.batch, r.supplierSku,
-                r.expiry, r.qty, r.loc, r.date,
-                r.received, r.note, r.op
-            ]);
-        });
+            mergedMap.forEach(r => {
+                csvRows.push([
+                    r.po, r.sku, r.name, r.batch, r.supplierSku,
+                    r.expiry, r.qty, r.loc, r.date,
+                    r.received, r.note, r.op
+                ]);
+            });
 
-        let dataCsvContent = csvRows.map(e => e.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(",")).join("\n");
-        const dataFileName = getFormattedFileName();
-        saveCsvFile(dataCsvContent, dataFileName);
+            let dataCsvContent = csvRows.map(e => e.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(",")).join("\n");
+            const dataFileName = getFormattedFileName();
+            saveCsvFile(dataCsvContent, dataFileName);
 
-        setTimeout(() => {
-            exportLogTxtOnly();
-        }, 600);
+            setTimeout(() => {
+                if (typeof exportLogTxtOnly === 'function') {
+                    exportLogTxtOnly();
+                }
+            }, 600);
+
+        } catch (err) {
+            console.error("Export error caught:", err);
+            alert("❌ 导出失败: " + err.message);
+        }
     }
 </script>
 </body>
