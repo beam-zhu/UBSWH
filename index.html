@@ -835,40 +835,40 @@ function exportCsv() {
 
         // 1. 构建 PO 配额池
         let poQuotaPool = {};
-        let defaultFallbackPo = "N/A"; // 默认保底 PO
+        let defaultFallbackPo = "N/A";
 
-        dbDailyList.forEach(item => {
-            let skuKey = item.sku;
-            if (item.po && item.po !== "") {
-                defaultFallbackPo = item.po; // 提取当前柜号计划中的默认 PO
-            }
-            if (!poQuotaPool[skuKey]) {
-                poQuotaPool[skuKey] = [];
-            }
-            poQuotaPool[skuKey].push({
-                po: item.po,
-                remPlan: item.plan,
-                totalPlan: item.plan
+        if (Array.isArray(dbDailyList)) {
+            dbDailyList.forEach(item => {
+                let skuKey = item.sku;
+                if (item.po && String(item.po).trim() !== "") {
+                    defaultFallbackPo = String(item.po).trim();
+                }
+                if (!poQuotaPool[skuKey]) {
+                    poQuotaPool[skuKey] = [];
+                }
+                poQuotaPool[skuKey].push({
+                    po: item.po || defaultFallbackPo,
+                    remPlan: item.plan,
+                    totalPlan: item.plan
+                });
             });
-        });
+        }
 
-        // 如果用户选择了具体的柜号，优先以柜号作为异常件的保底 PO
         if (currentSelectedSheetName && currentSelectedSheetName.trim() !== "") {
-            defaultFallbackPo = currentSelectedSheetName;
+            defaultFallbackPo = currentSelectedSheetName.trim();
         }
 
         let unmergedRows = [];
 
         // 2. 逐行匹配与拆分
         activeScopeData.forEach(row => {
-            let skuKey = row._originSKU;
-            let unassignedQty = row.Quantity;
-            let fullSku = row.SKU || row._originSKU;
+            let skuKey = row._originSKU || "";
+            let unassignedQty = Number(row.Quantity) || 0;
+            let fullSku = row.SKU || row._originSKU || "";
             let goodsName = row.Name || "N/A";
-            let fullLocation = row.FullLocation ? row.FullLocation : ("Patiki Warehouse: " + row.Location);
+            let fullLocation = row.FullLocation ? row.FullLocation : ("Patiki Warehouse: " + (row.Location || ""));
             let rowOperator = row.Operator || op;
             let rowDate = row.Date || currentFilterDateDigits;
-            // 获取该行数据原本携带的 PO（如果有），否则使用柜号保底 PO
             let rowOriginalPo = row.PO || defaultFallbackPo;
 
             let poList = poQuotaPool[skuKey];
@@ -901,7 +901,6 @@ function exportCsv() {
                     }
                 }
 
-                // 配额扣完后还有剩余的超发部分 (EXT)
                 if (unassignedQty > 0) {
                     let lastPo = poList[poList.length - 1].po || rowOriginalPo;
                     unmergedRows.push({
@@ -923,7 +922,7 @@ function exportCsv() {
             // 情况 B：不在计划表内的特殊/异常 SKU (例如 $Receiving Issues)
             else {
                 unmergedRows.push({
-                    po: rowOriginalPo, // 强制保留关联 PO，不再丢失！
+                    po: rowOriginalPo,
                     sku: fullSku,
                     name: goodsName,
                     batch: "",
@@ -933,27 +932,34 @@ function exportCsv() {
                     loc: fullLocation,
                     date: rowDate,
                     received: "TRUE",
-                    note: "EXT", // 标记为异常/额外项
+                    note: "EXT",
                     op: rowOperator
                 });
             }
         });
 
-        // 3. 按 (PO + SKU + Location + Note + Date) 进行同 PO 合并
+        // 3. 按 (PO + SKU + Location + Note + Date) 进行同 PO 聚合合并
         let mergedMap = new Map();
 
         unmergedRows.forEach(item => {
-            let key = `${item.po}||${item.sku}||${item.loc}||${item.note}||${item.date}||${item.op}`;
+            let poStr = String(item.po || "").trim();
+            let skuStr = String(item.sku || "").trim();
+            let locStr = String(item.loc || "").trim();
+            let noteStr = String(item.note || "").trim();
+            let dateStr = String(item.date || "").trim();
+            let opStr = String(item.op || "").trim();
+
+            let key = `${poStr}||${skuStr}||${locStr}||${noteStr}||${dateStr}||${opStr}`;
 
             if (mergedMap.has(key)) {
                 let existing = mergedMap.get(key);
-                existing.qty += item.qty;
+                existing.qty = (Number(existing.qty) || 0) + (Number(item.qty) || 0);
             } else {
-                mergedMap.set(key, { ...item });
+                mergedMap.set(key, { ...item, qty: Number(item.qty) || 0 });
             }
         });
 
-        // 4. 输出为 CSV 格式
+        // 4. 构建导出内容
         let csvRows = [headers];
 
         mergedMap.forEach(r => {
