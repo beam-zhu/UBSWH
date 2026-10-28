@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Warehouse v29.38-EXPORT-MERGE-FIX</title>
+    <title>Warehouse v29.39-STRICT-VALIDATION</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
     <style>
         :root { --primary: #1890ff; --success: #52c41a; --danger: #ff4d4f; --extra: #b37feb; --bg: #f5f7fa; }
@@ -63,7 +63,7 @@
 <div class="main-wrapper">
     <div class="panel-right">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
-            <div class="ver-tag">Ver: v29.38-EXPORT-MERGE-FIX</div>
+            <div class="ver-tag">Ver: v29.39-STRICT-VALIDATION</div>
             <button class="btn-lang" onclick="toggleLanguage()" id="langToggleBtn">🌐 EN / 中文</button>
         </div>
 
@@ -129,7 +129,8 @@
 
     let auditLogPool = [];
     let dbMaster = {}, dbDailyList = [], setLoc = new Set(), dbLocMap = {}, data = [], rawNetworkPool = [];
-    let dailyActive = false, audioCtx = null, forceSKU = null;
+    let dailyActive = false, audioCtx = null;
+    let pendingForceSku = null; // 用于记录需要强制保存的非列表 SKU
     let isUserTyping = false;
     let currentSelectedSheetName = "";
     let currentLang = localStorage.getItem('wh_lang') || 'zh';
@@ -153,7 +154,7 @@
             dailyError: "❌ 提取云端柜号 JSON 失败，请检查网络或部署状态",
             dailyLoaded: "⚡ 柜号 [{sheet}] 挂载成功 (精准载入 {count} 项计划项)",
             dailyNoData: "⚠️ 未选择柜号或柜号内无有效比对数据",
-            syncOnline: "📡 多端协同联网实时同步中 (已对齐当前视图: {count} 条流水)",
+            syncOnline: "📡 多端协同联网实时同步中 (当前视图 [{date}]: {count} 条 | 云端大总账: {total} 条)",
             optLoading: "🚢 正在一键加载云端全量柜号...",
             optContainer: "📦 柜号 / 工作表: [ {name} ]",
             clearScreen: "[CLEAR SCREEN] (清空屏幕历史)",
@@ -174,7 +175,7 @@
             recoverDone: "✨ 指定日期的全网多设备协同数据已成功拉回恢复！",
             opAlert: "⚠️ 拒绝提交！请先在上方输入您的 Operator Name (操作员姓名)。",
             locInvalid: "库位无效！[{loc}] 不是合法的云端内置库位。",
-            mismatchBtn: "SKU NOT IN LIST! TAP AGAIN TO FORCE SAVE",
+            mismatchBtn: "⚠️ SKU 不在计划中！请再按一次 SAVE ALL 强制保存",
             qtyConfirm: "⚠️ 安全确认：\n您确定要将 SKU [{sku}] 的盘点数量从 [{oldQty}] 变更至 [{newQty}] 吗？",
             delConfirm: "🚨 彻底删除警报！\n您确定要在云端数据库彻底删除库位 [{loc}] 下的 SKU [{sku}]（数量:{qty}）吗？"
         },
@@ -192,7 +193,7 @@
             dailyError: "❌ Failed to Fetch Cloud Container JSON",
             dailyLoaded: "⚡ Container [{sheet}] Mounted ({count} Items)",
             dailyNoData: "⚠️ No Container Selected or No Valid Plan Data",
-            syncOnline: "📡 Multi-Device Live Synced (Matched Logs: {count})",
+            syncOnline: "📡 Multi-Device Live Synced (View [{date}]: {count} | Total: {total})",
             optLoading: "🚢 Loading All Cloud Containers...",
             optContainer: "📦 Container / Sheet: [ {name} ]",
             clearScreen: "[CLEAR SCREEN]",
@@ -213,7 +214,7 @@
             recoverDone: "✨ Backup data for selected date restored!",
             opAlert: "⚠️ Submission Denied! Please enter Operator Name first.",
             locInvalid: "Invalid Location! [{loc}] is not in system list.",
-            mismatchBtn: "SKU NOT IN LIST! TAP AGAIN TO FORCE SAVE",
+            mismatchBtn: "⚠️ SKU NOT IN LIST! TAP SAVE AGAIN TO FORCE",
             qtyConfirm: "⚠️ Security Check:\nChange SKU [{sku}] qty from [{oldQty}] to [{newQty}]?",
             delConfirm: "🚨 Delete Warning!\nPERMANENTLY delete SKU [{sku}] (Qty:{qty}) at Location [{loc}]?"
         }
@@ -460,7 +461,7 @@
             requestAnimationFrame(() => { render(); });
         }
         
-        netBanner.innerText = `📡 多端协同联网实时同步中 (当前视图 [${currentFilterDateDigits}]: ${data.length} 条 | 云端大总账: ${rawNetworkPool.length} 条)`;
+        netBanner.innerText = t('syncOnline', { date: currentFilterDateDigits, count: data.length, total: rawNetworkPool.length });
         netBanner.style.background = "#f6ffed"; netBanner.style.borderColor = "#b7eb8f"; netBanner.style.color = "#52c41a";
     }
 
@@ -647,72 +648,121 @@
         tbody.appendChild(fragment);
     }
 
+    // 严谨的扫码提交与双重校验 (未在清单强制二次确认 + 超配额警告确认)
     function addBatch() {
         const now = Date.now();
-        if (now - lastSubmitTime < 1500) {
+        if (now - lastSubmitTime < 1000) {
             return;
         }
         lastSubmitTime = now;
 
         const saveBtn = document.getElementById('saveBtn');
-        saveBtn.disabled = true;
-        saveBtn.innerText = t('btnSaving');
-
         unlockAudio();
-        let inputLv = document.getElementById('locIn').value.trim(); let upperLv = inputLv.toUpperCase();
+
+        let inputLv = document.getElementById('locIn').value.trim(); 
+        let upperLv = inputLv.toUpperCase();
         const op = document.getElementById('opName').value.trim();
+
         if(!op) { 
             alert(t('opAlert')); 
-            saveBtn.disabled = false; saveBtn.innerText = t('btnSave');
             return; 
         }
         if(!inputLv) { 
-            saveBtn.disabled = false; saveBtn.innerText = t('btnSave');
             return; 
         }
         if (setLoc.size > 0 && !setLoc.has(upperLv)) { 
             alert(t('locInvalid', { loc: inputLv })); 
-            saveBtn.disabled = false; saveBtn.innerText = t('btnSave');
             return; 
         }
 
         let finalCorrectLocation = dbLocMap[upperLv] ? dbLocMap[upperLv] : inputLv;
-        let batchRowsForGAS = [], temporaryLocalBatch = [], mismatch = false;
+        let batchRowsForGAS = [], temporaryLocalBatch = [];
         
+        // 1. 动态统计当前屏幕及已扫入的总数，以便核对超配额
+        let currentScannedTotals = {};
+        let activeScopeData = getFilteredActiveData();
+        activeScopeData.forEach(d => {
+            currentScannedTotals[d._originSKU] = (currentScannedTotals[d._originSKU] || 0) + d.Quantity;
+        });
+
+        let dailyPlanMap = {};
+        dbDailyList.forEach(d => {
+            dailyPlanMap[d.sku] = (dailyPlanMap[d.sku] || 0) + d.plan;
+        });
+
+        // 临时收集本次输入的有效 SKU 和数量
+        let inputItems = [];
+        for(let i = 1; i <= 6; i++) {
+            let sv = document.getElementById('s'+i).value.trim().toUpperCase();
+            let qv = parseFloat(document.getElementById('q'+i).value);
+            if(sv && qv > 0) {
+                inputItems.push({ sku: sv, qty: qv });
+            }
+        }
+
+        if(inputItems.length === 0) return;
+
+        // 2. 检查非列表内 SKU（EXT / 不在 PO 计划中）
+        if (dailyActive) {
+            for (let item of inputItems) {
+                let inDaily = dbDailyList.some(d => d.sku === item.sku);
+                if (!inDaily) {
+                    // 如果当前输入的 SKU 不在计划列表中
+                    if (pendingForceSku !== item.sku) {
+                        pendingForceSku = item.sku; // 记录需要强制保存的目标
+                        saveBtn.innerText = t('mismatchBtn');
+                        saveBtn.style.background = "orange";
+                        setTimeout(() => {
+                            saveBtn.innerText = t('btnSave');
+                            saveBtn.style.background = "";
+                        }, 4000);
+                        return; // 第一次拦截：提示用户再次点击
+                    } else {
+                        // 第二次点击：用户确认强制保存，清空待命状态
+                        pendingForceSku = null;
+                    }
+                }
+            }
+        }
+
+        // 3. 检查超配额数量（Over-quota 警告）
+        if (dailyActive) {
+            let overQuotaSkus = [];
+            inputItems.forEach(item => {
+                let planTotal = dailyPlanMap[item.sku];
+                if (planTotal !== undefined) {
+                    let alreadyScanned = currentScannedTotals[item.sku] || 0;
+                    if ((alreadyScanned + item.qty) > planTotal) {
+                        overQuotaSkus.push(`SKU: ${item.sku} (计划: ${planTotal}, 已扫: ${alreadyScanned}, 本次: ${item.qty})`);
+                    }
+                }
+            });
+
+            if (overQuotaSkus.length > 0) {
+                let confirmOver = confirm(`⚠️ 【超配额警告】\n以下 SKU 的输入数量超过了柜号计划配额总量：\n\n${overQuotaSkus.join('\n')}\n\n确定要超量保存吗？`);
+                if (!confirmOver) {
+                    return; // 用户点击取消，中断保存
+                }
+            }
+        }
+
+        // 4. 正式打包构建提交数据
+        saveBtn.disabled = true;
+        saveBtn.innerText = t('btnSaving');
+
         const preciseIdTimestamp = Date.now();
         const todayRealDateStr = getFormattedDateStr(); 
 
-        for(let i=1; i<=6; i++) {
-            const sv = document.getElementById('s'+i).value.trim().toUpperCase(); const qv = parseFloat(document.getElementById('q'+i).value); if(!sv) continue;
-            let inDaily = dbDailyList.some(d => d.sku === sv);
-            if(dailyActive && !inDaily && forceSKU !== sv) { mismatch = true; forceSKU = sv; break; }
-            if(!qv || qv <= 0) { 
-                saveBtn.disabled = false; saveBtn.innerText = t('btnSave');
-                return; 
-            }
+        inputItems.forEach((item, idx) => {
+            let rowUniqueId = "ts_" + preciseIdTimestamp + "_" + (idx + 1) + "_" + Math.random().toString(36).substr(2, 4);
+            let finalLongSku = dbMaster[item.sku] ? dbMaster[item.sku].b : item.sku; 
+            let finalGoodsName = dbMaster[item.sku] ? dbMaster[item.sku].c : "N/A";
 
-            let rowUniqueId = "ts_" + preciseIdTimestamp + "_" + i + "_" + Math.random().toString(36).substr(2, 4);
-            let finalLongSku = dbMaster[sv] ? dbMaster[sv].b : sv; 
-            let finalGoodsName = dbMaster[sv] ? dbMaster[sv].c : "N/A";
-
-            batchRowsForGAS.push([rowUniqueId, sv, finalLongSku, finalGoodsName, qv, finalCorrectLocation, "Patiki Warehouse: " + finalCorrectLocation, todayRealDateStr, op]);
-            temporaryLocalBatch.push({ id: rowUniqueId, _originSKU: sv, SKU: finalLongSku, Name: finalGoodsName, Quantity: qv, Location: finalCorrectLocation, FullLocation: "Patiki Warehouse: " + finalCorrectLocation, Date: todayRealDateStr, Operator: op });
+            batchRowsForGAS.push([rowUniqueId, item.sku, finalLongSku, finalGoodsName, item.qty, finalCorrectLocation, "Patiki Warehouse: " + finalCorrectLocation, todayRealDateStr, op]);
+            temporaryLocalBatch.push({ id: rowUniqueId, _originSKU: item.sku, SKU: finalLongSku, Name: finalGoodsName, Quantity: item.qty, Location: finalCorrectLocation, FullLocation: "Patiki Warehouse: " + finalCorrectLocation, Date: todayRealDateStr, Operator: op });
             
-            recordLogAction("BATCH_SCAN", `Scanned SKU: ${sv}, Qty: ${qv}, Loc: ${finalCorrectLocation}`);
-        }
-
-        if(mismatch) { 
-            saveBtn.innerText = t('mismatchBtn'); 
-            saveBtn.style.background = "orange"; 
-            saveBtn.disabled = false;
-            setTimeout(() => { saveBtn.innerText = t('btnSave'); saveBtn.style.background = ""; forceSKU = null; }, 3000); 
-            return; 
-        }
-        
-        if(batchRowsForGAS.length === 0) {
-            saveBtn.disabled = false; saveBtn.innerText = t('btnSave');
-            return;
-        }
+            recordLogAction("BATCH_SCAN", `Scanned SKU: ${item.sku}, Qty: ${item.qty}, Loc: ${finalCorrectLocation}`);
+        });
 
         if (currentFilterDateDigits === todayRealDateStr) {
             data = [...data, ...temporaryLocalBatch]; 
@@ -721,10 +771,11 @@
         
         sendJsonpAction({ action: "insert", rowsData: JSON.stringify(batchRowsForGAS) });
 
+        // 清空输入框并重置状态
         for(let i=1; i<=6; i++) { document.getElementById('s'+i).value = ""; document.getElementById('q'+i).value = ""; }
         document.getElementById('locIn').value = ""; 
         document.getElementById('s1').focus(); 
-        forceSKU = null;
+        pendingForceSku = null;
 
         setTimeout(() => {
             saveBtn.disabled = false;
