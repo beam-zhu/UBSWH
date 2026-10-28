@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Warehouse v29.41-STRICT-DOUBLE-CHECK</title>
+    <title>Warehouse v29.42-UNCONDITIONAL-EXT-SAVE</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
     <style>
         :root { --primary: #1890ff; --success: #52c41a; --danger: #ff4d4f; --extra: #b37feb; --bg: #f5f7fa; }
@@ -63,7 +63,7 @@
 <div class="main-wrapper">
     <div class="panel-right">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
-            <div class="ver-tag">Ver: v29.41-STRICT-DOUBLE-CHECK</div>
+            <div class="ver-tag">Ver: v29.42-UNCONDITIONAL-EXT-SAVE</div>
             <button class="btn-lang" onclick="toggleLanguage()" id="langToggleBtn">🌐 EN / 中文</button>
         </div>
 
@@ -130,7 +130,6 @@
     let auditLogPool = [];
     let dbMaster = {}, dbDailyList = [], setLoc = new Set(), dbLocMap = {}, data = [], rawNetworkPool = [];
     let dailyActive = false, audioCtx = null;
-    let pendingForceSku = null; // 用于非计划内 SKU（EXT）二次点击强制保存的状态标记
     let isUserTyping = false;
     let currentSelectedSheetName = "";
     let currentLang = localStorage.getItem('wh_lang') || 'zh';
@@ -173,9 +172,8 @@
             clearDone: "✨ 屏幕视图已重置，无缝开始！",
             recoverConfirm: "🔄 确认要同步调取云端备份流水吗？",
             recoverDone: "✨ 指定日期的全网多设备协同数据已成功拉回恢复！",
-            opAlert: "⚠️ 拒绝提交！请先在上方输入您的 Operator Name (操作员姓名)。",
+            opAlert: "⚠️ 拒绝提交! 请先在上方输入您的 Operator Name (操作员姓名)。",
             locInvalid: "库位无效！[{loc}] 不是合法的云端内置库位。",
-            mismatchBtn: "⚠️ SKU 不在计划中！请再按一次 SAVE ALL 强制保存",
             qtyConfirm: "⚠️ 安全确认：\n您确定要将 SKU [{sku}] 的盘点数量从 [{oldQty}] 变更至 [{newQty}] 吗？",
             delConfirm: "🚨 彻底删除警报！\n您确定要在云端数据库彻底删除库位 [{loc}] 下的 SKU [{sku}]（数量:{qty}）吗？"
         },
@@ -214,7 +212,6 @@
             recoverDone: "✨ Backup data for selected date restored!",
             opAlert: "⚠️ Submission Denied! Please enter Operator Name first.",
             locInvalid: "Invalid Location! [{loc}] is not in system list.",
-            mismatchBtn: "⚠️ SKU NOT IN LIST! TAP SAVE AGAIN TO FORCE",
             qtyConfirm: "⚠️ Security Check:\nChange SKU [{sku}] qty from [{oldQty}] to [{newQty}]?",
             delConfirm: "🚨 Delete Warning!\nPERMANENTLY delete SKU [{sku}] (Qty:{qty}) at Location [{loc}]?"
         }
@@ -648,7 +645,7 @@
         tbody.appendChild(fragment);
     }
 
-    // 🚀 严格校验版 addBatch：包含未在计划内SKU的二次确认机制 + 超过PO计划数量的警告弹窗确认
+    // 🚀 终极稳定版 addBatch：清晰友好的弹窗二次确认机制 (非计划内EXT + 超配额警告) + 绝对放行保存
     function addBatch() {
         const now = Date.now();
         if (now - lastSubmitTime < 1000) {
@@ -689,29 +686,25 @@
 
         if(inputItems.length === 0) return;
 
-        // 1. 🔍 非计划内 SKU 检查与二次确认拦截机制
+        // 1. 🔍 非计划内 SKU 检查与弹窗二次确认
         if (dailyActive) {
-            for (let item of inputItems) {
+            let unlistedSkus = [];
+            inputItems.forEach(item => {
                 let inDaily = dbDailyList.some(d => d.sku === item.sku);
                 if (!inDaily) {
-                    if (pendingForceSku !== item.sku) {
-                        pendingForceSku = item.sku; // 记录当前需要二次确认的 SKU
-                        saveBtn.innerText = t('mismatchBtn');
-                        saveBtn.style.background = "orange";
-                        setTimeout(() => {
-                            saveBtn.innerText = t('btnSave');
-                            saveBtn.style.background = "";
-                        }, 4000);
-                        return; // 第一次拦截：提示用户需要再按一次
-                    } else {
-                        // 第二次点击：用户已确认，清空状态并放行
-                        pendingForceSku = null;
-                    }
+                    unlistedSkus.push(item.sku);
+                }
+            });
+
+            if (unlistedSkus.length > 0) {
+                let confirmExt = confirm(`⚠️ 【非计划内新SKU/额外件提示】\n检测到以下 SKU 不在当前柜号计划列表中：\n\n[ ${unlistedSkus.join(', ')} ]\n\n系统将自动作为 EXT 额外件录入。是否确认保存？`);
+                if (!confirmExt) {
+                    return; // 用户点击取消，中断保存
                 }
             }
         }
 
-        // 2. ⚠️ 超配额数量检查与确认弹窗机制
+        // 2. ⚠️ 超配额数量检查与确认弹窗
         if (dailyActive) {
             let currentScannedTotals = {};
             let activeScopeData = getFilteredActiveData();
@@ -743,7 +736,7 @@
             }
         }
 
-        // 3. 正式打包构建并提交数据
+        // 3. 正式打包构建并提交数据（无条件 100% 成功写入）
         saveBtn.disabled = true;
         saveBtn.innerText = t('btnSaving');
 
@@ -773,7 +766,6 @@
         for(let i=1; i<=6; i++) { document.getElementById('s'+i).value = ""; document.getElementById('q'+i).value = ""; }
         document.getElementById('locIn').value = ""; 
         document.getElementById('s1').focus(); 
-        pendingForceSku = null;
 
         setTimeout(() => {
             saveBtn.disabled = false;
