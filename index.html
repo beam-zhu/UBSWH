@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Warehouse v29.42-UNCONDITIONAL-EXT-SAVE</title>
+    <title>Warehouse v29.43-EXT-ISOLATION-FIX</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
     <style>
         :root { --primary: #1890ff; --success: #52c41a; --danger: #ff4d4f; --extra: #b37feb; --bg: #f5f7fa; }
@@ -63,7 +63,7 @@
 <div class="main-wrapper">
     <div class="panel-right">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
-            <div class="ver-tag">Ver: v29.42-UNCONDITIONAL-EXT-SAVE</div>
+            <div class="ver-tag">Ver: v29.43-EXT-ISOLATION-FIX</div>
             <button class="btn-lang" onclick="toggleLanguage()" id="langToggleBtn">🌐 EN / 中文</button>
         </div>
 
@@ -172,7 +172,7 @@
             clearDone: "✨ 屏幕视图已重置，无缝开始！",
             recoverConfirm: "🔄 确认要同步调取云端备份流水吗？",
             recoverDone: "✨ 指定日期的全网多设备协同数据已成功拉回恢复！",
-            opAlert: "⚠️ 拒绝提交! 请先在上方输入您的 Operator Name (操作员姓名)。",
+            opAlert: "⚠️ 拒绝提交！请先在上方输入您的 Operator Name (操作员姓名)。",
             locInvalid: "库位无效！[{loc}] 不是合法的云端内置库位。",
             qtyConfirm: "⚠️ 安全确认：\n您确定要将 SKU [{sku}] 的盘点数量从 [{oldQty}] 变更至 [{newQty}] 吗？",
             delConfirm: "🚨 彻底删除警报！\n您确定要在云端数据库彻底删除库位 [{loc}] 下的 SKU [{sku}]（数量:{qty}）吗？"
@@ -645,7 +645,7 @@
         tbody.appendChild(fragment);
     }
 
-    // 🚀 终极稳定版 addBatch：清晰友好的弹窗二次确认机制 (非计划内EXT + 超配额警告) + 绝对放行保存
+    // 🚀 addBatch 保持：带弹窗二次确认机制（非计划内EXT + 超配额警告）并无条件 100% 成功录入
     function addBatch() {
         const now = Date.now();
         if (now - lastSubmitTime < 1000) {
@@ -674,7 +674,6 @@
 
         let finalCorrectLocation = dbLocMap[upperLv] ? dbLocMap[upperLv] : inputLv;
         
-        // 收集本次输入的有效 SKU 和数量
         let inputItems = [];
         for(let i = 1; i <= 6; i++) {
             let sv = document.getElementById('s'+i).value.trim().toUpperCase();
@@ -699,7 +698,7 @@
             if (unlistedSkus.length > 0) {
                 let confirmExt = confirm(`⚠️ 【非计划内新SKU/额外件提示】\n检测到以下 SKU 不在当前柜号计划列表中：\n\n[ ${unlistedSkus.join(', ')} ]\n\n系统将自动作为 EXT 额外件录入。是否确认保存？`);
                 if (!confirmExt) {
-                    return; // 用户点击取消，中断保存
+                    return; 
                 }
             }
         }
@@ -731,12 +730,11 @@
             if (overQuotaSkus.length > 0) {
                 let confirmOver = confirm(`⚠️ 【超配额数量警告】\n以下 SKU 的输入总量超过了柜号计划配额：\n\n${overQuotaSkus.join('\n')}\n\n确定要超量保存吗？`);
                 if (!confirmOver) {
-                    return; // 用户点击取消，中断保存
+                    return; 
                 }
             }
         }
 
-        // 3. 正式打包构建并提交数据（无条件 100% 成功写入）
         saveBtn.disabled = true;
         saveBtn.innerText = t('btnSaving');
 
@@ -975,6 +973,7 @@
                         });
                     }
                 } else {
+                    // 🚀 核心修改：针对 EXT / 非计划内 SKU，独立保留其原始 PO（或柜号作为独立标识），不参与常规 PO 消耗配额拆分
                     unmergedRows.push({
                         po: rowOriginalPo,
                         sku: fullSku,
@@ -992,18 +991,17 @@
                 }
             });
 
-            // 💡 关键：按相同 PO + SKU + Location 自动合并汇总数量
+            // 💡 关键：精简合并 Map 的 Key，确保“同 PO + 同 SKU + 同 Location”无论输入几次、操作员大小写或 Note 是否有差异，百分之百聚合成唯一一行并累加数量
             let mergedMap = new Map();
 
             unmergedRows.forEach(item => {
-                let poStr = String(item.po || "").trim();
-                let skuStr = String(item.sku || "").trim();
-                let locStr = String(item.loc || "").trim();
-                let noteStr = String(item.note || "").trim();
-                let dateStr = String(item.date || "").trim();
-                let opStr = String(item.op || "").trim();
+                let poStr = String(item.po || "").trim().toUpperCase();
+                let skuStr = String(item.sku || "").trim().toUpperCase();
+                let locStr = String(item.loc || "").trim().toUpperCase();
+                let noteStr = String(item.note || "").trim().toUpperCase();
 
-                let key = `${poStr}||${skuStr}||${locStr}||${noteStr}||${dateStr}||${opStr}`;
+                // 使用严格的 PO + SKU + Location + Note 作为唯一键聚合，确保 EXT 独立，普通项正确合并
+                let key = `${poStr}||${skuStr}||${locStr}||${noteStr}`;
 
                 if (mergedMap.has(key)) {
                     let existing = mergedMap.get(key);
